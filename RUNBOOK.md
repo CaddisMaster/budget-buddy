@@ -388,14 +388,41 @@ TAG=0.1.0 docker compose pull && TAG=0.1.0 docker compose up -d
 
 `TAG` pins an exact released image; omitting it falls back to `latest`.
 
-**Migration ordering matters, and the two directions are opposites:**
+### Migrations
 
-- **Additive** changes (new columns, new tables) apply **before** the pull — new
-  code must never query a column that does not exist yet.
-- **Drops** apply **after** the pull — the old code is still selecting those
-  columns right up until the container is replaced.
+**Additive migrations are applied automatically by the deploy job**, in this order:
 
-Always `pg_dump` before applying anything (see §7).
+1. `pg_dump` to `backups/pre-deploy-<timestamp>.sql.gz` — **a failed dump fails the deploy**
+2. `scripts/migrate.py` applies anything pending
+3. *then* the image is pulled and the container swapped
+
+The runner tracks applied files in a **`schema_migrations`** table. Production was
+baselined on 2026-07-27 (30 files recorded as applied, none re-executed).
+
+```bash
+cd /opt/budget-buddy
+docker compose run --rm --no-deps -T -e DB_HOST=db web python scripts/migrate.py --status
+```
+
+> ⚠️ **`sql/NN_*.sql` are forward-only deltas, NOT a replayable history.**
+> `users` is created only in `schema.sql`; replaying the numbered files from an empty
+> database produces 4 tables of 13. **`schema.sql` is the only artifact that builds a
+> database from nothing** — that is what a rebuild uses (§8). The runner refuses to
+> apply against a database with no tracking table for exactly this reason; on an
+> existing database you `--baseline` first.
+
+**⚠️ `DROP`s are NOT automated and must stay manual.** The two directions are opposites:
+
+- **Additive** (new columns/tables) → **before** the pull. New code must never query a
+  column that does not exist yet. *This is the automated path.*
+- **Drops** → **after** the pull. Old code is still selecting those columns until the
+  container is replaced. Automating this would apply them in the wrong order.
+
+So a release that drops a column: let the deploy run, then apply the drop by hand
+afterwards (`pg_dump` first).
+
+The runner connects as **`DB_USER`**, never `DB_APP_USER` — the least-privilege
+`budget_app` role has no DDL rights by design.
 
 ---
 

@@ -8,6 +8,19 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Added
+
+- Migrations are applied automatically during deploy (`scripts/migrate.py`),
+  tracked in a `schema_migrations` table. The deploy takes a verified `pg_dump`
+  first and fails if that dump fails, then applies pending migrations **before**
+  pulling the new image. `DROP`s remain deliberately manual — they must apply
+  *after* the pull, which is the opposite order.
+- A CI job asserting migrations apply cleanly to a database built from
+  `schema.sql`, that the runner is idempotent, and that a PR adding a numbered
+  migration also updates `schema.sql`. The last check closes a real drift risk:
+  `schema.sql` builds every fresh database, so a migration missing from it means
+  new environments silently lack the change.
+
 ### Removed
 
 - `deploy.sh`, `promote.sh` and `docker-compose.staging.yml`. They built and
