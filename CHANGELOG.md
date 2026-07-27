@@ -8,6 +8,16 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Security
+
+- Recorded that the Droplet's disk is **not** encrypted at rest. This had been
+  documented as unverified; DigitalOcean states plainly that virtual disks on
+  hypervisor local storage are not encrypted, and that encrypting them is the
+  customer's responsibility. Affects the live Postgres volume, `.env`, and
+  pre-deploy dumps. `RUNBOOK.md` now carries the finding, what it does and does
+  not protect against, and the supported remedy (a LUKS-encrypted Block Storage
+  Volume) should it ever be worth closing.
+
 ### Added
 
 - The changelog is now enforced rather than merely requested: a pull request

@@ -453,7 +453,7 @@ So the useful question is what the underlying disks do.
 | Location | Holds | Status |
 |---|---|---|
 | This Mac | The nightly plaintext `pg_dump` files | **FileVault On** — verified with `fdesetup status` |
-| The Droplet | The live Postgres volume | **Not independently verified.** Confirm against DigitalOcean's current documentation for this Droplet type rather than assuming |
+| The Droplet | The live Postgres volume, `.env`, and pre-deploy dumps | ❌ **NOT ENCRYPTED — verified 2026-07-27.** DigitalOcean states plainly: *"The virtual disks for Droplets stored on the hypervisor's local storage are not encrypted at rest."* ([Shared Responsibility Model for Droplets](https://www.digitalocean.com/security/shared-responsibility-model-droplets)). Encrypting it is **the customer's responsibility** under their model |
 
 Calibration: the worst case here is disclosure of spending history — a real
 privacy harm, but not account takeover or fraud. The schema stores **no card
@@ -461,6 +461,27 @@ numbers, no bank account numbers, and no bank API tokens**, so nobody can move
 money with a stolen dump. Passwords are bcrypt-hashed. Keep it that way: adding
 stored bank credentials would invalidate this entire analysis and require
 revisiting it from scratch.
+
+### The Droplet's disk is not encrypted at rest (verified 2026-07-27)
+
+Long recorded here as unverified; now answered, and the answer is **no**. Droplet local
+storage is explicitly excluded from DigitalOcean's at-rest encryption — the contrast is
+deliberate on their side, since **Block Storage Volumes *are*** LUKS-encrypted with the
+storage cluster fully encrypted at rest and snapshots inheriting it.
+
+**What is exposed:** the `budget-buddy_postgres_data` volume (every transaction), `.env`
+(database password, `SECRET_KEY`, API keys), and the pre-deploy dumps under `backups/`.
+
+**What this does and does not protect against.** At-rest encryption defends against
+**offline** theft — a stolen or improperly decommissioned drive in the datacenter. It does
+nothing against a live compromise that already has credentials, which is the likelier path.
+DigitalOcean's physical security is the mitigating control here, and the residual risk is
+low-probability. It is now a *known* gap rather than an assumed-fine one.
+
+**If it is ever worth closing**, the supported route is a **Block Storage Volume** (~$1/month
+for 10 GB), moving Postgres's data directory onto it. DigitalOcean encrypts it; nothing in the
+app changes. LUKS on the local disk is not a practical alternative — it needs a passphrase at
+boot, and storing the key on the same disk defeats the purpose.
 
 > ⚠️ **The dumps are plaintext SQL of every transaction.** Encrypted backups were
 > considered and deliberately declined; treat the files as the most sensitive
