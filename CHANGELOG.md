@@ -38,6 +38,13 @@ this project uses the `0.x` versioning scheme described in
 
 ### Security
 
+- The application can now connect as a least-privilege `budget_app` role
+  (`sql/30_app_role.sql`) holding only `SELECT`/`INSERT`/`UPDATE`/`DELETE`,
+  configured via `DB_APP_USER`/`DB_APP_PASSWORD`. Previously it authenticated
+  as the database owner — a superuser — so any SQL injection or code execution
+  inherited the ability to drop tables, read every database on the cluster, or
+  run shell commands via `COPY ... FROM PROGRAM`. Falls back to `DB_USER` when
+  unset, so existing deployments are unaffected until they opt in.
 - `/admin/backup` — one authenticated GET returns the whole database as
   plaintext SQL, so it is now rate-limited to 5 per hour, returns `403` for
   non-admins instead of flashing and redirecting, and logs every export with
