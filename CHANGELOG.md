@@ -8,6 +8,15 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Removed
+
+- Mealie and Uptime Kuma were retired from the Droplet, and their cards removed
+  from the landing page. The server now runs Budget Buddy alone. Their data was
+  archived first — including Mealie's uploaded recipe images, which the nightly
+  job had never covered — and the nightly backup no longer attempts to dump a
+  database that is gone. Freed roughly 2 GB and dropped disk use from 64% to
+  30%.
+
 ### Security
 
 - Recorded that the Droplet's disk is **not** encrypted at rest. This had been
