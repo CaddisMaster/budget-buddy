@@ -364,6 +364,30 @@ Always `pg_dump` before applying anything (see §7).
    `pg_dump`.
 3. **Ad-hoc pre-migration dumps** left in `~/budget-buddy/backups/`.
 
+### Encryption at rest
+
+The question "shouldn't the database be encrypted?" was considered and answered
+deliberately. The short version: encryption at rest defends against **offline**
+theft — a stolen disk, a leaked dump, a stray snapshot. It does **not** defend
+against someone who already holds database credentials or application access,
+because a running web app must be able to decrypt in order to render a
+dashboard. Column-level encryption was rejected specifically because it breaks
+`SUM()`, `ORDER BY`, and indexes on exactly the columns every screen aggregates.
+
+So the useful question is what the underlying disks do.
+
+| Location | Holds | Status |
+|---|---|---|
+| This Mac | The nightly plaintext `pg_dump` files | **FileVault On** — verified with `fdesetup status` |
+| The Droplet | The live Postgres volume | **Not independently verified.** Confirm against DigitalOcean's current documentation for this Droplet type rather than assuming |
+
+Calibration: the worst case here is disclosure of spending history — a real
+privacy harm, but not account takeover or fraud. The schema stores **no card
+numbers, no bank account numbers, and no bank API tokens**, so nobody can move
+money with a stolen dump. Passwords are bcrypt-hashed. Keep it that way: adding
+stored bank credentials would invalidate this entire analysis and require
+revisiting it from scratch.
+
 > ⚠️ **The dumps are plaintext SQL of every transaction.** Encrypted backups were
 > considered and deliberately declined; treat the files as the most sensitive
 > artifact in the system and keep them on encrypted disks.
