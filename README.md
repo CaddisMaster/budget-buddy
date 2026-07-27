@@ -134,6 +134,7 @@ user.
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, the workflow, and the gotchas that make a first PR quietly wrong |
 | [CHANGELOG.md](CHANGELOG.md) | What changed in each release |
 | [VERSIONING.md](VERSIONING.md) | The `0.x` scheme and why the numbering restarted |
+| [RUNBOOK.md](RUNBOOK.md) | Production topology, TLS, backups, restore, and rebuilding from nothing |
 | [CLAUDE.md](CLAUDE.md) | Detailed architecture notes, maintained for AI coding assistants and for future-me |
 
 ## History
