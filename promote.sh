@@ -16,4 +16,11 @@ echo "Promoting caddismaster/budget-buddy:${TAG} -> :latest (retag, no rebuild).
 docker buildx imagetools create -t caddismaster/budget-buddy:latest "caddismaster/budget-buddy:${TAG}"
 
 echo "Done! :latest now points at ${TAG}."
-echo "Deploy on the Droplet:  cd ~/budget-buddy && docker compose pull && docker compose up -d"
+echo
+echo "NOTE: this script is the FALLBACK path. The normal way to ship is to publish a"
+echo "GitHub Release — Actions builds, pushes to ghcr, and deploys after you approve."
+echo "Use this only if Actions is unavailable, or to get back onto the Docker Hub image."
+echo
+echo "Deploy on the Droplet:"
+echo "  ssh deploy@147.182.219.112"
+echo "  cd /opt/budget-buddy && docker compose pull web && docker compose up -d"
