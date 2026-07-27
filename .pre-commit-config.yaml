@@ -1,0 +1,49 @@
+# Local fast-feedback hooks.
+#
+# These are a convenience, NOT a guarantee — they run on the developer's
+# machine and any commit can skip them with `git commit --no-verify`. CI is the
+# enforcement point. The value here is catching a lint error in two seconds
+# rather than two minutes, and catching a private key BEFORE it enters git
+# history, where removing it means rewriting history.
+#
+#   pip install pre-commit && pre-commit install
+#   pre-commit run --all-files      # run over the whole repo once
+
+# Vendored third-party assets are not ours to reformat.
+exclude: '^app/static/(htmx\.min\.js|chart\.umd\.min\.js)$'
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.5
+    hooks:
+      # Lint only. `ruff format` is deliberately not enabled — adopting it
+      # would rewrite roughly 6,400 lines across 64 of 74 files. See the note
+      # in pyproject.toml.
+      - id: ruff-check
+        args: [--fix]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      # The one that matters most here. This project has a key leak in its
+      # history; this hook is the local half of the defence, with GitHub's
+      # push protection as the remote half.
+      - id: detect-private-key
+
+      - id: check-added-large-files
+        args: [--maxkb=500]
+
+      - id: check-merge-conflict
+      - id: check-yaml
+        # GitHub workflow files use `on:`, which YAML 1.1 parsers read as the
+        # boolean True. That is valid for GitHub; the hook needs no help, but
+        # multi-document templates would.
+      - id: check-json
+      - id: check-toml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+
+      # `.env` must never be committed. It is gitignored, but a `git add -f`
+      # or a rename would slip past that.
+      - id: check-case-conflict
