@@ -340,10 +340,10 @@ A `sweeper` worker agent (Sonnet, tools: Read/Grep/Glob/Edit only) is defined in
   checklist. Read it before touching anything on the server. **The Droplet now runs Budget Buddy
   ALONE** — Mealie and Uptime Kuma were retired 2026-07-27 (data archived first), so restarting
   Docker or rewriting Nginx no longer has collateral effects. Disk 30%, RAM ~0.5 GB of 2 GB.
-  ⚠️ **There is currently no external uptime monitoring** — Uptime Kuma went with them, and it
-  had been watching a page that returns 200 during a database outage anyway. If it is
-  reinstated, point it at `/healthz` and accept only `200-299` (the endpoint returns 503 when
-  the database is unreachable). The two previously-recorded issues are both resolved: the `www`
+  **External monitoring is a DigitalOcean Uptime check on `/healthz`** (one free check, 1-min
+  interval, off-box) — it replaced the retired Uptime Kuma, which had been watching a page that
+  returns 200 during a database outage. Two settings matter: watch `/healthz`, and accept only
+  `200-299`, since the endpoint returns 503 when the database is unreachable. The two previously-recorded issues are both resolved: the `www`
   TLS failure was fixed, and the `status.seandesmet.com` backup gap was a false claim, retracted.
 
 ## Maintainer notes (local only)

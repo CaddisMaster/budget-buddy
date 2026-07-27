@@ -577,12 +577,20 @@ returns 200 — the login page does not touch the database — so anything
 monitoring a page reports green while the application is actually unusable.
 Verified by stopping the `db` container: `/login` → 200, `/healthz` → 503.
 
-⚠️ **There is currently NO external uptime monitoring.** Uptime Kuma was retired
-on 2026-07-27, and it had been watching the home page rather than `/healthz`
-anyway — so it would have reported green throughout a database outage. If
-monitoring is reinstated, point it at **`/healthz`** and accept only `200-299`:
-the endpoint returns **503** on database failure, so a status range that swallows
-5xx defeats the entire purpose.
+**External monitoring: a DigitalOcean Uptime check watches `/healthz`** (set up
+2026-07-27). One check is free per month; it runs at 1-minute intervals from
+multiple regions and can alert on `down`, `latency` and `ssl_expiry`.
+
+Two settings are load-bearing:
+
+- **Watch `/healthz`, not a page.** This replaced Uptime Kuma, which had been
+  watching the home page — it would have reported green throughout a database
+  outage, which is the failure it existed to catch.
+- **Accept only `200-299`.** `/healthz` returns **503** on database failure, so a
+  status range that swallows 5xx defeats the entire purpose.
+
+It also runs **off-box**, which the old self-hosted monitor did not: a monitor
+living on the machine it watches dies with the thing it is meant to report on.
 
 The compose file runs the same endpoint as a container healthcheck every 30s,
 so `docker compose ps` shows `(healthy)` / `(unhealthy)` rather than a bare
