@@ -436,6 +436,17 @@ The runner connects as **`DB_USER`**, never `DB_APP_USER` — the least-privileg
    are skipped and the job behaves exactly as before.** A monitoring outage can
    never turn a good backup into a failed one — the ping is explicitly
    non-fatal.
+
+   ⚠️ **Some networks block healthchecks.io.** Sean's work network refuses
+   `hc-ping.com` on 443 outright (DNS resolves correctly; the TCP connect is
+   rejected in ~15 ms) while the Droplet reaches it fine. Since the laptop moves
+   between networks and launchd fires the job wherever it wakes, the ping falls
+   back to sending **from the Droplet** over the SSH connection this job already
+   requires. Without that, a backup that genuinely succeeded would report as
+   failed purely because of where the laptop happened to be — and a monitor that
+   cries wolf gets ignored, which is worse than not having one. If both paths
+   fail, nothing is sent and the check alerts on absence, which is the correct
+   outcome.
 2. **In-app** `/admin/backup` — an authenticated admin download of a live
    `pg_dump`.
 3. **Ad-hoc pre-migration dumps** left in `/opt/budget-buddy/backups/`.
