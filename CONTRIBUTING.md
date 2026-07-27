@@ -106,7 +106,12 @@ PRs, no direct pushes to `main`.
    then `./test.sh` for the full suite. Both, not one.
 4. **Add tests.** New behaviour needs a test that fails without it. See §4 for
    why this matters more here than in most codebases.
-5. **Update `CHANGELOG.md`** under `## [Unreleased]`.
+5. **Update `CHANGELOG.md`** under `## [Unreleased]`. **This is enforced**: a pull
+   request that changes anything under `app/` without touching `CHANGELOG.md` fails
+   the `Changelog` check. If an entry genuinely does not apply — a pure refactor with
+   no observable effect — add the `skip-changelog` label and the check re-runs and
+   passes. Only `app/` is covered, so docs, workflow and test-only changes need
+   nothing.
 6. **Open a PR** with `Closes #<issue>` in the body. CI must be green.
 7. **Squash-merge.** `main` reads as one commit per issue.
 
