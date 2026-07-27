@@ -6,7 +6,7 @@ import psycopg2
 from flask import Blueprint, abort, current_app, flash, make_response, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
-from app import bcrypt
+from app import bcrypt, limiter
 from app.db import db_cursor
 from app.helpers import GENERIC_ERROR, hx_toast
 
@@ -75,10 +75,17 @@ def create_user():
 
 @bp.route('/admin/backup')
 @login_required
+# The highest-value single endpoint in the app: one GET returns the entire
+# database as plaintext SQL. Real use is a manual click every so often, so the
+# limit is set far above any honest pattern and far below a scripted one — if
+# an admin session is ever hijacked, this is total exfiltration in one request.
+@limiter.limit("5 per hour")
 def backup_database():
     if not current_user.is_admin:
-        flash('Access denied')
-        return redirect(url_for('main.index'))
+        # abort(403), not the friendly flash-and-redirect used by the admin
+        # *pages*. This is a download endpoint, not somewhere a user wanders by
+        # accident, and a refusal here should be a refusal.
+        abort(403)
     db_host = os.getenv('DB_HOST', 'db')
     db_name = os.getenv('DB_NAME', 'budget')
     db_user = os.getenv('DB_USER', 'admin')
@@ -91,8 +98,14 @@ def backup_database():
         env=env
     )
     if result.returncode != 0:
+        current_app.logger.error('backup: pg_dump failed for user %s (exit %s)',
+                                 current_user.username, result.returncode)
         flash('Backup failed')
-        return redirect('/')
+        return redirect(url_for('main.index'))
+    # A full-database export previously left no trace whatsoever. Without this,
+    # a compromise that exfiltrated everything would be invisible afterwards.
+    current_app.logger.info('backup: database exported by user %s (%s bytes)',
+                            current_user.username, len(result.stdout))
     filename = f'budget_backup_{date.today()}.sql'
     response = make_response(result.stdout)
     response.headers['Content-Disposition'] = f'attachment; filename={filename}'
