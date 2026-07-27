@@ -43,7 +43,7 @@ app/
 sql/                 # Numbered migration files + schema.sql (clean single-file schema)
 scripts/             # ingest.py, clean.py, insert.py data pipeline (own requirements.txt — pandas lives THERE, not in the app image)
 landing/             # Static landing page at seandesmet.com
-.github/workflows/   # ci.yml — pytest on every push/PR (postgres:16 service + schema.sql)
+.github/workflows/   # ci.yml (lint + pytest on postgres:16 + image builds/boots as appuser, on every push/PR); release.yml (published Release → build+push ghcr → smoke the PUSHED image → approval gate → SSH deploy → verify /healthz); rollback.yml (workflow_dispatch a version → redeploy that exact tag)
 ```
 
 ## Database Tables
@@ -105,19 +105,31 @@ Where it stands:
 - ✅ **Phase 1** — fresh repo, clean initial commit, verified runnable from a bare clone
   (`cp .env.example .env` → `docker compose up --build` → `./test.sh` green, 565 passing).
   Secret scanning + push protection ON. Old repo renamed `budget-buddy-archive` with a banner.
-- 🔨 **Phase 2 (here)** — README/CHANGELOG/CONTRIBUTING/VERSIONING/LICENSE, issue+PR templates,
-  dependabot, CODEOWNERS. **RUNBOOK.md still to write.** Branch protection is deliberately NOT on
-  yet — it goes on after CI exists so the required checks can be named once.
-- ⏳ **Phase 3** — port + tighten CI: add a `lint` job (ruff) and a `docker-build` job that boots
-  the image and asserts it runs as `appuser`. CI today never builds the Dockerfile — that gap is
-  how the non-root change reached this repo untested (it broke `./test.sh`; fixed here).
-- ⏳ **Phase 4/4.5/5/6/7** — CD + approval gate, data-security hardening (least-privilege DB
-  role, `/admin/backup` tightening), migration automation, the ghcr cutover + `0.1.0`, then
-  issue migration and archiving.
+- ✅ **Phase 2** — README/CHANGELOG/CONTRIBUTING/VERSIONING/LICENSE/RUNBOOK, issue+PR templates,
+  dependabot, CODEOWNERS.
+- ✅ **Phase 3** — `lint` (ruff) + `docker-build` (boots the image, asserts `appuser`) added to
+  CI; branch protection ON with three required checks.
+- ✅ **Phase 4.5** — `/healthz`, `/admin/backup` hardened, least-privilege `budget_app` DB role.
+- ✅ **Phase 4 (2026-07-27)** — Actions CD: `release.yml` + `rollback.yml`, a non-root `deploy`
+  user, and the stack moved `/root/budget-buddy` → **`/opt/budget-buddy`** (a non-root user
+  cannot own anything under `/root`; that move also closed a world-readable prod `.env`).
+  Rehearsed end-to-end twice with throwaway pre-releases.
+- ⏳ **Phase 6 (NEXT — the one with real prod risk)** — `scp` the tracked compose to the Droplet
+  so it finally pulls from ghcr, then cut `v0.1.0`. Retire `deploy.sh`/`promote.sh`/
+  `docker-compose.staging.yml` in that same PR.
+- ⏳ **Phase 5/7** — migration automation (deliberately last), then issue migration + archiving.
 
 **Prod is untouched and still runs the old Docker Hub image (`v10.15.0` code) until the Phase 6
 cutover.** Feature work is FROZEN for the duration — anything shipped mid-reboot would have to be
 built in the old repo and re-ported.
+
+⚠️ **Two Phase 4 acceptance criteria are BLOCKED until the cutover — they are Phase 6 criteria,
+not failures.** The Droplet's compose has no `${TAG}`, so it ignores the version the pipeline
+passes (the deploy log shows it pulling Docker Hub `latest`). Consequently (a) the post-deploy
+`/healthz` check **correctly fails** — prod predates that route — and (b) rollback cannot be
+meaningfully tested, since rollback works *by* passing `TAG`. **Do not soften the health check
+to make a run go green.** Two rehearsal images (`0.0.1-cd-test`, `0.0.2-cd-test`) are kept in
+ghcr on purpose as rollback targets for that test.
 
 Smoke aside carried over: POSTing `/insights/generate` without the form's year/month caches the
 CURRENT month, not the last complete one — the UI always sends them; only bites hand-rolled
@@ -275,21 +287,27 @@ A `sweeper` worker agent (Sonnet, tools: Read/Grep/Glob/Edit only) is defined in
 
 - GitHub repo: https://github.com/CaddisMaster/budget-buddy
 - App URL: https://budget.seandesmet.com · Landing page: https://seandesmet.com
-- ⚠️ **DEPLOY IS MID-MIGRATION (repo reboot, 2026-07).** Target state: cutting a GitHub Release
-  triggers Actions → build → push to **ghcr.io/caddismaster/budget-buddy** → **approval gate**
-  (a `production` GitHub Environment with Sean as required reviewer) → SSH deploy to the Droplet →
-  `/healthz` verification. Until that pipeline lands, the legacy path below is still what runs.
-- **Legacy path (still current until the Phase 6 cutover):** build → stage → promote, on the Mac:
-  1. **`./deploy.sh vX.Y.Z`** — buildx-builds the multi-platform image and pushes **only** the
-     immutable tag `caddismaster/budget-buddy:vX.Y.Z` (refuses a bare `latest`).
-  2. **Staging smoke-test** — `TAG=vX.Y.Z docker compose -p bb-staging -f docker-compose.staging.yml
-     up --pull always` runs that **exact published image** on `127.0.0.1:5002` with a throwaway DB
-     (`down -v` wipes it); reuses `.env` so real AI features work. This is the gate: prod runs the
-     bytes you tested. *(arm64 slice on the Mac, prod runs amd64 — same source, negligible drift.)*
-  3. **`./promote.sh vX.Y.Z`** — retags the tested manifest to `:latest` via
-     `docker buildx imagetools create` (no rebuild) → on the Droplet
-     `docker compose pull && docker compose up -d`.
-  `deploy.sh`/`promote.sh` are retired once Actions CD is proven — keep them until then.
+- ✅ **DEPLOY IS AUTOMATED (built 2026-07-27).** Publishing a GitHub Release triggers
+  `release.yml`: build → push to **ghcr.io/caddismaster/budget-buddy** → **smoke the pushed
+  image** (boots it against a throwaway Postgres, asserts `/healthz` 200) → **approval gate**
+  (the `production` Environment, Sean as required reviewer) → SSH deploy as `deploy` →
+  `/healthz` verification. To ship: cut the Release, click approve. **Rollback** = the
+  `rollback.yml` workflow dispatched with a version (it confirms the manifest exists in ghcr
+  before touching the box).
+  - **A pre-release deliberately does NOT move `:latest`** — that is what makes throwaway test
+    releases safe. Images are tagged `:<version>`, `:sha-<short>`, and `:latest`.
+  - **`docker compose pull web`, never a bare `pull`.** A bare pull also fetches `postgres:16`,
+    and `up -d` then recreates the DB container — shipping app code must never upgrade or
+    restart the database engine (found by rehearsal, issue #22).
+  - **Deploy secrets are Environment-scoped** to `production`, so no un-gated workflow can read
+    the SSH key. `DROPLET_USER` is a repo **variable**, not a secret — as a secret, Actions
+    redacted the string `deploy` inside ordinary words.
+- **Legacy path — SUPERSEDED, retired at the Phase 6 cutover.** `./deploy.sh vX.Y.Z` (buildx
+  multi-arch → Docker Hub immutable tag) → staging smoke on `127.0.0.1:5002` via
+  `docker-compose.staging.yml` → `./promote.sh vX.Y.Z` (retag to `:latest`) → Droplet
+  `docker compose pull && up -d`. The staging step is replaced by the `smoke` job — we now build
+  **amd64-only**, so the published image can no longer run on the arm64 Mac. Keep these scripts
+  until `0.1.0` is prod-stable; they are the escape hatch back to Docker Hub.
 - **Env vars:** `ANTHROPIC_API_KEY` gates every AI surface via `ai_enabled()` (optional — app runs
   fine without it). `RESEND_API_KEY` gates email (`mail_enabled()`), `ENABLE_DIGEST_SCHEDULER=1`
   starts the digest scheduler — both **Droplet-only** (unset locally/CI so nothing auto-sends).
@@ -301,13 +319,19 @@ A `sweeper` worker agent (Sonnet, tools: Read/Grep/Glob/Edit only) is defined in
   columns/tables) go **BEFORE** `docker compose pull` (new code must never query a missing
   column); column/table **DROPs go AFTER** the pull (old code still SELECTs them until the swap).
 - **Releases:** each gets a GitHub Release whose notes list every bundled item (and which, once
-  Actions CD lands, is what *triggers* the deploy). `CHANGELOG.md` is the durable record —
+  the Release is what *triggers* the deploy). `CHANGELOG.md` is the durable record —
   update it under `## [Unreleased]` in every PR. **No tags exist in this repo yet**; the first
   will be `v0.1.0`. The `v10.15.0` tag and everything before it live in the archive repo.
 - **Droplet access:** host, credentials, and the deploy-dir layout live in the gitignored
-  `CLAUDE.local.md` (maintainer-only). The shape: `~/budget-buddy` on the Droplet is a **PURE
-  DEPLOY DIR — NO git, NO source**, just `docker-compose.yml`, `.env`, `sql/`, and `landing/`. To
-  change compose or add a migration, `scp` it up — `git pull` doesn't work there.
+  `CLAUDE.local.md` (maintainer-only). The shape: **`/opt/budget-buddy`** on the Droplet is a
+  **PURE DEPLOY DIR — NO git, NO source**, just `docker-compose.yml`, `.env`, `sql/`, and
+  `landing/`. To change compose or add a migration, `scp` it up — `git pull` doesn't work there.
+  It is owned by an unprivileged **`deploy`** user (docker group, no sudo) that CI authenticates
+  as. It moved from `/root/budget-buddy` on 2026-07-27 — a non-root user cannot own or traverse
+  `/root`, and serving `landing/` from in there had forced `/root` to `0755`, leaving the prod
+  `.env` world-readable. **Compose derives its project name from the directory basename**, so the
+  move kept the `budget-buddy_postgres_data` volume; renaming the directory would have silently
+  created an empty one.
 - **Backups:** in-app `/admin/backup` (manual pg_dump download), plus an automated nightly pull to
   the maintainer's machine (Mac-side launchd job, not in the repo — see `CLAUDE.local.md`).
   Rationale: the DB is the only irreplaceable thing (source in git, images in the registry, certs
