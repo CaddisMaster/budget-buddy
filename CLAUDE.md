@@ -114,22 +114,21 @@ Where it stands:
   user, and the stack moved `/root/budget-buddy` → **`/opt/budget-buddy`** (a non-root user
   cannot own anything under `/root`; that move also closed a world-readable prod `.env`).
   Rehearsed end-to-end twice with throwaway pre-releases.
-- ⏳ **Phase 6 (NEXT — the one with real prod risk)** — `scp` the tracked compose to the Droplet
-  so it finally pulls from ghcr, then cut `v0.1.0`. Retire `deploy.sh`/`promote.sh`/
-  `docker-compose.staging.yml` in that same PR.
+- ✅ **Phase 6 (2026-07-27)** — Droplet compose repointed at ghcr, **`v0.1.0` released,
+  deployed and prod-verified**, legacy deploy scripts retired. The post-deploy `/healthz`
+  check and a full rollback round-trip (`0.1.0` → `0.0.2-cd-test` → `0.1.0`) both pass, closing
+  the two Phase 4 items that were blocked.
 - ⏳ **Phase 5/7** — migration automation (deliberately last), then issue migration + archiving.
 
-**Prod is untouched and still runs the old Docker Hub image (`v10.15.0` code) until the Phase 6
-cutover.** Feature work is FROZEN for the duration — anything shipped mid-reboot would have to be
-built in the old repo and re-ported.
+**Prod now runs `ghcr.io/caddismaster/budget-buddy:0.1.0`** — released, deployed and verified
+2026-07-27. The Docker Hub image is no longer the source of truth; it survives only as an
+emergency fallback. **Feature work is UNFROZEN** — the reboot's remaining phases (5 and 7) do
+not touch the app, so `0.2.0` work can start.
 
-⚠️ **Two Phase 4 acceptance criteria are BLOCKED until the cutover — they are Phase 6 criteria,
-not failures.** The Droplet's compose has no `${TAG}`, so it ignores the version the pipeline
-passes (the deploy log shows it pulling Docker Hub `latest`). Consequently (a) the post-deploy
-`/healthz` check **correctly fails** — prod predates that route — and (b) rollback cannot be
-meaningfully tested, since rollback works *by* passing `TAG`. **Do not soften the health check
-to make a run go green.** Two rehearsal images (`0.0.1-cd-test`, `0.0.2-cd-test`) are kept in
-ghcr on purpose as rollback targets for that test.
+The pipeline is fully proven end-to-end: the post-deploy `/healthz` check passes, and a full
+rollback round-trip (`0.1.0` → `0.0.2-cd-test` → `0.1.0`) succeeded, as did the manifest guard
+rejecting a nonexistent version **before** any SSH. The two rehearsal images are retained in
+ghcr as rollback targets.
 
 Smoke aside carried over: POSTing `/insights/generate` without the form's year/month caches the
 CURRENT month, not the last complete one — the UI always sends them; only bites hand-rolled
@@ -302,12 +301,12 @@ A `sweeper` worker agent (Sonnet, tools: Read/Grep/Glob/Edit only) is defined in
   - **Deploy secrets are Environment-scoped** to `production`, so no un-gated workflow can read
     the SSH key. `DROPLET_USER` is a repo **variable**, not a secret — as a secret, Actions
     redacted the string `deploy` inside ordinary words.
-- **Legacy path — SUPERSEDED, retired at the Phase 6 cutover.** `./deploy.sh vX.Y.Z` (buildx
-  multi-arch → Docker Hub immutable tag) → staging smoke on `127.0.0.1:5002` via
-  `docker-compose.staging.yml` → `./promote.sh vX.Y.Z` (retag to `:latest`) → Droplet
-  `docker compose pull && up -d`. The staging step is replaced by the `smoke` job — we now build
-  **amd64-only**, so the published image can no longer run on the arm64 Mac. Keep these scripts
-  until `0.1.0` is prod-stable; they are the escape hatch back to Docker Hub.
+- **Emergency route back to Docker Hub.** `deploy.sh`/`promote.sh`/`docker-compose.staging.yml`
+  were deleted at the cutover (they built and promoted the *Docker Hub* image, which prod no
+  longer uses). The old image still exists at `caddismaster/budget-buddy:latest` (`v10.15.0`
+  code) — if ghcr were unreachable, edit the Droplet's compose `image:` back to that and
+  `docker compose up -d`. Retrieve the scripts from git history if ever needed:
+  `git show v0.1.0:deploy.sh`. Delete this note once `0.1.0` has been stable a while.
 - **Env vars:** `ANTHROPIC_API_KEY` gates every AI surface via `ai_enabled()` (optional — app runs
   fine without it). `RESEND_API_KEY` gates email (`mail_enabled()`), `ENABLE_DIGEST_SCHEDULER=1`
   starts the digest scheduler — both **Droplet-only** (unset locally/CI so nothing auto-sends).

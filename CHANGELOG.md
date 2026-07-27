@@ -8,7 +8,14 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
-Nothing yet.
+### Removed
+
+- `deploy.sh`, `promote.sh` and `docker-compose.staging.yml`. They built and
+  promoted the Docker Hub image, which production no longer uses as of `0.1.0`;
+  the staging step they fed is now the release workflow's `smoke` job, which
+  tests the pushed artifact rather than a local rebuild. The Docker Hub image
+  remains as an emergency fallback and the scripts stay in git history
+  (`git show v0.1.0:deploy.sh`).
 
 ## [0.1.0] - 2026-07-27
 
