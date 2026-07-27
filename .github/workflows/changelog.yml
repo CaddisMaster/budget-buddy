@@ -1,0 +1,68 @@
+name: Changelog
+
+# Its own workflow rather than a job in ci.yml, specifically because of
+# `labeled`/`unlabeled`. The check has to re-run the moment someone adds the
+# escape-hatch label — otherwise it stays red until an unrelated push happens,
+# and people learn to ignore it. Putting those triggers on ci.yml would re-run
+# the whole test suite and image build every time any label is touched.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: changelog-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changelog:
+    name: App changes update the changelog
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Need history back to the base commit to diff against it; the
+          # default shallow clone has only the merge commit.
+          fetch-depth: 0
+
+      - name: A change under app/ must come with a changelog entry
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          if echo "$LABELS" | grep -q '"skip-changelog"'; then
+            echo "skip-changelog label present — not required for this PR."
+            exit 0
+          fi
+
+          # `app/` only. Requiring an entry for a workflow tweak or a test-only
+          # change would train everyone to reach for the label reflexively,
+          # which defeats the point of having it.
+          app_changed=$(git diff --name-only "$BASE_SHA" HEAD -- 'app/**' || true)
+          if [ -z "$app_changed" ]; then
+            echo "No changes under app/ — changelog entry not required."
+            exit 0
+          fi
+
+          echo "Changed under app/:"
+          echo "$app_changed"
+
+          if git diff --name-only "$BASE_SHA" HEAD -- CHANGELOG.md | grep -q .; then
+            echo
+            echo "CHANGELOG.md updated. "
+            exit 0
+          fi
+
+          echo
+          echo "::error::This PR changes app/ but not CHANGELOG.md."
+          echo
+          echo "Add an entry under '## [Unreleased]' describing the change and why"
+          echo "it matters to someone reading it later."
+          echo
+          echo "If a changelog entry genuinely does not apply — a pure refactor with"
+          echo "no observable effect, say — add the 'skip-changelog' label and this"
+          echo "check will re-run and pass."
+          exit 1

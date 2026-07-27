@@ -10,6 +10,12 @@ this project uses the `0.x` versioning scheme described in
 
 ### Added
 
+- The changelog is now enforced rather than merely requested: a pull request
+  that changes `app/` without touching `CHANGELOG.md` fails, with a
+  `skip-changelog` label as the escape hatch. This is what the repository
+  reboot was originally started for — a convention nobody enforces decays, and
+  the failure only becomes visible when someone tries to reconstruct a release
+  and finds gaps.
 - Migrations are applied automatically during deploy (`scripts/migrate.py`),
   tracked in a `schema_migrations` table. The deploy takes a verified `pg_dump`
   first and fails if that dump fails, then applies pending migrations **before**
