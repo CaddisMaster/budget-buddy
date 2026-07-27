@@ -1,0 +1,208 @@
+name: Release
+
+# Publishing a GitHub Release is the deploy trigger. Building on tag push instead
+# would fire before the notes exist; the Release is the deliberate human act.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+# Two releases deploying at once would race on the Droplet. Never cancel a
+# release run in flight — cancelling between `pull` and `up -d` would leave the
+# host half-deployed.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/caddismaster/budget-buddy
+
+jobs:
+  build-push:
+    name: Build and push to ghcr
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Derive tags
+        id: meta
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          # Release tags are `vX.Y.Z`; image tags drop the leading v.
+          version="${TAG_NAME#v}"
+          sha_short="$(git rev-parse --short HEAD)"
+
+          # Every image is traceable to a version AND a commit.
+          tags="${IMAGE}:${version},${IMAGE}:sha-${sha_short}"
+
+          # A pre-release must never move `latest` — that is the tag the Droplet
+          # falls back to. Test releases stay fully addressable by version only.
+          if [ "$PRERELEASE" = "false" ]; then
+            tags="${tags},${IMAGE}:latest"
+          else
+            echo "::notice::Pre-release ${TAG_NAME} — not tagging :latest"
+          fi
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+          echo "Tags: ${tags}"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # The built-in token can push to this repo's package. No PAT, no
+          # Docker Hub-style secret to rotate.
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          # The Droplet is amd64. We deliberately do not build arm64: the local
+          # Mac staging smoke it existed for now runs in the `smoke` job below.
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  smoke:
+    name: Pushed image boots and serves /healthz
+    needs: build-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+
+    # This job is the gate that replaces the old Mac-side staging step. It runs
+    # the exact artifact that was just pushed — not a local rebuild — so the
+    # thing approved for deploy is the thing that was tested.
+    services:
+      db:
+        image: postgres:16
+        env:
+          POSTGRES_USER: budget
+          POSTGRES_PASSWORD: budget
+          POSTGRES_DB: budget
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U budget"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Load schema
+        run: psql "postgresql://budget:budget@localhost:5432/budget" -f sql/schema.sql
+
+      - name: Run the pushed image
+        env:
+          VERSION: ${{ needs.build-push.outputs.version }}
+        run: |
+          docker run -d --name smoke --network host \
+            -e DB_HOST=localhost -e DB_PORT=5432 -e DB_NAME=budget \
+            -e DB_USER=budget -e DB_PASSWORD=budget \
+            -e SECRET_KEY=smoke-test-key \
+            "${IMAGE}:${VERSION}"
+
+          # AI and email vars are deliberately unset: those features self-disable
+          # via ai_enabled()/mail_enabled(), and a degraded boot is still a valid
+          # "does it come up and serve" check. Never wire real keys in here.
+
+      - name: /healthz returns 200
+        run: |
+          ok=""
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:5000/healthz || true)
+            if [ "$code" = "200" ]; then ok=1; break; fi
+            sleep 2
+          done
+          if [ -z "$ok" ]; then
+            echo "::error::Pushed image did not serve /healthz. Logs:"
+            docker logs smoke
+            exit 1
+          fi
+          echo "GET /healthz -> 200"
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs smoke || true
+
+  deploy:
+    name: Deploy to the Droplet
+    needs: [build-push, smoke]
+    runs-on: ubuntu-latest
+    # The approval gate. This is the old build -> stage -> promote discipline
+    # reduced to one click. The deploy secrets are scoped to this environment,
+    # so no un-gated job in this repo can read the SSH key.
+    environment: production
+    steps:
+      - name: Deploy over SSH
+        env:
+          SSH_KEY: ${{ secrets.DROPLET_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DROPLET_KNOWN_HOSTS }}
+          HOST: ${{ secrets.DROPLET_HOST }}
+          USER_NAME: ${{ secrets.DROPLET_USER }}
+          VERSION: ${{ needs.build-push.outputs.version }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # Pinned host key — StrictHostKeyChecking=no would accept anything
+          # answering on that IP, which is the whole attack this prevents.
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+              "${USER_NAME}@${HOST}" \
+              "cd /opt/budget-buddy \
+               && TAG='${VERSION}' docker compose pull \
+               && TAG='${VERSION}' docker compose up -d \
+               && docker compose ps"
+
+          # TAG pins the exact released image. The Droplet's compose consumes it
+          # as `${TAG:-latest}`, so a hand-run `docker compose up -d` still works.
+
+      - name: Verify the deployed app is healthy
+        run: |
+          # A deploy that silently half-worked is worse than a red run.
+          ok=""
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
+                   https://budget.seandesmet.com/healthz || true)
+            if [ "$code" = "200" ]; then ok=1; break; fi
+            echo "attempt $i: /healthz -> $code"
+            sleep 5
+          done
+          if [ -z "$ok" ]; then
+            echo "::error::Deploy finished but https://budget.seandesmet.com/healthz is not 200."
+            exit 1
+          fi
+          echo "Deployed and healthy."
+
+      - name: Scrub the key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

@@ -14,7 +14,13 @@ services:
       # Docker publishes ports by bypassing ufw, so "5432:5432" = world-reachable.
       - "127.0.0.1:5432:5432"
   web:
-    image: caddismaster/budget-buddy:latest
+    # The Release workflow deploys by passing the exact version it just published
+    # (`TAG=0.1.0 docker compose up -d`), so prod runs an immutable, traceable tag
+    # rather than whatever `latest` happened to be. The fallback keeps a hand-run
+    # `docker compose up -d` on the Droplet working.
+    # NOTE: local dev never uses this line — docker-compose.override.yml replaces
+    # it with a source build.
+    image: ghcr.io/caddismaster/budget-buddy:${TAG:-latest}
     restart: always
     env_file:
       - .env

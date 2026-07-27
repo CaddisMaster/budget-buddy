@@ -23,7 +23,7 @@ Nginx on the host, with everything else in Docker.
 | Domain | Serves | Backed by |
 |---|---|---|
 | `budget.seandesmet.com` | Budget Buddy | Docker → `127.0.0.1:5001` |
-| `seandesmet.com` | Static landing page | Nginx directly, from `~/budget-buddy/landing` |
+| `seandesmet.com` | Static landing page | Nginx directly, from `/opt/budget-buddy/landing` |
 | `mealie.seandesmet.com` | Mealie (unrelated project) | Docker → `127.0.0.1:9925` |
 | `status.seandesmet.com` | Uptime Kuma monitoring | Docker → `127.0.0.1:3001` |
 
@@ -39,10 +39,10 @@ firewall notwithstanding. Keep the loopback prefix on every port mapping.
 
 ### The deploy directory
 
-`~/budget-buddy` on the server is a **pure deploy directory — no git, no source**:
+`/opt/budget-buddy` on the server is a **pure deploy directory — no git, no source**:
 
 ```
-~/budget-buddy/
+/opt/budget-buddy/
 ├── .env                  # secrets; never in git; captured by the nightly backup
 ├── docker-compose.yml    # identical to the repo's tracked compose
 ├── sql/                  # migrations, copied up by hand when one is needed
@@ -52,6 +52,19 @@ firewall notwithstanding. Keep the loopback prefix on every port mapping.
 
 To change compose or add a migration you `scp` the file up. `git pull` does not
 work there and never has.
+
+The directory is owned by **`deploy`**, an unprivileged user that exists so CI
+never needs a root key. It is in the `docker` group and owns nothing else on the
+box. GitHub Actions authenticates as it with a dedicated ed25519 key whose
+`authorized_keys` entry disables agent, port and X11 forwarding; the private key
+lives only in the `production` environment's secrets, so no un-gated workflow in
+the repository can read it.
+
+> The stack lived in `/root/budget-buddy` until 2026-07-27. That required `/root`
+> to be mode `0755` so Nginx could reach `landing/` inside it, which left the
+> production `.env` world-readable. Moving to `/opt` let `/root` go back to
+> `0700`. If you are following an older note that says `~/budget-buddy`, it means
+> this directory.
 
 > ⚠️ **Never copy `docker-compose.override.yml` to the server.** It is tracked in
 > the repo (so a fresh clone can build locally) and it replaces the `image:` with
@@ -91,7 +104,7 @@ redirect blocks.
 
 server {
   server_name seandesmet.com www.seandesmet.com;
-  root /root/budget-buddy/landing;
+  root /opt/budget-buddy/landing;
   index index.html;
   location / {
     try_files $uri $uri/ =404;
@@ -219,7 +232,7 @@ would point at a path that does not exist and Nginx would fail to start.
 ## 5. Production compose
 
 ```yaml
-# ~/budget-buddy/docker-compose.yml
+# /opt/budget-buddy/docker-compose.yml
 services:
   db:
     image: postgres:16
@@ -245,6 +258,14 @@ services:
 volumes:
   postgres_data:
 ```
+
+> ⚠️ **This is the file currently on the server, and it is deliberately one step
+> behind the repository.** The tracked `docker-compose.yml` has already moved to
+> `ghcr.io/caddismaster/budget-buddy:${TAG:-latest}` and gained a `healthcheck:`.
+> The server is still pulling the old Docker Hub image until the registry
+> cutover, which is exactly what makes a CD test deploy harmless — it ends in a
+> pull that changes nothing. At cutover, `scp` the tracked compose up and the two
+> converge. Until then the Docker Hub image is also the rollback escape hatch.
 
 `schema.sql` is mounted into the Postgres init directory, which **only runs on a
 completely empty data volume**. On an existing database it is inert. This is why
@@ -288,7 +309,7 @@ migrations and `pg_dump` still need the owner.
 Rolling it out on an existing deployment:
 
 ```bash
-cd ~/budget-buddy
+cd /opt/budget-buddy
 
 # 1. Back up first — always, before anything touching the database.
 docker compose exec -T db pg_dump -U "$DB_USER" "$DB_NAME" | gzip \
@@ -336,10 +357,24 @@ and the full test suite passes connected as the role.
 
 ## 6. Deploying
 
+**The normal path is not manual.** Publishing a GitHub Release runs
+`.github/workflows/release.yml`, which builds the image, pushes it to ghcr,
+boots that pushed image and checks `/healthz`, then **waits for an approval**
+on the `production` environment before deploying over SSH as `deploy` and
+verifying the public `/healthz`. To ship, cut the Release and click approve.
+
+To go back to a known-good version, run the **Rollback** workflow with a
+version (e.g. `0.1.0`). It refuses versions that are not in the registry, so a
+typo fails before the running container is touched.
+
+Manual fallback, if Actions is unavailable — run it as `deploy`, not `root`:
+
 ```bash
-cd ~/budget-buddy
-docker compose pull && docker compose up -d
+cd /opt/budget-buddy
+TAG=0.1.0 docker compose pull && TAG=0.1.0 docker compose up -d
 ```
+
+`TAG` pins an exact released image; omitting it falls back to `latest`.
 
 **Migration ordering matters, and the two directions are opposites:**
 
@@ -362,7 +397,7 @@ Always `pg_dump` before applying anything (see §7).
    configs. 14-day rotation.
 2. **In-app** `/admin/backup` — an authenticated admin download of a live
    `pg_dump`.
-3. **Ad-hoc pre-migration dumps** left in `~/budget-buddy/backups/`.
+3. **Ad-hoc pre-migration dumps** left in `/opt/budget-buddy/backups/`.
 
 ### Encryption at rest
 
@@ -394,10 +429,6 @@ revisiting it from scratch.
 
 ### Gaps to be aware of
 
-- The configs tarball captures `/etc/nginx/sites-available/` for
-  `budget-buddy`, `mealie.seandesmet.com`, and `default` — but **not
-  `status.seandesmet.com`**, which is enabled and live. Its content is
-  reproduced in §3 above; the backup job's file list should be widened.
 - Mealie's uploaded recipe images are **not** covered by the nightly job.
 - Let's Encrypt material is not backed up, which is fine — certificates
   re-issue freely. Only DNS needs to be correct.
@@ -405,7 +436,7 @@ revisiting it from scratch.
 ### Taking a manual dump
 
 ```bash
-cd ~/budget-buddy
+cd /opt/budget-buddy
 docker compose exec -T db pg_dump -U "$DB_USER" "$DB_NAME" | gzip \
   > "backups/pre-change-$(date +%Y%m%d-%H%M).sql.gz"
 ```
@@ -444,7 +475,7 @@ transaction is present.
 4. **DNS:** point `seandesmet.com`, `www`, `budget`, `mealie`, and `status` at
    the new IP. Wait for propagation — Certbot's HTTP-01 challenge needs the name
    already resolving to this host.
-5. **Recreate `~/budget-buddy/`:** `docker-compose.yml` and `sql/` from this
+5. **Recreate `/opt/budget-buddy/`:** `docker-compose.yml` and `sql/` from this
    repository, `landing/` from `landing/`, and `.env` from the configs backup.
 6. **Nginx:** write the site files from §3, symlink into `sites-enabled`,
    `nginx -t`, reload.
