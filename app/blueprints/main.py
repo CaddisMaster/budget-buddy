@@ -1,8 +1,10 @@
 from datetime import datetime
 
-from flask import Blueprint, current_app, redirect, render_template, request, url_for
+import psycopg2
+from flask import Blueprint, current_app, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
+from app import limiter
 from app.blueprints.agent import load_agent_run
 from app.blueprints.budgets import compute_budget_vs_actual
 from app.blueprints.forecasts import compute_forecast, load_forecast
@@ -56,6 +58,35 @@ def service_worker():
     control start_url '/', so /static/sw.js wouldn't do. No @login_required:
     the browser re-fetches it outside any session."""
     return current_app.send_static_file('sw.js')
+
+
+@bp.route('/healthz')
+@limiter.exempt
+def healthz():
+    """Liveness/readiness probe for the Docker healthcheck, the deploy job's
+    post-deploy verification, and uptime monitoring.
+
+    No @login_required — a probe cannot hold a session, and requiring one would
+    make the check assert the wrong thing. Exempt from the rate limit so that
+    continuous polling can never trip it and manufacture a false alarm.
+
+    Deliberately says almost nothing: status and whether the database answered.
+    No version, no configuration, no exception text — this is the one endpoint
+    guaranteed to be reachable by anyone, so it is the last place to leak
+    anything. The real exception goes to the log, as everywhere else.
+
+    A round-trip to Postgres is the point. Gunicorn accepting the connection
+    only proves the process is up; the app is not actually serviceable if it
+    cannot reach its database, and a probe that returned 200 in that state
+    would be actively misleading."""
+    try:
+        with db_cursor() as cursor:
+            cursor.execute('SELECT 1')
+            cursor.fetchone()
+    except psycopg2.Error:
+        current_app.logger.exception('healthz: database check failed')
+        return jsonify(status='error', database='unreachable'), 503
+    return jsonify(status='ok', database='ok'), 200
 
 
 @bp.route('/dashboard')

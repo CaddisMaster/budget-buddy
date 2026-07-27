@@ -18,6 +18,10 @@ this project uses the `0.x` versioning scheme described in
 - `RUNBOOK.md` — production topology, Nginx configuration, TLS, backup and
   restore procedures, and a rebuild-from-nothing checklist. None of this
   previously existed outside the server itself.
+- `GET /healthz` — an unauthenticated liveness probe that performs a real
+  database round-trip, returning 200 when healthy and 503 when Postgres is
+  unreachable. Wired up as a Docker healthcheck. Monitoring a normal page is
+  not equivalent: with the database stopped, `/login` still returns 200.
 - Ruff linting, configured in `pyproject.toml` and enforced in CI.
 - Pre-commit hooks (`.pre-commit-config.yaml`) — ruff plus hygiene checks,
   including `detect-private-key`. Local convenience; CI remains the

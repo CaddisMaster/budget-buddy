@@ -377,19 +377,38 @@ transaction is present.
 
 ---
 
-## 9. Routine checks
+## 9. Health checks
+
+`GET /healthz` is unauthenticated and returns JSON:
+
+```json
+{"status": "ok", "database": "ok"}      // 200
+{"status": "error", "database": "unreachable"}   // 503
+```
+
+It performs a real round-trip to Postgres, which is the entire point. **A page
+request is not a substitute.** With the database stopped, `GET /login` still
+returns 200 — the login page does not touch the database — so anything
+monitoring a page reports green while the application is actually unusable.
+Verified by stopping the `db` container: `/login` → 200, `/healthz` → 503.
+
+**Point Uptime Kuma at `/healthz`**, not at the home page.
+
+The compose file runs the same endpoint as a container healthcheck every 30s,
+so `docker compose ps` shows `(healthy)` / `(unhealthy)` rather than a bare
+`Up` that tells you nothing.
+
+## 10. Routine checks
 
 ```bash
-docker ps                                  # everything Up?
+docker compose ps                          # look for (healthy), not just Up
+curl -s localhost:5001/healthz             # app + database round-trip
 docker compose logs --tail 50 web          # app logs
 df -h /                                    # disk (Postgres and images grow)
 free -h                                    # memory
 certbot certificates                       # expiry dates
 docker compose exec web whoami             # should be: appuser
 ```
-
-Uptime Kuma at `status.seandesmet.com` monitors the sites continuously and is
-the first thing to check when something is reported down.
 
 Reference values at the time of writing: 61% disk used, ~1 GB of 2 GB memory in
 use with three stacks running. Memory is the tighter constraint of the two.

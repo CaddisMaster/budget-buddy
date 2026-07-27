@@ -23,6 +23,16 @@ services:
       # publishes to 0.0.0.0 and (Docker bypasses ufw) exposes the app over plain
       # HTTP on the public IP, bypassing HTTPS. Keep it bound to localhost.
       - "127.0.0.1:5001:5000"
+    # The base image is python:slim and carries no curl or wget, so the probe
+    # goes through Python. start_period covers the first boot, during which a
+    # non-200 is expected rather than a failure.
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5000/healthz', timeout=5).status == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     depends_on:
       - db
 volumes:
