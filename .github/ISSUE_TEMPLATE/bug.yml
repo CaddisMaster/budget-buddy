@@ -1,0 +1,60 @@
+name: Bug report
+description: Something behaves incorrectly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: note that a mistyped attribute in a Jinja template renders
+        as an **empty string** rather than raising. If something is blank that
+        should not be, that is a likely cause and worth mentioning below.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you observe? Include the exact wording of any error message.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to /transactions
+        2. Filter by month = 2026-07
+        3. Click Save on any row
+        4. The running balance column goes blank
+    validations:
+      required: true
+
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where did you see this?
+      options:
+        - Local development
+        - Production (budget.seandesmet.com)
+        - Both
+        - The test suite
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: >
+        From `docker compose logs web`. Please redact anything sensitive —
+        this repository is public.
+      render: shell
+    validations:
+      required: false

@@ -1,0 +1,71 @@
+name: Feature
+description: A new capability or an improvement to an existing one
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Features are specified with **acceptance criteria in Given/When/Then
+        form** before any code is written, so that "done" is agreed up front
+        rather than argued about at review.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >
+        What is difficult, missing, or annoying today? Describe the need, not
+        the solution — the implementation is decided later.
+      placeholder: >
+        I only find out a bill is due when I happen to open the app, so I
+        occasionally miss one entirely.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: >
+        One or more scenarios in Given/When/Then form. These become the tests.
+        Cover the unhappy paths too — what should happen when data is missing,
+        when the user is not logged in, or when an external service fails?
+      value: |
+        ```gherkin
+        Scenario: A bill due tomorrow produces a reminder
+          Given I have a scheduled bill due tomorrow
+          And I have granted notification permission
+          When the daily reminder job runs
+          Then I receive a push notification naming the bill and its amount
+
+        Scenario: Nothing due produces no notification
+          Given I have no scheduled items due in the next day
+          When the daily reminder job runs
+          Then I receive no notification
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Explicitly out of scope
+      description: >
+        What this issue is deliberately *not* doing. Keeps the pull request
+        from growing while it is open.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: considerations
+    attributes:
+      label: Does this touch any of these?
+      description: >
+        Each of these has established patterns in the codebase — see
+        CONTRIBUTING.md §4 before starting.
+      options:
+        - label: A database schema change (needs both a numbered migration and a schema.sql update)
+        - label: Money amounts (must go through parse_positive_amount)
+        - label: New queries (must be scoped to the current user)
+        - label: A new AI surface (the model narrates, it never computes)
+        - label: Anything that runs on a schedule or in a background thread

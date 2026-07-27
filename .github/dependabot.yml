@@ -1,0 +1,44 @@
+version: 2
+
+updates:
+  # requirements.txt is fully pinned, which is deliberate — a reproducible image
+  # matters more than automatic drift. The trade-off is that security fixes only
+  # arrive if something opens the PR, hence this file.
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: ["dependencies"]
+    groups:
+      # Minor and patch bumps arrive as one PR so the suite gates them together
+      # rather than trickling in ten near-identical runs.
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  # The data-pipeline scripts pin their own dependencies (pandas lives here, not
+  # in the application image).
+  - package-ecosystem: pip
+    directory: "/scripts"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    labels: ["dependencies"]
+
+  # Workflow actions age out and get deprecated — this is what catches it.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    labels: ["dependencies", "ci"]
+    groups:
+      actions:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: monthly
+    labels: ["dependencies"]

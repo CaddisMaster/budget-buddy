@@ -92,11 +92,36 @@ landing/             # Static landing page at seandesmet.com
 
 ## Current Status
 
-**Live in prod at `v10.15.0`** — APR on credit cards (+ interest-aware payoff rider) + AI-card
-read-state collapse. Shipped + deployed + prod-verified **2026-07-15**; release tip `f44c2ce`,
-565 tests as the gate, `sql/29` hand-applied to prod before the pull, prod cache-bust `6bd5210b`.
-Smoke aside: POSTing `/insights/generate` without the form's year/month caches the CURRENT month,
-not the last complete one — the UI always sends them; only bites hand-rolled requests.
+### ⚠️ Repository reboot in progress (started 2026-07-26)
+
+This repo is **new**. The app is mature and unchanged; the *envelope* around it is being rebuilt
+— issue→PR workflow, CI+CD in Actions, ghcr instead of Docker Hub, versioning reset to `0.x`.
+**Golden rule: new envelope, same contents — do NOT refactor the app during the move.** The only
+sanctioned code changes are the non-root Dockerfile (done), a `/healthz` endpoint, and the `ruff`
+formatting backlog. Everything else becomes an issue for `0.2.0`.
+
+Where it stands:
+
+- ✅ **Phase 1** — fresh repo, clean initial commit, verified runnable from a bare clone
+  (`cp .env.example .env` → `docker compose up --build` → `./test.sh` green, 565 passing).
+  Secret scanning + push protection ON. Old repo renamed `budget-buddy-archive` with a banner.
+- 🔨 **Phase 2 (here)** — README/CHANGELOG/CONTRIBUTING/VERSIONING/LICENSE, issue+PR templates,
+  dependabot, CODEOWNERS. **RUNBOOK.md still to write.** Branch protection is deliberately NOT on
+  yet — it goes on after CI exists so the required checks can be named once.
+- ⏳ **Phase 3** — port + tighten CI: add a `lint` job (ruff) and a `docker-build` job that boots
+  the image and asserts it runs as `appuser`. CI today never builds the Dockerfile — that gap is
+  how the non-root change reached this repo untested (it broke `./test.sh`; fixed here).
+- ⏳ **Phase 4/4.5/5/6/7** — CD + approval gate, data-security hardening (least-privilege DB
+  role, `/admin/backup` tightening), migration automation, the ghcr cutover + `0.1.0`, then
+  issue migration and archiving.
+
+**Prod is untouched and still runs the old Docker Hub image (`v10.15.0` code) until the Phase 6
+cutover.** Feature work is FROZEN for the duration — anything shipped mid-reboot would have to be
+built in the old repo and re-ported.
+
+Smoke aside carried over: POSTing `/insights/generate` without the form's year/month caches the
+CURRENT month, not the last complete one — the UI always sends them; only bites hand-rolled
+requests.
 
 **Roadmap:** next up is **bill-due PUSH reminders** (Web Push to the installed PWA — VAPID +
 pywebpush + a `push_subscriptions` table + a daily APScheduler job walking
@@ -111,25 +136,9 @@ remains dropped for good.**
 
 ### Release ledger
 
-One line per release — full details live in the git tags and GitHub release notes.
-
-- **v10.15.0** (2026-07-15) — APR on cards + payoff rider (`sql/29`) + AI-card collapse Part A. Tests 565
-- **v10.14.0** + hotfix1 (2026-07-13) — brand icon redo (coin-with-$, `brand_svg` global, full-bleed maskable/apple-touch source, SW cache → v2); hotfix: iOS status-bar band, `.main-content min-width:0`, one `|money` miss. Tests 518
-- **v10.13.0** (2026-07-13) — design pass: vendored Chart.js, `|money` filter, nav regroup + global "+", collapsible charts, **Home/Dashboard merge** (/ IS the dashboard; /dashboard + /analytics = 302 stubs), PWA shell, mobile History cards. Tests 518
-- **v10.12.0** (2026-07-12) — Safe-to-spend REMOVED (`sql/27` drop, applied AFTER the pull) + History running-balance fix + income categories (`categories.kind`, `sql/28`, applied BEFORE) + ai.py attribute reads. Tests 504
-- **v10.11.1** (2026-07-10) — debt pass PATCH: db_cursor completion, NamedTupleCursor + template attribute sweep, url_for sweep, except narrowing, `css_v` auto cache-bust; the sweeper-agent orchestration trial (verdict: worked — 8 Sonnet batches, ~342 conversions, 0 worker-caused failures)
-- **v10.11.0** (2026-07-10) — Bulk edit + the hardening batch (param parsers, logout GET→POST, GENERIC_ERROR sweep, bcrypt 72-byte cap, digest occurrence enumeration fix, SECRET_KEY fail-fast, pinned requirements) + row-border hotfix; `sql/26` FK indexes. Tests 506
-- **v10.10.0** — Safe-to-spend accuracy (`sql/23`), credit limits (`sql/24`), **Money agent** (`sql/25` — 9th AI feature, first autonomous tool-use, Sonnet); plus the 2026-07-02 code-review fixes (FOR UPDATE due-runner locks, `parse_positive_amount`). Tests 440
-- **v10.9.0** — debt-payoff goals (`sql/20`), balance check-in (`sql/21`), safe to spend (later removed), budget report, dashboard consolidation (/analytics merged), budget-history writer (`sql/22`). Tests 372
-- **v10.8.0** (2026-07-02) — first bundle release: Weekly Email Digest (APScheduler + Resend, `sql/18`) + Goal Coach (`sql/19`). Tests 279
-- **v10.7.0** (2026-07-01) — AI Budget Review (model proposes amounts; normalize snaps into facts-derived bounds)
-- **v10.6.0** (2026-06-30) — design refresh: tokens, dashboard hero, chart grid, "AI assist" identity, Insight retimed to last complete month
-- **v10.5.0** (2026-06-29) — Auto-Categorize (Sonnet batch classification, expense-scoped, bulk-confirm review list)
-- **v10.4.0** (2026-06-28) — Auto-Transfer (`transfer_schedules`, `sql/17`)
-- **v10.3.0** — Ask-your-finances (multi-turn tool use; the ask.py tool boundary; gunicorn `--threads 4 --timeout 120`)
-- **v10.2.0** — Forecast (`sql/16`) · **v10.1.1** — security-hardening PATCH (write-IDOR fix, headers, cookies, CSV sanitizer) · **v10.1.0** — Insight (`sql/15`; first SemVer release)
-- **v10.0** — Scheduled (`schedules` table, `sql/14`; recurring left the ledger) · **v9.0** — Conversational Entry (first AI feature)
-- **v1–v8** — core CRUD/deploy → UI overhaul → multi-user auth → blueprints + pytest → ownership 404s → transfers + goals → smart budgets (`sql/13`) → HTMX inline CRUD + CI
+⚠️ **`CHANGELOG.md` (committed) is the authoritative record** — do not duplicate it here.
+It carries `## [Unreleased]` plus a `## Prior history` summary of the `v1`–`v10.15.0` era,
+whose full detail lives in the archived repo's tags and release notes.
 
 ## Testing
 
@@ -138,6 +147,12 @@ It runs in a throwaway `web` container on prod's Python 3.11 — no local venv;
 `requirements-dev.txt` adds just `pytest`. Needs the dev `db` container up (route/isolation
 tests hit it). Also runs in **GitHub Actions CI** on every push/PR (`.github/workflows/ci.yml`,
 `postgres:16` service + `schema.sql`).
+
+**Gotcha — `python -m pytest`, never bare `pytest`:** the image runs as non-root `appuser`, so
+pip puts console scripts in `/home/appuser/.local/bin`, which is NOT on `PATH`. Bare `pytest`
+fails with `not found`. (Harmless side effect: pytest can't write its cache to `/app` — that
+directory is root-owned because `WORKDIR` created it before the `COPY --chown`. Two warnings per
+run, no impact.)
 
 **Test-run economy (a full run costs ~2:40):** on multi-commit passes, use targeted `-k` runs
 for fast signal while iterating and spend ONE full run as each commit's gate; batch mechanical
@@ -191,58 +206,50 @@ anon → 302. What each file covers:
 
 Fixtures (`conftest.py`) use the dev Postgres with `__pytest__`-prefixed users, torn down in
 FK-safe order (child rows first — transactions→categories/account are `ON DELETE RESTRICT`).
-CSRF + rate limiter disabled under test. Deeper write-up in the `Testing.md` Obsidian note.
+CSRF + rate limiter disabled under test.
 
 ## Versioning
 
-**SemVer** (`MAJOR.MINOR.PATCH`) — the number tracks *compatibility*, not effort or milestones.
+**`0.x` SemVer shape, no stability contract** — full rationale in `VERSIONING.md` (committed).
+`0.MINOR` = features, `0.MINOR.PATCH` = fixes; `1.0.0` only when deliberately declared stable.
+While the leading digit is `0` a MINOR may carry a break — called out under a `### Breaking`
+heading in the changelog entry.
 
-- **MAJOR** — a genuine backwards-incompatible break. Rare; `v11.0.0` is reserved for one.
-- **MINOR** — any release carrying a feature (even several — they share the one minor).
-- **PATCH** — fixes only, no new surface.
+**The release is the unit, not the feature:** a release bundles **everything merged to `main`
+since the last release** into ONE version bump, and happens whenever Sean decides — no fixed ship
+day. Versions climb monotonically; already-cut tags are never rewritten.
 
-**The release is the unit, not the feature:** a release bundles **everything on `main` since the
-last release** into ONE version bump, and **happens whenever Sean decides** — no fixed ship day
-(the one-cycle fixed-Thursday experiment died when finished features sat unused on `main`). List
-every bundled feature in the release notes. **Codenames ≠ versions** — features keep their
-codenames in notes/diary; several ride one version. Versions climb monotonically from the current
-tag — never reset, never rewrite already-cut tags. (Solo app, no external consumers — SemVer here
-is discipline, not a contract.)
+⚠️ **The numbering RESET at `0.1.0`.** This repo's history begins at the reboot; `v1`–`v10.15.0`
+live in the archived repo (`CaddisMaster/budget-buddy-archive`). Do not resurrect the old
+`v10.x`/`v11.0.0` scheme — it was a compatibility contract for consumers that don't exist.
 
 ## Git & Development Workflow
 
-Solo project — **trunk-based, work directly on `main`; no branches/worktrees/PRs** unless I
-explicitly ask. **The one exception:** a feature spanning multiple days that would leave `main`
-broken between sessions may live on a short-lived local branch, merged straight to `main` (no PR)
-when whole. Prefer a **feature flag / env-gate** (like `ai_enabled()`) over a long branch — ship
-it dark on `main`, turn it on when ready.
+**Issue → branch → PR → squash-merge.** This REPLACED the old trunk-based/no-PR model at the
+2026-07 repo reboot; do not work directly on `main`.
 
-**Cadence = release when Sean says so.** Commit complete, locally-tested units to `main`
-continuously; don't wait for, suggest, or schedule around a ship day. `main` is always kept
-deployable. Dev and prod stay decoupled — local uses the compose override that builds `web` from
-source; prod only changes when the release pipeline runs.
+1. **Every change starts from an issue.** No issueless PRs. Feature issues carry Gherkin
+   acceptance criteria (`.github/ISSUE_TEMPLATE/feature.yml`).
+2. **Branch** off `main` as `<issue#>-short-slug`.
+3. **Test locally — both:** `docker compose up --build` → verify at `http://localhost:5001`,
+   AND `./test.sh` (full suite). CI does not click through the app.
+4. **New behaviour gets a test that fails without it.** Jinja's silent-empty-string failure mode
+   means content-asserting tests are the only net.
+5. **Update `CHANGELOG.md`** under `## [Unreleased]`.
+6. **Open a PR** with `Closes #<issue>`; squash-merge once CI is green.
 
-Per-commit checklist (every change):
+**Prefer a feature flag / env-gate** (like `ai_enabled()`) over a long-lived branch — ship it dark
+behind the gate, turn it on when ready.
 
-1. Make changes on `main` (or the rare multi-day local branch).
-2. **Every new user-facing feature goes in the single "What's new" strip** at the top of
-   `app/templates/dashboard.html` (dismissible `.whatsnew` strip, localStorage-dismissed per
-   version) — a REQUIRED pre-commit step. ONE strip, showing the CURRENT release: add a
-   `.whatsnew-block` per finished feature (bold sub-heading + ~3 plain-English bullets — see the
-   template comment); the heading + `data-version` are the release version, the badge is the
-   actual release date (set/corrected at ship). On the FIRST commit after a release ships,
-   replace the whole strip's contents. Security/patch fixes and no-UI infrastructure are NOT
-   feature blocks.
-3. **Test locally first:** `docker compose up --build` → verify at `http://localhost:5001`.
-4. Commit only after it works in the local containers. Keep `main` deployable at every commit.
+**The "What's new" strip is now a RELEASE step, not a per-commit step** (reconciled at the reboot
+— `CHANGELOG.md` carries the per-change record, so the strip is purely user-facing release
+comms). At release prep, replace the contents of the single dismissible `.whatsnew` strip at the
+top of `app/templates/dashboard.html`: one `.whatsnew-block` per shipped feature (bold
+sub-heading + ~3 plain-English bullets), `data-version` + heading = the release version, badge =
+the actual ship date. Security/patch fixes and no-UI infrastructure are NOT feature blocks.
 
-Release (whenever Sean calls it) — **build → stage → promote** (see Deployment for detail):
-
-5. `git push`, then **`./deploy.sh vX.Y.Z`** (immutable version-tagged image; `:latest` untouched).
-6. **Smoke-test that exact image** on the staging stack at `http://localhost:5002`.
-7. **`./promote.sh vX.Y.Z`** retags to `:latest`; on the Droplet hand-apply `sql/` migrations
-   (pg_dump first), THEN `docker compose pull && docker compose up -d`.
-8. Cut the git tag + GitHub release (one bump for the whole bundle).
+Release: cut a GitHub Release for the version → Actions builds, pushes the image, and pauses on
+an approval gate before deploying (see Deployment).
 
 ## Delegation (worker agents)
 
@@ -268,7 +275,11 @@ A `sweeper` worker agent (Sonnet, tools: Read/Grep/Glob/Edit only) is defined in
 
 - GitHub repo: https://github.com/CaddisMaster/budget-buddy
 - App URL: https://budget.seandesmet.com · Landing page: https://seandesmet.com
-- Deploy is a **build → stage → promote** gate, run on the Mac after committing the release tip:
+- ⚠️ **DEPLOY IS MID-MIGRATION (repo reboot, 2026-07).** Target state: cutting a GitHub Release
+  triggers Actions → build → push to **ghcr.io/caddismaster/budget-buddy** → **approval gate**
+  (a `production` GitHub Environment with Sean as required reviewer) → SSH deploy to the Droplet →
+  `/healthz` verification. Until that pipeline lands, the legacy path below is still what runs.
+- **Legacy path (still current until the Phase 6 cutover):** build → stage → promote, on the Mac:
   1. **`./deploy.sh vX.Y.Z`** — buildx-builds the multi-platform image and pushes **only** the
      immutable tag `caddismaster/budget-buddy:vX.Y.Z` (refuses a bare `latest`).
   2. **Staging smoke-test** — `TAG=vX.Y.Z docker compose -p bb-staging -f docker-compose.staging.yml
@@ -278,6 +289,7 @@ A `sweeper` worker agent (Sonnet, tools: Read/Grep/Glob/Edit only) is defined in
   3. **`./promote.sh vX.Y.Z`** — retags the tested manifest to `:latest` via
      `docker buildx imagetools create` (no rebuild) → on the Droplet
      `docker compose pull && docker compose up -d`.
+  `deploy.sh`/`promote.sh` are retired once Actions CD is proven — keep them until then.
 - **Env vars:** `ANTHROPIC_API_KEY` gates every AI surface via `ai_enabled()` (optional — app runs
   fine without it). `RESEND_API_KEY` gates email (`mail_enabled()`), `ENABLE_DIGEST_SCHEDULER=1`
   starts the digest scheduler — both **Droplet-only** (unset locally/CI so nothing auto-sends).
@@ -288,10 +300,10 @@ A `sweeper` worker agent (Sonnet, tools: Read/Grep/Glob/Edit only) is defined in
   migration **by hand** — pg_dump first. **Order matters:** additive migrations (new
   columns/tables) go **BEFORE** `docker compose pull` (new code must never query a missing
   column); column/table **DROPs go AFTER** the pull (old code still SELECTs them until the swap).
-- **Releases:** each gets a git tag + GitHub release (`git tag -a vX.Y.Z ... && gh release
-  create ...`) cut after deploy; notes list every bundled feature. Current latest tag:
-  **`v10.15.0`** (2026-07-15). Next: whenever Sean calls it — the v10.16.0 box is open,
-  direction set (push-reminders anchor + two small fixes).
+- **Releases:** each gets a GitHub Release whose notes list every bundled item (and which, once
+  Actions CD lands, is what *triggers* the deploy). `CHANGELOG.md` is the durable record —
+  update it under `## [Unreleased]` in every PR. **No tags exist in this repo yet**; the first
+  will be `v0.1.0`. The `v10.15.0` tag and everything before it live in the archive repo.
 - **Droplet access:** host, credentials, and the deploy-dir layout live in the gitignored
   `CLAUDE.local.md` (maintainer-only). The shape: `~/budget-buddy` on the Droplet is a **PURE
   DEPLOY DIR — NO git, NO source**, just `docker-compose.yml`, `.env`, `sql/`, and `landing/`. To
