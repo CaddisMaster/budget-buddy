@@ -32,9 +32,10 @@ Anything that restarts Docker or rewrites Nginx now affects only this app —
 which is a meaningful simplification, since the old warning about collateral
 damage to unrelated stacks no longer applies.
 
-> ⚠️ **`mealie.seandesmet.com` and `status.seandesmet.com` DNS records may still
-> point here.** Nothing serves them, so they fail TLS rather than showing a stale
-> page. Remove the records in Squarespace to tidy this up.
+Their DNS records were removed from Squarespace the same day, so those hostnames
+no longer resolve at all (verified NXDOMAIN via both `8.8.8.8` and `1.1.1.1`).
+**Three names point at this Droplet and no others:** `seandesmet.com`,
+`www.seandesmet.com`, and `budget.seandesmet.com`.
 
 Every container binds to `127.0.0.1` only. This is deliberate and load-bearing:
 **Docker publishes ports by writing iptables rules that bypass ufw entirely**, so
