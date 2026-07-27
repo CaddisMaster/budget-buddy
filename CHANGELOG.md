@@ -36,6 +36,13 @@ this project uses the `0.x` versioning scheme described in
   branch push and its pull request no longer trigger duplicate runs.
 - Workflows declare least-privilege `permissions`.
 
+### Security
+
+- `/admin/backup` — one authenticated GET returns the whole database as
+  plaintext SQL, so it is now rate-limited to 5 per hour, returns `403` for
+  non-admins instead of flashing and redirecting, and logs every export with
+  the username. Previously a full-database export left no trace at all.
+
 ### Fixed
 
 - `https://www.seandesmet.com` failed the TLS handshake. Certbot had

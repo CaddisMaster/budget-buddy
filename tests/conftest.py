@@ -21,6 +21,7 @@ from app.db import get_db_connection
 TEST_PREFIX = "__pytest__"
 USER_A = TEST_PREFIX + "user_a"
 USER_B = TEST_PREFIX + "user_b"
+USER_ADMIN = TEST_PREFIX + "admin"
 PASSWORD = "test-password-123"
 
 
@@ -167,6 +168,18 @@ def client_b(app, users):
     client = app.test_client()
     _login(client, USER_B)
     return client
+
+
+@pytest.fixture
+def admin_client(app):
+    """A logged-in admin. Deliberately independent of the `users` fixture — the
+    admin-only routes are about the is_admin flag, not about owning data."""
+    _delete_user(USER_ADMIN)
+    _create_user(USER_ADMIN, PASSWORD, is_admin=True)
+    client = app.test_client()
+    _login(client, USER_ADMIN)
+    yield client
+    _delete_user(USER_ADMIN)
 
 
 def fetch_transaction(transaction_id):
