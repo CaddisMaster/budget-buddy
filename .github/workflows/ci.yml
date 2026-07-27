@@ -24,7 +24,7 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Ruff
         uses: astral-sh/ruff-action@v3
@@ -63,7 +63,7 @@ jobs:
       # cookies, which the test client — plain http — would never send back.
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v7
         with:
@@ -87,7 +87,7 @@ jobs:
     # Nothing here needs the registry — this job proves the image is sound, it
     # does not publish it. Pushing happens in the release workflow.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: docker/setup-buildx-action@v3
 
