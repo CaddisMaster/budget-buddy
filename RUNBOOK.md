@@ -426,6 +426,16 @@ The runner connects as **`DB_USER`**, never `DB_APP_USER` — the least-privileg
    streams down a gzipped `pg_dump` of Budget Buddy, plus a tarball of configs.
    14-day rotation. (It also dumped Mealie until that service was retired on
    2026-07-27.)
+
+   **Dead-man's switch.** The job pings a [Healthchecks.io](https://healthchecks.io)
+   check on start, success and failure, so a backup that silently *stops* raises
+   an alert on its own — the dangerous failure mode, because you would otherwise
+   discover it on the day you need a restore. Failure pings POST that run's log,
+   so the alert email carries the reason. The ping URL lives in
+   `~/personal-projects/backups/.healthchecks-url`; **absent that file the pings
+   are skipped and the job behaves exactly as before.** A monitoring outage can
+   never turn a good backup into a failed one — the ping is explicitly
+   non-fatal.
 2. **In-app** `/admin/backup` — an authenticated admin download of a live
    `pg_dump`.
 3. **Ad-hoc pre-migration dumps** left in `/opt/budget-buddy/backups/`.
