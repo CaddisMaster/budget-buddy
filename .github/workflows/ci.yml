@@ -81,6 +81,97 @@ jobs:
       - name: Run tests
         run: pytest -q
 
+  migrations:
+    name: Migrations apply to the current schema
+    runs-on: ubuntu-latest
+
+    # The plan for this phase wanted CI to assert that schema.sql and the
+    # numbered migrations produce identical schemas. That is impossible here:
+    # the numbered files are forward-only deltas, not a replayable history —
+    # `users` is created only in schema.sql, and replaying from empty yields 4
+    # tables of 13. So this job asserts the property that actually matters and
+    # is actually true: a database built from schema.sql accepts every pending
+    # migration cleanly, which is exactly the operation production performs.
+
+    services:
+      db:
+        image: postgres:16
+        env:
+          POSTGRES_USER: budget
+          POSTGRES_PASSWORD: budget
+          POSTGRES_DB: budget
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U budget"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_NAME: budget
+      DB_USER: budget
+      DB_PASSWORD: budget
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install psycopg2
+        run: pip install psycopg2-binary
+
+      - name: Build the database from schema.sql
+        run: psql "postgresql://budget:budget@localhost:5432/budget" -f sql/schema.sql
+
+      - name: Baseline, then apply anything newer
+        run: |
+          # schema.sql already contains everything up to the highest numbered
+          # migration, so baseline records them rather than re-running them.
+          python scripts/migrate.py --baseline
+          # Any migration added in this PR is NOT yet in schema.sql, so it is
+          # pending here and gets applied for real. That is the assertion.
+          python scripts/migrate.py
+
+      - name: Runner is idempotent
+        run: |
+          out=$(python scripts/migrate.py)
+          echo "$out"
+          if ! echo "$out" | grep -q "up to date"; then
+            echo "::error::Second run was not a no-op — the runner is not idempotent."
+            exit 1
+          fi
+
+      - name: A new migration must also be reflected in schema.sql
+        run: |
+          # The drift this catches: adding sql/NN without updating schema.sql,
+          # so a fresh database silently lacks what production has. Compares
+          # against the merge base rather than the whole history.
+          git fetch --no-tags --depth=1 origin "${{ github.base_ref || 'main' }}" || true
+          base=$(git merge-base HEAD FETCH_HEAD 2>/dev/null || echo "")
+          [ -z "$base" ] && { echo "no merge base — skipping"; exit 0; }
+
+          added=$(git diff --name-only --diff-filter=A "$base" HEAD -- 'sql/[0-9]*.sql' || true)
+          if [ -z "$added" ]; then
+            echo "No new migration in this change."
+            exit 0
+          fi
+          echo "New migration(s): $added"
+
+          if git diff --name-only "$base" HEAD -- sql/schema.sql | grep -q .; then
+            echo "schema.sql updated alongside it."
+          else
+            echo "::error::$added was added but sql/schema.sql was not updated."
+            echo "schema.sql builds fresh databases (dev, CI, a rebuilt server)."
+            echo "Leaving it behind means a fresh database silently lacks this change."
+            exit 1
+          fi
+
   docker-build:
     name: Image builds and runs as non-root
     runs-on: ubuntu-latest

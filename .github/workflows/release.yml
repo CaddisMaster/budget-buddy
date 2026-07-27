@@ -179,16 +179,39 @@ jobs:
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
+          # Order is load-bearing and the two directions are opposites:
+          #   dump -> apply ADDITIVE migrations -> pull -> up
+          # Additive changes must land BEFORE the new image, because new code
+          # must never query a column that does not exist yet. DROPs are the
+          # reverse (old code still selects them until the container swaps), so
+          # they are deliberately NOT automated and stay a manual step.
+          #
           # `pull web`, never a bare `pull`: a bare pull also fetches postgres,
           # and `up -d` then recreates the database container. Shipping app code
-          # must never upgrade or restart the database engine as a side effect —
-          # that is a deliberate action taken after a pg_dump.
+          # must never upgrade or restart the database engine as a side effect.
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
               "${USER_NAME}@${HOST}" \
-              "cd /opt/budget-buddy \
-               && TAG='${VERSION}' docker compose pull web \
-               && TAG='${VERSION}' docker compose up -d \
-               && docker compose ps"
+              "set -e
+               cd /opt/budget-buddy
+
+               # 1. Back up before touching the schema. The database is the only
+               #    irreplaceable artifact here, so a failed dump fails the deploy.
+               source ./.env
+               DUMP=\"backups/pre-deploy-\$(date +%Y%m%d-%H%M%S).sql.gz\"
+               mkdir -p backups
+               docker compose exec -T db pg_dump -U \"\$DB_USER\" \"\$DB_NAME\" | gzip > \"\$DUMP\"
+               gzip -t \"\$DUMP\"
+               echo \"backup ok: \$DUMP (\$(stat -c%s \"\$DUMP\") bytes)\"
+
+               # 2. Apply pending migrations using the image being deployed, so
+               #    the runner and the migrations always match the release.
+               TAG='${VERSION}' docker compose run --rm --no-deps -T \\
+                 -e DB_HOST=db web python scripts/migrate.py
+
+               # 3. Only now swap the application.
+               TAG='${VERSION}' docker compose pull web
+               TAG='${VERSION}' docker compose up -d
+               docker compose ps"
 
           # TAG pins the exact released image. The Droplet's compose consumes it
           # as `${TAG:-latest}`, so a hand-run `docker compose up -d` still works.
