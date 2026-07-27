@@ -8,8 +8,9 @@ crafted selection can never orphan half a transfer pair.
 """
 from datetime import date
 
+from conftest import create_category, create_transaction, create_transfer
+
 from app.db import get_db_connection
-from conftest import create_transaction, create_category, create_transfer
 
 HX = {"HX-Request": "true"}
 

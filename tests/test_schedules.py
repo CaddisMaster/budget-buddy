@@ -8,11 +8,11 @@ dev DB via the shared fixtures; CSRF + rate limiter are disabled under test.
 import threading
 from datetime import date, timedelta
 
-from app.db import get_db_connection
 from app.blueprints.schedules import (
     compute_initial_semimonthly_due,
     run_due_schedules,
 )
+from app.db import get_db_connection
 from tests.conftest import (
     count_transactions_like,
     create_schedule,
@@ -27,7 +27,8 @@ def _schedule_count(user_id):
     cur = conn.cursor()
     cur.execute("SELECT COUNT(*) FROM schedules WHERE user_id = %s", (user_id,))
     n = cur.fetchone()[0]
-    cur.close(); conn.close()
+    cur.close()
+    conn.close()
     return n
 
 

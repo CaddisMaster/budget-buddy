@@ -8,8 +8,7 @@ rate-limit isn't unit-tested because the limiter is disabled under test.
 """
 from app.blueprints.transactions import _csv_safe
 from app.db import get_db_connection
-from tests.conftest import USER_A, PASSWORD
-
+from tests.conftest import PASSWORD, USER_A
 
 # --- CSV formula-injection sanitizer (pure) ---------------------------------
 

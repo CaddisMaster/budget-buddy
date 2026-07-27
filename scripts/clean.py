@@ -2,6 +2,7 @@
 import pandas as pd
 from ingest import load_transactions
 
+
 def clean_transactions(df):
     df = df.dropna(subset=['amount', 'transaction_date'])
     df['description'] = df['description'].str.strip()

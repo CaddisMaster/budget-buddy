@@ -1,8 +1,9 @@
 import os
+
 import psycopg2
+from clean import clean_transactions
 from dotenv import load_dotenv
 from ingest import load_transactions
-from clean import clean_transactions
 
 load_dotenv()
 

@@ -18,7 +18,6 @@ from tests.conftest import (
     find_category_id,
 )
 
-
 # --- categories -------------------------------------------------------------
 
 def test_create_category(client_a, users):

@@ -10,7 +10,6 @@ import pytest
 
 from app.blueprints.transactions import compute_next_due
 
-
 # --- Fixed-interval frequencies ------------------------------------------
 
 @pytest.mark.parametrize("frequency, current, expected", [

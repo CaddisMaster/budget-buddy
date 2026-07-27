@@ -3,22 +3,27 @@ import csv
 import io
 import math
 from collections import namedtuple
-from datetime import datetime, date, timedelta
+from datetime import date, datetime, timedelta
 from urllib.parse import urlencode
-from dateutil.relativedelta import relativedelta
+
 import psycopg2
-from flask import (
-    Blueprint, render_template, request, redirect, url_for, flash, make_response,
-    abort, current_app
-)
-from flask_login import login_required, current_user
+from dateutil.relativedelta import relativedelta
+from flask import Blueprint, abort, current_app, flash, make_response, redirect, render_template, request, url_for
+from flask_login import current_user, login_required
+
 from app import limiter
+from app.ai import ParseError, classify_transactions, parse_transaction_text
 from app.db import db_cursor
 from app.helpers import (
-    recent_months, is_htmx, hx_toast, ai_enabled, parse_positive_amount,
-    parse_month_param, parse_page_param, parse_int_param, GENERIC_ERROR
+    GENERIC_ERROR,
+    ai_enabled,
+    hx_toast,
+    parse_int_param,
+    parse_month_param,
+    parse_page_param,
+    parse_positive_amount,
+    recent_months,
 )
-from app.ai import parse_transaction_text, classify_transactions, ParseError
 
 bp = Blueprint('transactions', __name__)
 

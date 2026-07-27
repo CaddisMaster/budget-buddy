@@ -8,16 +8,16 @@ candidates and owns the write — so the isolation/IDOR tests live on the apply
 path (the security boundary), like the rest of the suite.
 """
 from collections import namedtuple
-from datetime import date, timedelta
+from datetime import date
 from types import SimpleNamespace
 
 import pytest
+from conftest import create_category, create_transaction
 
 import app.ai as ai
-from app.ai import classify_transactions, _normalize_suggestions, ParseError
 import app.blueprints.transactions as txns
+from app.ai import ParseError, _normalize_suggestions, classify_transactions
 from app.db import get_db_connection
-from conftest import create_transaction, create_category
 
 HX = {"HX-Request": "true"}
 

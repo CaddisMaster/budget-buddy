@@ -12,11 +12,13 @@ import json
 from datetime import date
 from decimal import Decimal
 
-from app.db import get_db_connection
-from app.blueprints.accounts import (
-    credit_utilization, credit_card_utilization_facts, _parse_credit_limit,
-)
 import app.blueprints.ask as ask
+from app.blueprints.accounts import (
+    _parse_credit_limit,
+    credit_card_utilization_facts,
+    credit_utilization,
+)
+from app.db import get_db_connection
 from tests.conftest import create_account, create_transaction
 
 HX = {"HX-Request": "true"}

@@ -18,16 +18,19 @@ from types import SimpleNamespace
 import pytest
 
 import app.ai as ai
+import app.blueprints.ask as ask
 import app.mailer as mailer
 from app.ai import (
-    investigate_finances, _normalize_findings, ParseError,
-    AGENT_MAX_FINDINGS, AGENT_TITLE_MAX,
+    AGENT_MAX_FINDINGS,
+    AGENT_TITLE_MAX,
+    ParseError,
+    _normalize_findings,
+    investigate_finances,
 )
-import app.blueprints.ask as ask
-from app.blueprints.agent import run_money_agent, load_agent_run
+from app.blueprints.agent import load_agent_run, run_money_agent
 from app.blueprints.digests import send_weekly_digests
-from app.helpers import most_recent_sunday
 from app.db import get_db_connection
+from app.helpers import most_recent_sunday
 from tests.conftest import create_agent_run, fetch_agent_runs
 
 HX = {"HX-Request": "true"}

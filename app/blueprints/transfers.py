@@ -1,18 +1,17 @@
 from datetime import date, datetime
+
 import psycopg2
-from flask import (
-    Blueprint, render_template, request, redirect, url_for, flash, abort,
-    make_response, current_app
-)
-from flask_login import login_required, current_user
-from app.db import db_cursor
-from app.helpers import (
-    hx_toast, is_htmx, parse_positive_amount, parse_int_param, GENERIC_ERROR
-)
-from app.blueprints.transactions import (
-    compute_next_due, VALID_FREQUENCIES, FREQUENCY_LABELS,
-)
+from flask import Blueprint, abort, current_app, flash, make_response, redirect, render_template, request, url_for
+from flask_login import current_user, login_required
+
 from app.blueprints.schedules import compute_initial_semimonthly_due
+from app.blueprints.transactions import (
+    FREQUENCY_LABELS,
+    VALID_FREQUENCIES,
+    compute_next_due,
+)
+from app.db import db_cursor
+from app.helpers import GENERIC_ERROR, hx_toast, is_htmx, parse_int_param, parse_positive_amount
 
 bp = Blueprint('transfers', __name__)
 
@@ -199,8 +198,8 @@ def edit_transfer(group_id):
         'amount': legs[0].amount,
         'description': legs[0].description,
         'transfer_date': legs[0].transaction_date,
-        'from_account': next((l.account_id for l in legs if l.transaction_type == 'expense'), None),
-        'to_account': next((l.account_id for l in legs if l.transaction_type == 'income'), None),
+        'from_account': next((leg.account_id for leg in legs if leg.transaction_type == 'expense'), None),
+        'to_account': next((leg.account_id for leg in legs if leg.transaction_type == 'income'), None),
     }
     return render_template('partials/_transfer_edit_row.html',
                            transfer=transfer, accounts=all_accounts,
@@ -334,10 +333,10 @@ def _parse_transfer_schedule_form(form, user_account_ids):
             except ValueError:
                 errors.append('Next date must be a valid date')
 
-    fields = dict(amount=amount, description=description,
-                  from_account=from_account, to_account=to_account,
-                  frequency=frequency, anchor_day=anchor_day,
-                  second_day=second_day, next_due=next_due)
+    fields = {'amount': amount, 'description': description,
+              'from_account': from_account, 'to_account': to_account,
+              'frequency': frequency, 'anchor_day': anchor_day,
+              'second_day': second_day, 'next_due': next_due}
     return errors, fields
 
 

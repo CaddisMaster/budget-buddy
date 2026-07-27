@@ -21,18 +21,20 @@ import json
 import logging
 from datetime import date, datetime
 
-from flask import Blueprint, render_template, request, make_response
-from flask_login import login_required, current_user
+from flask import Blueprint, make_response, render_template, request
+from flask_login import current_user, login_required
 
 from app import limiter
-from app.ai import answer_question, ParseError
+from app.ai import ParseError, answer_question
+from app.blueprints.accounts import (
+    ACCOUNT_ROW_SQL,
+    credit_utilization,
+    monthly_interest,
+)
+from app.blueprints.budgets import compute_budget_vs_actual
+from app.blueprints.insights import category_spending, compute_month_facts
 from app.db import db_cursor
 from app.helpers import hx_toast
-from app.blueprints.insights import compute_month_facts, category_spending
-from app.blueprints.budgets import compute_budget_vs_actual
-from app.blueprints.accounts import (
-    ACCOUNT_ROW_SQL, credit_utilization, monthly_interest,
-)
 
 bp = Blueprint('ask', __name__)
 
@@ -63,7 +65,9 @@ def _parse_month(args):
     try:
         d = datetime.strptime(raw, '%Y-%m').date()
     except (TypeError, ValueError):
-        raise _ToolError(f"month must be 'YYYY-MM', got {raw!r}")
+        # `from None` — a malformed argument is an expected outcome here, not a
+        # bug in the handler, so the strptime traceback would be noise.
+        raise _ToolError(f"month must be 'YYYY-MM', got {raw!r}") from None
     return d.year, d.month
 
 
@@ -73,7 +77,7 @@ def _parse_date(args, key):
     try:
         return datetime.strptime(raw, '%Y-%m-%d').date()
     except (TypeError, ValueError):
-        raise _ToolError(f"{key} must be 'YYYY-MM-DD', got {raw!r}")
+        raise _ToolError(f"{key} must be 'YYYY-MM-DD', got {raw!r}") from None
 
 
 def _clamp_limit(args, default=10):

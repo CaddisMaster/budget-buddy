@@ -312,6 +312,13 @@ A `sweeper` worker agent (Sonnet, tools: Read/Grep/Glob/Edit only) is defined in
   the maintainer's machine (Mac-side launchd job, not in the repo — see `CLAUDE.local.md`).
   Rationale: the DB is the only irreplaceable thing (source in git, images in the registry, certs
   re-issue).
+- 📕 **`RUNBOOK.md` (committed) is the operational source of truth** — topology, the full Nginx
+  config, TLS/certbot, prod compose, backup + **restore** procedure, and a rebuild-from-nothing
+  checklist. Read it before touching anything on the server. It also records two known issues:
+  `https://www.seandesmet.com` fails TLS (server block claims `www` but presents a cert lineage
+  that doesn't cover it), and the nightly configs backup misses the `status.seandesmet.com` site
+  file. **The Droplet also hosts Mealie + Uptime Kuma** — anything restarting Docker or rewriting
+  Nginx affects them too.
 
 ## Maintainer notes (local only)
 

@@ -4,6 +4,7 @@ from contextlib import contextmanager
 import psycopg2
 from psycopg2.extras import NamedTupleCursor
 
+
 def get_db_connection():
     conn = psycopg2.connect(
         host=os.getenv('DB_HOST'),

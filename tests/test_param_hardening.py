@@ -22,11 +22,20 @@ import pytest
 import app.ai as ai
 from app.ai import ParseError
 from app.helpers import (
-    GENERIC_ERROR, parse_int_param, parse_month_param, parse_page_param,
+    GENERIC_ERROR,
+    parse_int_param,
+    parse_month_param,
+    parse_page_param,
 )
 from tests.conftest import (
-    PASSWORD, TEST_PREFIX, _create_user, _delete_user, _login,
-    count_transfer_schedules, create_category, fetch_budget_by_category,
+    PASSWORD,
+    TEST_PREFIX,
+    _create_user,
+    _delete_user,
+    _login,
+    count_transfer_schedules,
+    create_category,
+    fetch_budget_by_category,
     fetch_transaction,
 )
 
@@ -243,7 +252,8 @@ def test_admin_create_user_rejects_over_72_byte_password(admin_client):
     cur = conn.cursor()
     cur.execute("SELECT 1 FROM users WHERE username = %s", (LONGPW_USER,))
     created = cur.fetchone()
-    cur.close(); conn.close()
+    cur.close()
+    conn.close()
     assert created is None
 
 

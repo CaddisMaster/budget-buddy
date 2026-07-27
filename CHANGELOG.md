@@ -12,11 +12,30 @@ this project uses the `0.x` versioning scheme described in
 
 - Repository reboot: fresh history, `.env.example`, tracked
   `docker-compose.override.yml`, MIT license, and contributor documentation
-  (`README.md`, `CONTRIBUTING.md`, `VERSIONING.md`, this file).
+  (`README.md`, `CONTRIBUTING.md`, `VERSIONING.md`, `RUNBOOK.md`, this file).
 - The Docker image runs as an unprivileged user (`appuser`, uid 10001) instead
   of root.
+- `RUNBOOK.md` — production topology, Nginx configuration, TLS, backup and
+  restore procedures, and a rebuild-from-nothing checklist. None of this
+  previously existed outside the server itself.
+- Ruff linting, configured in `pyproject.toml` and enforced in CI.
+- CI now builds the Docker image, asserts the container runs as `appuser`, and
+  boots it to confirm gunicorn serves a request. Previously CI installed
+  dependencies on the runner and never built the Dockerfile at all.
+
+### Changed
+
+- CI runs on `main` and pull requests only, with a concurrency group, so a
+  branch push and its pull request no longer trigger duplicate runs.
+- Workflows declare least-privilege `permissions`.
 
 ### Fixed
+
+- `https://www.seandesmet.com` failed the TLS handshake. Certbot had
+  accumulated four certificate lineages for two names; the landing page's
+  server block claimed `www` while presenting a certificate that did not cover
+  it. Repointed at the lineage covering both names and deleted the orphan.
+  (Server-side configuration change, recorded here for the history.)
 
 - `./test.sh` invoked bare `pytest`, which is not on `PATH` under the non-root
   image — pip installs console scripts to `~/.local/bin`. Now invoked as
