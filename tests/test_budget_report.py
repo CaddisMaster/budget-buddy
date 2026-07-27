@@ -9,13 +9,19 @@ client doubles as the hidden-section case.
 """
 from datetime import date
 
+from conftest import (
+    create_budget,
+    create_category,
+    create_transaction,
+    create_transfer,
+)
+
 from app.blueprints.budgets import (
-    _report_months, build_budget_report, load_budget_report,
+    _report_months,
+    build_budget_report,
+    load_budget_report,
 )
 from app.helpers import recent_months
-from conftest import (
-    create_budget, create_category, create_transaction, create_transfer,
-)
 
 MONTHS = ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06']
 
@@ -84,7 +90,7 @@ def test_streak_over_and_full_window():
     report = build_budget_report(
         MONTHS,
         _spend(1, 'Dining', {'2026-05': 150.0, '2026-06': 160.0}) +
-        _spend(2, 'Rent', {m: 999.0 for m in MONTHS}),
+        _spend(2, 'Rent', dict.fromkeys(MONTHS, 999.0)),
         {1: 100, 2: 500})
     # Dining: four zero-hit months then two misses -> 2 mo over.
     assert _row(report, 'Dining')["streak"] == {"kind": "over", "length": 2}

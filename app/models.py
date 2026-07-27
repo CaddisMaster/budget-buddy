@@ -1,5 +1,7 @@
 from flask_login import UserMixin
+
 from app.db import db_cursor
+
 
 class User(UserMixin):
     def __init__(self, id, username, password_hash, is_admin):

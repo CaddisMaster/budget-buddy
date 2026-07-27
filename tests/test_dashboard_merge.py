@@ -11,7 +11,6 @@ from datetime import date
 
 from tests.conftest import create_category, create_transaction
 
-
 # --- the redirect -------------------------------------------------------------
 
 def test_analytics_redirects_home(client_a):

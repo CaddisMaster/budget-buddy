@@ -12,7 +12,7 @@ is exercised by compute_goal_coach_facts() running directly against seeded goals
 from datetime import date
 
 import app.ai as ai
-from app.ai import _Coach, ParseError
+from app.ai import ParseError, _Coach
 from app.blueprints.goals import compute_goal_coach_facts
 from app.db import db_cursor
 from tests.conftest import (

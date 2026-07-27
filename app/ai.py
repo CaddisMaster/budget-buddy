@@ -11,7 +11,6 @@ import json
 import math
 import os
 from datetime import date, datetime
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -32,8 +31,8 @@ class _ParsedTransaction(BaseModel):
     transaction_type: str            # "expense" | "income"
     amount: float
     description: str
-    category: Optional[str]          # one of the user's category names, or null
-    account: Optional[str]           # one of the user's account names, or null
+    category: str | None          # one of the user's category names, or null
+    account: str | None           # one of the user's account names, or null
     transaction_date: str            # YYYY-MM-DD
 
 
@@ -468,7 +467,7 @@ class _Suggestion(BaseModel):
     """One proposed categorization. Treated as untrusted — re-resolved and
     re-validated in _normalize_suggestions()."""
     id: int                       # the transaction id we asked about
-    category: Optional[str]       # one of the user's category names, or null
+    category: str | None       # one of the user's category names, or null
     confidence: str               # "high" | "medium" | "low"
 
 

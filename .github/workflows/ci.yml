@@ -2,10 +2,37 @@ name: CI
 
 on:
   push:
+    # Only branches that matter. Without this, a Dependabot branch push and its
+    # pull_request event both trigger a run — the same commits tested twice.
+    branches: [main]
   pull_request:
+    branches: [main]
+
+# Least privilege by default. This workflow only ever reads the repository;
+# anything needing more asks for it explicitly at the job level.
+permissions:
+  contents: read
+
+# A new push to the same branch cancels the run it supersedes. Pushes to main
+# are never cancelled — those runs gate the deployable state.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Ruff
+        uses: astral-sh/ruff-action@v3
+        with:
+          args: check --output-format github
+
   test:
+    name: Tests
     runs-on: ubuntu-latest
 
     services:
@@ -31,13 +58,17 @@ jobs:
       DB_USER: budget
       DB_PASSWORD: budget
       SECRET_KEY: ci-secret-key
+      # ENABLE_DIGEST_SCHEDULER and COOKIE_SECURE are deliberately unset. The
+      # first would start the mail scheduler; the second sets Secure-only
+      # cookies, which the test client — plain http — would never send back.
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
+          cache: pip
 
       - name: Install dependencies
         run: |
@@ -49,3 +80,75 @@ jobs:
 
       - name: Run tests
         run: pytest -q
+
+  docker-build:
+    name: Image builds and runs as non-root
+    runs-on: ubuntu-latest
+    # Nothing here needs the registry — this job proves the image is sound, it
+    # does not publish it. Pushing happens in the release workflow.
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: budget-buddy:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The reason this job exists. Until now CI installed dependencies on the
+      # runner and ran pytest against them — it never built the Dockerfile at
+      # all. A broken Dockerfile, or a regression in the non-root user change,
+      # would have sailed through completely untested.
+      - name: Container runs as the unprivileged appuser
+        run: |
+          actual=$(docker run --rm budget-buddy:ci whoami)
+          echo "container user: $actual"
+          if [ "$actual" != "appuser" ]; then
+            echo "::error::Image runs as '$actual', expected 'appuser'."
+            exit 1
+          fi
+
+      - name: Gunicorn boots and serves a request
+        run: |
+          docker network create ci-net
+          docker run -d --name ci-db --network ci-net \
+            -e POSTGRES_USER=budget -e POSTGRES_PASSWORD=budget -e POSTGRES_DB=budget \
+            postgres:16
+          # Give Postgres a moment; the app only needs it once a request touches
+          # the database, but a clean boot is what we are asserting here.
+          for i in $(seq 1 30); do
+            docker exec ci-db pg_isready -U budget >/dev/null 2>&1 && break
+            sleep 2
+          done
+          docker exec -i ci-db psql -U budget -d budget < sql/schema.sql
+
+          docker run -d --name ci-web --network ci-net -p 5001:5000 \
+            -e DB_HOST=ci-db -e DB_PORT=5432 -e DB_NAME=budget \
+            -e DB_USER=budget -e DB_PASSWORD=budget \
+            -e SECRET_KEY=ci-secret-key \
+            budget-buddy:ci
+
+          # The login page is unauthenticated, so a 200 proves the whole stack
+          # came up: gunicorn, the app factory, and the template layer.
+          ok=""
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:5001/login || true)
+            if [ "$code" = "200" ]; then ok=1; break; fi
+            sleep 2
+          done
+          if [ -z "$ok" ]; then
+            echo "::error::App did not serve /login. Container logs:"
+            docker logs ci-web
+            exit 1
+          fi
+          echo "GET /login -> 200"
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs ci-web || true

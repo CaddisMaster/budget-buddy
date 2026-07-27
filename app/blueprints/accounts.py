@@ -1,15 +1,11 @@
 from datetime import date
 
 import psycopg2
-from flask import (
-    Blueprint, render_template, request, redirect, url_for, flash, abort,
-    make_response, current_app
-)
-from flask_login import login_required, current_user
+from flask import Blueprint, abort, current_app, flash, make_response, redirect, render_template, request, url_for
+from flask_login import current_user, login_required
+
 from app.db import db_cursor
-from app.helpers import (
-    is_htmx, hx_toast, parse_signed_amount, parse_positive_amount, GENERIC_ERROR
-)
+from app.helpers import GENERIC_ERROR, hx_toast, is_htmx, parse_positive_amount, parse_signed_amount
 
 bp = Blueprint('accounts', __name__)
 

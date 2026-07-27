@@ -5,21 +5,21 @@ transaction on each due date (going forward, no back-fill) and advances next_due
 Inline-CRUD shape mirrors blueprints/accounts.py (ownership guard → 404, db_cursor,
 hx_toast fragments). Date math is reused from blueprints/transactions.py."""
 from datetime import date, datetime
-from dateutil.relativedelta import relativedelta
+
 import psycopg2
-from flask import (
-    Blueprint, render_template, request, redirect, url_for, flash, abort,
-    make_response, current_app
-)
-from flask_login import login_required, current_user
-from app.db import db_cursor
-from app.helpers import (
-    is_htmx, hx_toast, parse_positive_amount, parse_int_param, GENERIC_ERROR
-)
+from dateutil.relativedelta import relativedelta
+from flask import Blueprint, abort, current_app, flash, make_response, redirect, render_template, request, url_for
+from flask_login import current_user, login_required
+
 from app.blueprints.transactions import (
-    compute_next_due, _clamp_to_month, VALID_FREQUENCIES, FREQUENCY_LABELS,
+    FREQUENCY_LABELS,
+    VALID_FREQUENCIES,
+    _clamp_to_month,
+    compute_next_due,
     validate_category_account,
 )
+from app.db import db_cursor
+from app.helpers import GENERIC_ERROR, hx_toast, is_htmx, parse_int_param, parse_positive_amount
 
 bp = Blueprint('schedules', __name__)
 
@@ -146,10 +146,10 @@ def _parse_form(form):
             except ValueError:
                 errors.append('Next date must be a valid date')
 
-    fields = dict(amount=amount, description=description, category_id=category_id,
-                  account_id=account_id, transaction_type=transaction_type,
-                  frequency=frequency, anchor_day=anchor_day, second_day=second_day,
-                  next_due=next_due)
+    fields = {'amount': amount, 'description': description, 'category_id': category_id,
+              'account_id': account_id, 'transaction_type': transaction_type,
+              'frequency': frequency, 'anchor_day': anchor_day, 'second_day': second_day,
+              'next_due': next_due}
     return errors, fields
 
 

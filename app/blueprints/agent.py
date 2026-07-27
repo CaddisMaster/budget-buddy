@@ -20,14 +20,14 @@ ParseError the callers handle (an error toast, or a digest without the section
 import json
 from datetime import date
 
-from flask import Blueprint, render_template, make_response
-from flask_login import login_required, current_user
+from flask import Blueprint, make_response, render_template
+from flask_login import current_user, login_required
 
 from app import limiter
-from app.ai import investigate_finances, ParseError, AGENT_MODEL
+from app.ai import AGENT_MODEL, ParseError, investigate_finances
+from app.blueprints.ask import TOOL_SPECS, dispatch
 from app.db import db_cursor
 from app.helpers import hx_toast, most_recent_sunday
-from app.blueprints.ask import TOOL_SPECS, dispatch
 
 bp = Blueprint('agent', __name__)
 

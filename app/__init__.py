@@ -1,12 +1,12 @@
 import hashlib
 import os
-import hmac
-from flask import Flask, redirect, url_for
+
 from dotenv import load_dotenv
+from flask import Flask
+from flask_bcrypt import Bcrypt
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_login import LoginManager
-from flask_bcrypt import Bcrypt
 from flask_wtf.csrf import CSRFProtect
 
 load_dotenv()
@@ -88,13 +88,28 @@ bcrypt = Bcrypt(app)
 
 from app.models import User
 
+
 @login_manager.user_loader
 def load_user(user_id):
   return User.get_by_id(int(user_id))
 
 from app.blueprints import (
-  auth, main, transactions, categories, accounts, budgets, analytics, admin,
-  transfers, goals, schedules, insights, forecasts, ask, digests, agent
+    accounts,
+    admin,
+    agent,
+    analytics,
+    ask,
+    auth,
+    budgets,
+    categories,
+    digests,
+    forecasts,
+    goals,
+    insights,
+    main,
+    schedules,
+    transactions,
+    transfers,
 )
 
 app.register_blueprint(auth.bp)
@@ -127,6 +142,7 @@ from app.mailer import mail_enabled
 
 if os.getenv('ENABLE_DIGEST_SCHEDULER') == '1' and mail_enabled():
     from apscheduler.schedulers.background import BackgroundScheduler
+
     from app.blueprints.digests import send_weekly_digests
 
     _scheduler = BackgroundScheduler(timezone='America/New_York', daemon=True)

@@ -16,15 +16,15 @@ import pytest
 from dateutil.relativedelta import relativedelta
 
 import app.ai as ai
-from app.ai import _Forecast, ParseError
+from app.ai import ParseError, _Forecast
 from app.blueprints.forecasts import compute_forecast, project_expenses
 from tests.conftest import (
     create_account,
     create_budget,
     create_category,
+    create_forecast,
     create_schedule,
     create_transaction,
-    create_forecast,
     fetch_forecast,
 )
 
