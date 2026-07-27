@@ -165,7 +165,10 @@ jobs:
           SSH_KEY: ${{ secrets.DROPLET_SSH_KEY }}
           KNOWN_HOSTS: ${{ secrets.DROPLET_KNOWN_HOSTS }}
           HOST: ${{ secrets.DROPLET_HOST }}
-          USER_NAME: ${{ secrets.DROPLET_USER }}
+          # A variable, not a secret: the username is not sensitive, and as a
+          # secret Actions redacted the literal string "deploy" throughout the
+          # logs — including inside ordinary words ("Verify the ***ed app").
+          USER_NAME: ${{ vars.DROPLET_USER }}
           VERSION: ${{ needs.build-push.outputs.version }}
         run: |
           install -d -m 700 ~/.ssh
@@ -176,10 +179,14 @@ jobs:
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
+          # `pull web`, never a bare `pull`: a bare pull also fetches postgres,
+          # and `up -d` then recreates the database container. Shipping app code
+          # must never upgrade or restart the database engine as a side effect —
+          # that is a deliberate action taken after a pg_dump.
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
               "${USER_NAME}@${HOST}" \
               "cd /opt/budget-buddy \
-               && TAG='${VERSION}' docker compose pull \
+               && TAG='${VERSION}' docker compose pull web \
                && TAG='${VERSION}' docker compose up -d \
                && docker compose ps"
 

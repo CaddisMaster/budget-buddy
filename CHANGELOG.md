@@ -41,6 +41,11 @@ this project uses the `0.x` versioning scheme described in
 - A rollback workflow (`.github/workflows/rollback.yml`) — dispatch a version
   and the Droplet is brought back up on that exact immutable tag, after
   confirming the image actually exists in the registry.
+- Deploys pull only the `web` service. A bare `docker compose pull` also
+  fetched `postgres:16`, and `up -d` then recreated the database container —
+  so shipping application code could upgrade and restart the database engine
+  as a side effect. A database upgrade is a deliberate action taken after a
+  dump, not a consequence of a release.
 
 ### Changed
 

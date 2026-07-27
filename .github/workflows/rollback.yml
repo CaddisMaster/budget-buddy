@@ -51,7 +51,7 @@ jobs:
           SSH_KEY: ${{ secrets.DROPLET_SSH_KEY }}
           KNOWN_HOSTS: ${{ secrets.DROPLET_KNOWN_HOSTS }}
           HOST: ${{ secrets.DROPLET_HOST }}
-          USER_NAME: ${{ secrets.DROPLET_USER }}
+          USER_NAME: ${{ vars.DROPLET_USER }}
           VERSION: ${{ inputs.version }}
         run: |
           install -d -m 700 ~/.ssh
@@ -60,10 +60,12 @@ jobs:
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
+          # `pull web` only — a rollback must not drag the database engine along
+          # with it. See release.yml.
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
               "${USER_NAME}@${HOST}" \
               "cd /opt/budget-buddy \
-               && TAG='${VERSION}' docker compose pull \
+               && TAG='${VERSION}' docker compose pull web \
                && TAG='${VERSION}' docker compose up -d \
                && docker compose ps"
 
