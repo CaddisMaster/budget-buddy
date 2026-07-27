@@ -19,6 +19,9 @@ this project uses the `0.x` versioning scheme described in
   restore procedures, and a rebuild-from-nothing checklist. None of this
   previously existed outside the server itself.
 - Ruff linting, configured in `pyproject.toml` and enforced in CI.
+- Pre-commit hooks (`.pre-commit-config.yaml`) — ruff plus hygiene checks,
+  including `detect-private-key`. Local convenience; CI remains the
+  enforcement point.
 - CI now builds the Docker image, asserts the container runs as `appuser`, and
   boots it to confirm gunicorn serves a request. Previously CI installed
   dependencies on the runner and never built the Dockerfile at all.

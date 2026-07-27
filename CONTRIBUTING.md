@@ -63,6 +63,22 @@ docker compose exec db psql -U admin -d budget -c \
 
 Further users can then be created in the UI under Settings → Manage users.
 
+### Install the pre-commit hooks
+
+```bash
+pip install pre-commit && pre-commit install
+```
+
+Runs `ruff` plus hygiene checks — trailing whitespace, missing final newlines,
+merge-conflict markers, oversized files, and **private keys** — before each
+commit.
+
+These are **convenience, not a guarantee.** They run on your machine and any
+commit can skip them with `--no-verify`. CI is what actually enforces. The
+reason to install them anyway is speed (a lint error in two seconds rather than
+two minutes) and the private-key check, which catches a credential *before* it
+enters git history — after which removing it means rewriting history.
+
 ### Run the tests
 
 ```bash

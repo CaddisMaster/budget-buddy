@@ -2,7 +2,7 @@
 -- Budget Buddy — Complete Database Schema
 -- Run this single file on a fresh database to set up everything
 -- ============================================================
- 
+
 -- ------------------------------------------------------------
 -- Users (must exist before tables that reference it)
 -- ------------------------------------------------------------
