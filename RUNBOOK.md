@@ -273,6 +273,65 @@ docker compose up -d --force-recreate web
 There are also two dead variables, `APP_USERNAME` and `APP_PASSWORD`, read by no
 code. Safe to remove.
 
+### The least-privilege application role
+
+`DB_USER` is the database **owner** — compose creates the cluster with it, so it
+is a superuser. An application connected as that role means any SQL injection or
+code execution inherits superuser: drop any table, read every database on the
+cluster, create roles, or run shell commands via `COPY ... FROM PROGRAM`.
+
+`sql/30_app_role.sql` creates a `budget_app` role holding `SELECT`, `INSERT`,
+`UPDATE`, `DELETE` and nothing else. The application connects as it via
+`DB_APP_USER` / `DB_APP_PASSWORD`; **`DB_USER` stays exactly as it is**, because
+migrations and `pg_dump` still need the owner.
+
+Rolling it out on an existing deployment:
+
+```bash
+cd ~/budget-buddy
+
+# 1. Back up first — always, before anything touching the database.
+docker compose exec -T db pg_dump -U "$DB_USER" "$DB_NAME" | gzip \
+  > "backups/pre-app-role-$(date +%Y%m%d-%H%M).sql.gz"
+
+# 2. Create the role and its grants.
+docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 \
+  < sql/30_app_role.sql
+
+# 3. Give it a password. The migration deliberately sets none — the repository
+#    is public, and the role cannot log in until you do this.
+docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" \
+  -c "ALTER ROLE budget_app PASSWORD 'generate-a-strong-one';"
+
+# 4. Point the app at it, then restart only the web container.
+#    Nothing has changed for the app until this step, so you can pause here.
+echo 'DB_APP_USER=budget_app'            >> .env
+echo 'DB_APP_PASSWORD=the-same-password' >> .env
+docker compose up -d --force-recreate web
+
+# 5. Verify.
+curl -s localhost:5001/healthz     # {"database":"ok","status":"ok"}
+```
+
+The migration is idempotent and safe to re-run.
+
+**Rollback** is removing the two `DB_APP_*` lines from `.env` and recreating the
+web container — the application falls back to `DB_USER`. The role can be left in
+place; it does nothing while unused.
+
+Verified against a real database — `budget_app` is refused every one of these:
+
+| Attempt | Result |
+|---|---|
+| `DROP TABLE transactions` | `must be owner of table transactions` |
+| `CREATE TABLE evil (x int)` | `permission denied for schema public` |
+| `TRUNCATE transactions` | `permission denied for table transactions` |
+| `COPY (SELECT 1) TO PROGRAM 'id'` | `permission denied to COPY to or from an external program` |
+| `CREATE ROLE eviluser SUPERUSER` | `permission denied to create role` |
+
+while ordinary `SELECT`/`INSERT`/`UPDATE`/`DELETE` and sequence access all work,
+and the full test suite passes connected as the role.
+
 ---
 
 ## 6. Deploying

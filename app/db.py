@@ -6,12 +6,23 @@ from psycopg2.extras import NamedTupleCursor
 
 
 def get_db_connection():
+    """Connect as the least-privileged role available.
+
+    DB_APP_USER is the `budget_app` role: DML only, no DDL, not a superuser
+    (sql/30_app_role.sql). It falls back to DB_USER — which compose also uses
+    as POSTGRES_USER, i.e. the superuser — so an environment that has not been
+    migrated yet keeps working exactly as before. The fallback is what makes
+    adopting the role a deliberate change to .env rather than a breaking one.
+
+    pg_dump in /admin/backup deliberately keeps using DB_USER: a dump taken by
+    a non-owner is not reliably complete.
+    """
     conn = psycopg2.connect(
         host=os.getenv('DB_HOST'),
         port=os.getenv('DB_PORT'),
         dbname=os.getenv('DB_NAME'),
-        user=os.getenv('DB_USER'),
-        password=os.getenv('DB_PASSWORD')
+        user=os.getenv('DB_APP_USER') or os.getenv('DB_USER'),
+        password=os.getenv('DB_APP_PASSWORD') or os.getenv('DB_PASSWORD')
     )
     return conn
 
