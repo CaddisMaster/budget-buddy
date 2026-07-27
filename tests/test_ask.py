@@ -11,10 +11,11 @@ import json
 from datetime import date
 from types import SimpleNamespace
 
-import app.ai as ai
-from app.ai import answer_question, ParseError
-import app.blueprints.ask as ask
 from conftest import create_category, create_transaction
+
+import app.ai as ai
+import app.blueprints.ask as ask
+from app.ai import ParseError, answer_question
 
 HX = {"HX-Request": "true"}
 
@@ -161,7 +162,7 @@ def test_answer_question_turn_cap_raises(monkeypatch):
     try:
         answer_question("loop forever", [], lambda n, r: ("{}", False),
                         today=date(2026, 6, 26))
-        assert False, "expected ParseError"
+        raise AssertionError("expected ParseError")
     except ParseError:
         pass
 
@@ -170,7 +171,7 @@ def test_answer_question_no_key_raises(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     try:
         answer_question("x", [], lambda n, r: ("", False))
-        assert False, "expected ParseError"
+        raise AssertionError("expected ParseError")
     except ParseError:
         pass
 

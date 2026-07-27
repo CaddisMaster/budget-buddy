@@ -1,7 +1,8 @@
 import re
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session
-from flask_login import login_user, logout_user, login_required, current_user
+from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from flask_login import current_user, login_required, login_user, logout_user
+
 from app import bcrypt, limiter
 from app.db import db_cursor
 from app.mailer import mail_enabled

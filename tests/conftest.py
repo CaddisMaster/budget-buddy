@@ -13,7 +13,8 @@ import time
 import psycopg2
 import pytest
 
-from app import app as flask_app, bcrypt, limiter
+from app import app as flask_app
+from app import bcrypt, limiter
 from app.db import get_db_connection
 
 # Prefix keeps test rows obvious and easy to sweep if a run aborts mid-way.

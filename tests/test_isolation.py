@@ -10,7 +10,6 @@ silent redirect with a misleading "success" flash), so these assert both the
 from app.db import get_db_connection
 from tests.conftest import (
     create_budget,
-    create_category,
     fetch_account,
     fetch_budget,
     fetch_budget_by_category,

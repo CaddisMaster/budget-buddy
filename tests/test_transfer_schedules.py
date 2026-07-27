@@ -8,14 +8,13 @@ CSRF + rate limiter are disabled under test.
 import threading
 from datetime import date, timedelta
 
-from app.db import get_db_connection
 from app.blueprints.transfers import run_due_transfers
+from app.db import get_db_connection
 from tests.conftest import (
+    count_transfer_schedules,
     create_account,
     create_transfer_schedule,
     fetch_transfer_schedule,
-    count_transfer_schedules,
-    count_transactions_like,
 )
 
 HX = {"HX-Request": "true"}
@@ -39,7 +38,8 @@ def _transfer_legs(user_id, description):
         (user_id, description),
     )
     rows = cur.fetchall()
-    cur.close(); conn.close()
+    cur.close()
+    conn.close()
     return rows
 
 
@@ -185,7 +185,8 @@ def _only_id(user_id):
     cur = conn.cursor()
     cur.execute("SELECT id FROM transfer_schedules WHERE user_id = %s", (user_id,))
     row = cur.fetchone()
-    cur.close(); conn.close()
+    cur.close()
+    conn.close()
     return row[0]
 
 

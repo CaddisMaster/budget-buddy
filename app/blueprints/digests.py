@@ -20,12 +20,12 @@ import click
 from flask import Blueprint, render_template
 from flask.cli import with_appcontext
 
-from app.db import db_cursor
-from app.ai import generate_digest, ParseError
 from app import mailer
-from app.helpers import most_recent_sunday
-from app.blueprints.insights import compute_month_facts
+from app.ai import ParseError, generate_digest
 from app.blueprints.agent import load_agent_run, run_money_agent
+from app.blueprints.insights import compute_month_facts
+from app.db import db_cursor
+from app.helpers import most_recent_sunday
 
 bp = Blueprint('digests', __name__)
 

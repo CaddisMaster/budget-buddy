@@ -17,15 +17,15 @@ a broken page) when the key/model is unavailable.
 import json
 from datetime import datetime
 
-from flask import Blueprint, render_template, request, make_response
-from flask_login import login_required, current_user
+from flask import Blueprint, make_response, render_template, request
+from flask_login import current_user, login_required
 
 from app import limiter
-from app.ai import generate_insight, ParseError, MODEL
+from app.ai import MODEL, ParseError, generate_insight
+from app.blueprints.accounts import credit_card_utilization_facts
+from app.blueprints.budgets import compute_budget_vs_actual
 from app.db import db_cursor
 from app.helpers import hx_toast
-from app.blueprints.budgets import compute_budget_vs_actual
-from app.blueprints.accounts import credit_card_utilization_facts
 
 bp = Blueprint('insights', __name__)
 

@@ -19,15 +19,15 @@ import calendar
 import json
 from datetime import date, datetime
 
-from flask import Blueprint, render_template, request, make_response
-from flask_login import login_required, current_user
+from flask import Blueprint, make_response, render_template, request
+from flask_login import current_user, login_required
 
 from app import limiter
-from app.ai import generate_forecast, ParseError, MODEL
+from app.ai import MODEL, ParseError, generate_forecast
+from app.blueprints.budgets import compute_budget_vs_actual
+from app.blueprints.transactions import compute_next_due
 from app.db import db_cursor
 from app.helpers import hx_toast
-from app.blueprints.transactions import compute_next_due
-from app.blueprints.budgets import compute_budget_vs_actual
 
 bp = Blueprint('forecasts', __name__)
 

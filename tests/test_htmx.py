@@ -8,7 +8,6 @@ new routes keep the same per-user isolation as the pages they replaced.
 """
 from datetime import date, timedelta
 
-from app.db import get_db_connection
 from tests.conftest import (
     USER_A,
     count_transactions_like,

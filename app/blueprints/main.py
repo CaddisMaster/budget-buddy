@@ -1,14 +1,16 @@
 from datetime import datetime
+
 from flask import Blueprint, current_app, redirect, render_template, request, url_for
-from flask_login import login_required, current_user
+from flask_login import current_user, login_required
+
+from app.blueprints.agent import load_agent_run
+from app.blueprints.budgets import compute_budget_vs_actual
+from app.blueprints.forecasts import compute_forecast, load_forecast
+from app.blueprints.goals import build_goals_view
+from app.blueprints.insights import _prev_month, compute_month_facts, load_insight
+from app.blueprints.transactions import compute_next_due
 from app.db import db_cursor
 from app.helpers import ai_enabled, parse_month_param, recent_months
-from app.blueprints.goals import build_goals_view
-from app.blueprints.budgets import compute_budget_vs_actual
-from app.blueprints.insights import load_insight, compute_month_facts, _prev_month
-from app.blueprints.forecasts import load_forecast, compute_forecast
-from app.blueprints.agent import load_agent_run
-from app.blueprints.transactions import compute_next_due
 
 bp = Blueprint('main', __name__)
 

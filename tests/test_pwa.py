@@ -50,7 +50,7 @@ def test_sw_registration_in_base(client_a):
 def test_login_sets_remember_cookie(anon_client, users):
     # v10.13: login_user(remember=True) — an installed PWA shouldn't re-prompt
     # login every launch. The cookie flags live in __init__.py.
-    from tests.conftest import USER_A, PASSWORD
+    from tests.conftest import PASSWORD, USER_A
     response = anon_client.post(
         "/login",
         data={"username": USER_A, "password": PASSWORD},

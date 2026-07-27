@@ -16,16 +16,20 @@ import pytest
 
 import app.ai as ai
 import app.mailer as mailer
-from app.ai import _Digest, ParseError
-from app.mailer import MailError
+from app.ai import ParseError, _Digest
 from app.blueprints.digests import (
-    compute_digest_facts, _upcoming_scheduled, _recipients,
+    _recipients,
+    _upcoming_scheduled,
+    compute_digest_facts,
     send_weekly_digests,
 )
-from app.helpers import most_recent_sunday as _most_recent_sunday
 from app.db import get_db_connection
+from app.helpers import most_recent_sunday as _most_recent_sunday
+from app.mailer import MailError
 from tests.conftest import (
-    create_account, create_category, create_transaction, create_schedule,
+    create_account,
+    create_category,
+    create_schedule,
     create_transfer_schedule,
 )
 

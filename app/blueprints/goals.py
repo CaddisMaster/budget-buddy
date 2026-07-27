@@ -2,19 +2,16 @@ import json
 import math
 from collections import namedtuple
 from datetime import date, datetime
-from dateutil.relativedelta import relativedelta
+
 import psycopg2
-from flask import (
-    Blueprint, render_template, request, redirect, url_for, flash, abort,
-    make_response, current_app
-)
-from flask_login import login_required, current_user
+from dateutil.relativedelta import relativedelta
+from flask import Blueprint, abort, current_app, flash, make_response, redirect, render_template, request, url_for
+from flask_login import current_user, login_required
+
 from app import limiter
-from app.ai import generate_goal_coach, ParseError, MODEL
+from app.ai import MODEL, ParseError, generate_goal_coach
 from app.db import db_cursor
-from app.helpers import (
-    is_htmx, hx_toast, ai_enabled, parse_positive_amount, GENERIC_ERROR
-)
+from app.helpers import GENERIC_ERROR, ai_enabled, hx_toast, is_htmx, parse_positive_amount
 
 bp = Blueprint('goals', __name__)
 

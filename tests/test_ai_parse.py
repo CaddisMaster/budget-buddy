@@ -10,7 +10,7 @@ from collections import namedtuple
 from datetime import date
 
 import app.ai as ai
-from app.ai import _ParsedTransaction, _match_id, _normalize, ParseError
+from app.ai import ParseError, _match_id, _normalize, _ParsedTransaction
 
 HX = {"HX-Request": "true"}
 
@@ -19,8 +19,8 @@ Row = namedtuple("Row", "id name")
 
 
 def _parsed(**over):
-    base = dict(transaction_type="expense", amount=42.5, description="groceries",
-                category=None, account=None, transaction_date="2026-06-20")
+    base = {"transaction_type": "expense", "amount": 42.5, "description": "groceries",
+            "category": None, "account": None, "transaction_date": "2026-06-20"}
     base.update(over)
     return _ParsedTransaction(**base)
 

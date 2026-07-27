@@ -1,0 +1,43 @@
+# Ruff configuration. Ruff is used as the linter only — see the note on the
+# formatter below. Test configuration lives in pytest.ini, deliberately left
+# where it was.
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes — unused imports and names, the rules that catch real bugs
+    "I",   # isort — import ordering
+    "UP",  # pyupgrade — modern syntax for the target version
+    "B",   # flake8-bugbear — likely-wrong constructs
+    "C4",  # flake8-comprehensions
+]
+
+ignore = [
+    # Line length is reported but not enforced. The codebase has a handful of
+    # long lines that are single SQL strings or URLs, where breaking them hurts
+    # readability more than the length does. Adopting `ruff format` would settle
+    # this properly; that decision is deliberately not bundled with the linter,
+    # because reformatting would rewrite ~6,400 lines across 64 files and make
+    # `git blame` useless for the whole application.
+    "E501",
+
+    # The date-and-time rules (DTZ) are deliberately not selected at all. This
+    # application reasons in *local calendar dates* throughout — a bill due on
+    # the 15th is due on the 15th, not at an instant in UTC — so `date.today()`
+    # is correct here, and DTZ would flag 159 intentional uses.
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Imports below the app/extension setup are structural, not sloppy: blueprints
+# and models import from `app`, so they can only be imported once `app`, the
+# login manager, and bcrypt exist. Moving them to the top creates a circular
+# import at module load.
+"app/__init__.py" = ["E402"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "tests", "scripts"]

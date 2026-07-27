@@ -11,7 +11,7 @@ is exercised by compute_month_facts() running directly against seeded data.
 from datetime import date
 
 import app.ai as ai
-from app.ai import _Insight, ParseError
+from app.ai import ParseError, _Insight
 from app.blueprints.insights import compute_month_facts
 from tests.conftest import (
     create_account,

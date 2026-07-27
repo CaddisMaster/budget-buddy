@@ -8,7 +8,6 @@ import pytest
 
 from tests.conftest import USER_A
 
-
 PROTECTED_PAGES = [
     "/",
     "/transactions",

@@ -15,7 +15,7 @@ import re
 from datetime import date
 
 import app.ai as ai
-from app.ai import _Insight, ParseError
+from app.ai import ParseError, _Insight
 from app.helpers import most_recent_sunday
 from tests.conftest import (
     create_agent_run,

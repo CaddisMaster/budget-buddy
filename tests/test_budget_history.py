@@ -8,7 +8,6 @@ no-op rules that keep the log a log of CHANGES.
 """
 from tests.conftest import create_budget, fetch_budget_history
 
-
 # --- /budgets/set -------------------------------------------------------------
 
 def test_set_records_a_change(client_a, users):
