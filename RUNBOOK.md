@@ -247,25 +247,37 @@ services:
     ports:
       - "127.0.0.1:5432:5432"
   web:
-    image: caddismaster/budget-buddy:latest
+    image: ghcr.io/caddismaster/budget-buddy:${TAG:-latest}
     restart: always
     env_file:
       - .env
     ports:
       - "127.0.0.1:5001:5000"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5000/healthz', timeout=5).status == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     depends_on:
       - db
 volumes:
   postgres_data:
 ```
 
-> ⚠️ **This is the file currently on the server, and it is deliberately one step
-> behind the repository.** The tracked `docker-compose.yml` has already moved to
-> `ghcr.io/caddismaster/budget-buddy:${TAG:-latest}` and gained a `healthcheck:`.
-> The server is still pulling the old Docker Hub image until the registry
-> cutover, which is exactly what makes a CD test deploy harmless — it ends in a
-> pull that changes nothing. At cutover, `scp` the tracked compose up and the two
-> converge. Until then the Docker Hub image is also the rollback escape hatch.
+This is **byte-identical to the repository's tracked `docker-compose.yml`** as of the
+2026-07-27 cutover, which is what makes `scp`-ing it up safe. `${TAG}` is supplied by the
+deploy job so production runs an exact released version; the `latest` fallback keeps a
+hand-run `docker compose up -d` working.
+
+> ⚠️ **Never `scp` `docker-compose.override.yml`.** It is tracked (so a fresh clone can
+> build locally) and replaces `image:` with a `build:` context — on the server, where there
+> is no source, that breaks the deploy.
+
+> **Emergency fallback to Docker Hub.** `caddismaster/budget-buddy:latest` still exists
+> (`v10.15.0` code). If ghcr were unreachable, set `image:` back to it and
+> `docker compose up -d`. Remove this note once `0.1.0` has been stable a while.
 
 `schema.sql` is mounted into the Postgres init directory, which **only runs on a
 completely empty data volume**. On an existing database it is inert. This is why

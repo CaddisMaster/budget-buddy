@@ -31,6 +31,5 @@ venv/
 *.md
 CLAUDE.md
 docker-compose*.yml
-deploy.sh
 test.sh
 landing/
