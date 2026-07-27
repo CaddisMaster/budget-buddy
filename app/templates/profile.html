@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block title %}Profile — Budget Buddy{% endblock %}
+{% block content %}
+<h1>Profile</h1>
+<div class="card">
+    <p><strong>Username:</strong> {{ current_user.username }}</p>
+    <p style="margin-top:0.5rem"><strong>Role:</strong> {{ 'Admin' if current_user.is_admin else 'User' }}</p>
+    <p style="margin-top:0.5rem"><strong>Member since:</strong> {{ created_at.strftime('%B %-d, %Y') if created_at else '—' }}</p>
+</div>
+
+<h2>Your data</h2>
+<div class="stats-grid">
+    <div class="stat-card"><div class="stat-label">Transactions</div><div class="stat-value">{{ txn_count }}</div></div>
+    <div class="stat-card"><div class="stat-label">Categories</div><div class="stat-value">{{ cat_count }}</div></div>
+    <div class="stat-card"><div class="stat-label">Accounts</div><div class="stat-value">{{ acct_count }}</div></div>
+    <div class="stat-card"><div class="stat-label">Goals</div><div class="stat-value">{{ goal_count }}</div></div>
+</div>
+
+{% if mail_enabled %}
+<h2>Weekly email digest</h2>
+<div class="card" style="max-width:480px">
+    <p style="color:var(--text-muted);font-size:14px;margin-bottom:1rem">
+        A weekly email recap — your spending vs budget, net position, and what's
+        scheduled in the week ahead. Sent Sunday evenings.
+    </p>
+    <form method="post" action="{{ url_for('auth.profile_settings') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Email address</label>
+        <input type="email" name="email" value="{{ email or '' }}" placeholder="you@example.com">
+        <label style="display:flex;align-items:center;gap:0.5rem;margin-top:1rem;cursor:pointer">
+            <input type="checkbox" name="weekly_digest" {% if weekly_digest %}checked{% endif %}
+                   style="width:auto;margin:0">
+            Email me the weekly digest
+        </label>
+        <button type="submit" class="btn btn-primary" style="margin-top:1.5rem">Save preferences</button>
+    </form>
+</div>
+{% endif %}
+
+<div style="margin-top:1.5rem">
+    <a href="{{ url_for('auth.change_password') }}" class="btn">Change password</a>
+</div>
+{% endblock %}

@@ -1,0 +1,164 @@
+from collections import namedtuple
+
+import psycopg2
+from flask import (
+    Blueprint, render_template, request, redirect, url_for, flash, abort,
+    make_response, current_app
+)
+from flask_login import login_required, current_user
+from app.db import db_cursor
+from app.helpers import is_htmx, hx_toast, GENERIC_ERROR
+
+bp = Blueprint('categories', __name__)
+
+# Hand-built rows for the edit error/re-render paths — field names mirror the
+# "SELECT id, name, description, kind" shape so templates read both identically.
+CategoryRow = namedtuple('CategoryRow', 'id name description kind')
+
+KINDS = ('expense', 'income')
+
+
+def _own_category_or_404(cursor, category_id):
+    cursor.execute(
+        "SELECT id, name, description, kind FROM categories WHERE id = %s AND user_id = %s",
+        (category_id, current_user.id),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        abort(404)
+    return row
+
+
+@bp.route('/categories', methods=['GET', 'POST'])
+@login_required
+def categories():
+    if request.method == 'POST':
+        name = request.form['name'].strip()
+        description = request.form.get('description', '').strip()
+        kind = request.form.get('kind', 'expense')
+        error = None
+        if not name:
+            error = 'Name is required'
+        elif len(name) > 50:
+            error = 'Name must be 50 characters or fewer'
+        elif kind not in KINDS:
+            error = 'Kind must be expense or income'
+        if error:
+            if is_htmx():
+                return hx_toast(make_response('', 200), error, 'error')
+            flash(error)
+            return redirect(url_for('categories.categories'))
+        try:
+            with db_cursor(commit=True) as cursor:
+                cursor.execute(
+                    "INSERT INTO categories (name, description, kind, user_id) "
+                    "VALUES (%s, %s, %s, %s) RETURNING id, name, description, kind",
+                    (name, description, kind, current_user.id),
+                )
+                cat = cursor.fetchone()
+        except psycopg2.Error:
+            current_app.logger.exception('create category failed')
+            if is_htmx():
+                return hx_toast(make_response('', 200), GENERIC_ERROR, 'error')
+            flash(GENERIC_ERROR)
+            return redirect(url_for('categories.categories'))
+        if is_htmx():
+            resp = make_response(render_template('partials/_category_row.html', cat=cat))
+            return hx_toast(resp, 'Category added')
+        flash('Category added successfully')
+        return redirect(url_for('categories.categories'))
+
+    with db_cursor() as cursor:
+        cursor.execute(
+            "SELECT id, name, description, kind FROM categories WHERE user_id = %s ORDER BY name",
+            (current_user.id,),
+        )
+        all_categories = cursor.fetchall()
+    return render_template('categories.html', categories=all_categories)
+
+
+@bp.route('/categories/<int:category_id>/edit', methods=['GET', 'POST'])
+@login_required
+def edit_category(category_id):
+    # Guard ownership up front (404 for missing/other-user) so the write path's
+    # try/except below can't accidentally swallow the abort.
+    with db_cursor() as cursor:
+        cat = _own_category_or_404(cursor, category_id)
+
+    if request.method == 'POST':
+        name = request.form['name'].strip()
+        description = request.form.get('description', '').strip()
+        kind = request.form.get('kind', 'expense')
+        error = None
+        if not name:
+            error = 'Name is required'
+        elif len(name) > 50:
+            error = 'Name must be 50 characters or fewer'
+        elif kind not in KINDS:
+            error = 'Kind must be expense or income'
+        if error:
+            return render_template('partials/_category_edit_row.html',
+                                   cat=CategoryRow(category_id, name, description, kind), error=error)
+        from app.blueprints.budgets import record_budget_change  # lazy: avoids import cycle
+        cleared_budget = False
+        try:
+            with db_cursor(commit=True) as cursor:
+                cursor.execute(
+                    "UPDATE categories SET name=%s, description=%s, kind=%s WHERE id=%s AND user_id=%s",
+                    (name, description, kind, category_id, current_user.id),
+                )
+                # Budgets are expense-only: flipping a category to income drops
+                # its saved budget (logged), else it would linger invisibly —
+                # the cockpit no longer lists the row that could clear it.
+                if kind == 'income':
+                    cursor.execute(
+                        "SELECT 1 FROM budgets WHERE category_id = %s AND user_id = %s",
+                        (category_id, current_user.id),
+                    )
+                    if cursor.fetchone():
+                        record_budget_change(cursor, current_user.id, category_id, None)
+                        cursor.execute(
+                            "DELETE FROM budgets WHERE category_id = %s AND user_id = %s",
+                            (category_id, current_user.id),
+                        )
+                        cleared_budget = True
+        except psycopg2.Error:
+            current_app.logger.exception('edit category failed')
+            return render_template('partials/_category_edit_row.html',
+                                   cat=CategoryRow(category_id, name, description, kind), error=GENERIC_ERROR)
+        resp = make_response(render_template('partials/_category_row.html',
+                                             cat=CategoryRow(category_id, name, description, kind)))
+        return hx_toast(resp, 'Category updated — its budget was cleared (income categories have no budgets)'
+                        if cleared_budget else 'Category updated')
+
+    return render_template('partials/_category_edit_row.html', cat=cat)
+
+
+@bp.route('/categories/<int:category_id>/row')
+@login_required
+def category_row(category_id):
+    with db_cursor() as cursor:
+        cat = _own_category_or_404(cursor, category_id)
+    return render_template('partials/_category_row.html', cat=cat)
+
+
+@bp.route('/categories/<int:category_id>', methods=['DELETE'])
+@login_required
+def delete_category(category_id):
+    with db_cursor() as cursor:
+        cat = _own_category_or_404(cursor, category_id)
+    try:
+        with db_cursor(commit=True) as cursor:
+            cursor.execute(
+                "DELETE FROM categories WHERE id = %s AND user_id = %s",
+                (category_id, current_user.id),
+            )
+    except psycopg2.errors.ForeignKeyViolation:
+        current_app.logger.exception('delete category failed')
+        resp = make_response(render_template('partials/_category_row.html', cat=cat))
+        return hx_toast(resp, 'Cannot delete — this category is used by existing transactions or budgets', 'error')
+    except psycopg2.Error:
+        current_app.logger.exception('delete category failed')
+        resp = make_response(render_template('partials/_category_row.html', cat=cat))
+        return hx_toast(resp, GENERIC_ERROR, 'error')
+    return hx_toast(make_response('', 200), 'Category deleted')

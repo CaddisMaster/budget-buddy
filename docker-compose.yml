@@ -1,0 +1,29 @@
+services:
+  db:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    ports:
+      # Bind Postgres to localhost only — never expose the DB to the public internet.
+      # Docker publishes ports by bypassing ufw, so "5432:5432" = world-reachable.
+      - "127.0.0.1:5432:5432"
+  web:
+    image: caddismaster/budget-buddy:latest
+    restart: always
+    env_file:
+      - .env
+    ports:
+      # Localhost only — Nginx reverse-proxies to 127.0.0.1:5001. A bare "5001:5000"
+      # publishes to 0.0.0.0 and (Docker bypasses ufw) exposes the app over plain
+      # HTTP on the public IP, bypassing HTTPS. Keep it bound to localhost.
+      - "127.0.0.1:5001:5000"
+    depends_on:
+      - db
+volumes:
+  postgres_data:

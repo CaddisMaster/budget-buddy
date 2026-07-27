@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block title %}User Management — Budget Buddy{% endblock %}
+{% block content %}
+<h1>User management</h1>
+<div style="margin-bottom:1rem">
+    <a href="{{ url_for('admin.create_user') }}" class="btn btn-primary">Create user</a>
+</div>
+<div class="table-wrapper">
+    <table>
+        <thead><tr><th>Username</th><th>Role</th><th>Created</th><th>Actions</th></tr></thead>
+        <tbody>
+        {% for u in users %}
+        {% include 'partials/_user_row.html' %}
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

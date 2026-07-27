@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}Create user — Budget Buddy{% endblock %}
+{% block content %}
+<h1>Create user</h1>
+<form method="post" style="max-width:400px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label>Username</label>
+  <input type="text" name="username" required>
+  <label>Password</label>
+  <input type="password" name="password" required>
+  <label style="display:flex;align-items:center;gap:8px;margin-top:1rem">
+    <input type="checkbox" name="is_admin" style="width:auto"> Admin
+  </label>
+  <button type="submit" class="btn btn-primary" style="margin-top:1.5rem">Create account</button>
+</form>
+{% endblock %}

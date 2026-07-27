@@ -1,0 +1,348 @@
+{% extends 'base.html' %}
+{% block title %}Home — Budget Buddy{% endblock %}
+{% block content %}
+<h1>Home</h1>
+
+{# ── What's new — ONE strip per release (released whenever Sean calls it). On the
+   first feature commit after a release ships, REPLACE the strip's contents with
+   the CURRENT release: the RELEASE VERSION in the heading + data-version, the
+   release date in the badge (set/corrected at ship), and one .whatsnew-block per
+   feature. One bundle per strip; only ever one strip here at a time. Dismiss is
+   per-device (localStorage, keyed by version) — a new version resurfaces it. #}
+<div class="card whatsnew" id="whatsnew" data-version="v10.15.0" hidden>
+  <div class="whatsnew-head">
+    <strong>What's new in v10.15.0</strong>
+    <span class="recurring-badge">2026-07-15</span>
+    <span class="whatsnew-actions">
+      <button type="button" class="btn btn-sm" id="whatsnew-toggle">Details</button>
+      <button type="button" class="btn btn-sm" id="whatsnew-dismiss" aria-label="Dismiss">✕</button>
+    </span>
+  </div>
+  <div class="whatsnew-body" hidden>
+    <div class="whatsnew-block">
+      <strong>AI cards get out of your way</strong>
+      <ul class="whatsnew-list">
+        {# "Money agent" spelled as "weekly money check" on purpose — the strip
+           renders with AI off, and tests assert the agent CARD's absence by
+           that exact string. #}
+        <li><strong>Read it once, then it folds up:</strong> Insight, Forecast, the weekly
+            money check, and Goal Coach collapse to a one-line header after you've seen
+            them — no more scrolling past paragraphs you already read.</li>
+        <li><strong>Fresh content opens itself:</strong> A new month's insight or this week's
+            agent check arrives expanded, so you never miss anything new.</li>
+        <li><strong>The header still talks:</strong> Collapsed cards show the number that
+            matters — the month's net, the projected net, or how many findings the agent
+            turned up. Tap to reopen anytime.</li>
+      </ul>
+    </div>
+    <div class="whatsnew-block">
+      <strong>See what carrying a card balance costs</strong>
+      <ul class="whatsnew-list">
+        <li><strong>Add your card's APR:</strong> edit a credit card on the Accounts
+            page and enter its interest rate — one optional field.</li>
+        <li><strong>The real monthly cost:</strong> cards carrying a balance show
+            roughly what that balance costs per month in interest, right under the
+            balance.</li>
+        <li><strong>Payoff goals got honest:</strong> the debt-free projection now
+            accounts for interest — including when interest outpaces your paydown —
+            and the monthly insight, weekly digest, and Ask can mention interest
+            cost too.</li>
+      </ul>
+    </div>
+    {# Next feature block:
+    <div class="whatsnew-block">
+      <strong>Next feature title</strong>
+      <ul class="whatsnew-list"><li>…</li></ul>
+    </div>
+    #}
+  </div>
+</div>
+<script>
+(() => {
+  const el = document.getElementById('whatsnew');
+  if (localStorage.getItem('whatsnew-dismissed') !== el.dataset.version) el.hidden = false;
+  const body = el.querySelector('.whatsnew-body');
+  document.getElementById('whatsnew-toggle').addEventListener('click', () => { body.hidden = !body.hidden; });
+  document.getElementById('whatsnew-dismiss').addEventListener('click', () => {
+    localStorage.setItem('whatsnew-dismissed', el.dataset.version);
+    el.hidden = true;
+  });
+})();
+</script>
+
+{% include 'partials/_quick_add.html' %}
+{# Pre-filled form appears here after a quick-add parse; empty until then. #}
+<div id="txn-form-wrap"></div>
+
+<form method="get" style="margin-bottom:1rem">
+    <label>Filter by month</label>
+    <select name="month" onchange="this.form.submit()">
+        <option value="">All months</option>
+        {% for m in months %}
+        <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ m }}</option>
+        {% endfor %}
+    </select>
+</form>
+{% if has_transactions %}
+<div class="hero">
+    <div class="hero-top">
+        <div>
+            <div class="hero-label">Net position · {{ summary.label }}</div>
+            <div class="hero-net {{ 'pos' if summary.net >= 0 else 'neg' }}">
+                {{ '−' if summary.net < 0 else '+' }}${{ summary.net|abs|money }}
+            </div>
+            <div class="hero-caption">
+                {% if summary.savings_rate is not none %}
+                    {{ "%.0f"|format(summary.savings_rate) }}% of income kept
+                {% else %}
+                    Income vs. expenses
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="hero-stats">
+        <div class="hero-stat">
+            <div class="hero-stat-label">Income</div>
+            <div class="hero-stat-val pos">${{ summary.income|money }}</div>
+        </div>
+        <div class="hero-stat">
+            <div class="hero-stat-label">Expenses</div>
+            <div class="hero-stat-val neg">${{ summary.expenses|money }}</div>
+        </div>
+        <div class="hero-stat">
+            <div class="hero-stat-label">Net</div>
+            <div class="hero-stat-val {{ 'pos' if summary.net >= 0 else 'neg' }}">
+                {{ '−' if summary.net < 0 else '' }}${{ summary.net|abs|money }}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% include 'partials/_ask.html' %}
+{% if ai_enabled and (show_insight or show_forecast) %}
+<div class="ai-row">
+    {% if show_insight %}{% include 'partials/_insight_card.html' %}{% endif %}
+    {% if show_forecast %}{% include 'partials/_forecast_card.html' %}{% endif %}
+</div>
+{% endif %}
+{% if ai_enabled %}
+{% include 'partials/_agent_card.html' %}
+{% endif %}
+{% if yoy %}
+<h2>Year over year</h2>
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-label">{{ selected_month }} spending</div>
+        <div class="stat-value {% if yoy.this_year <= yoy.last_year %}income{% else %}expense{% endif %}">${{ yoy.this_year|money }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Same month last year</div>
+        <div class="stat-value">${{ yoy.last_year|money }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Change</div>
+        <div class="stat-value {% if yoy.change <= 0 %}income{% else %}expense{% endif %}">{{ '+' if yoy.change > 0 }}{{ yoy.change }}%</div>
+    </div>
+</div>
+{% endif %}
+{% if goals %}
+<h2>Goals</h2>
+{% include 'partials/_goal_summary.html' %}
+<div class="goal-grid">
+    {% for g in goals %}
+    <div class="card goal-card goal-mini">
+        <div class="goal-head">
+            <strong class="goal-name">{{ g.name }}</strong>
+            {% if g.complete %}<span class="transfer-badge">{{ '✓ Paid off' if g.type == 'payoff' else '✓ Reached' }}</span>
+            {% elif g.on_track is true %}<span class="transfer-badge">On track</span>
+            {% elif g.on_track is false %}<span class="recurring-badge">Behind</span>{% endif %}
+        </div>
+        <div class="goal-bar"><div class="goal-bar-fill" style="width:{{ g.percent }}%"></div></div>
+        <p class="goal-figures">
+            ${{ g.saved|money }} / ${{ g.target_amount|money }}
+            <span class="goal-pct">({{ g.percent }}%)</span>
+        </p>
+    </div>
+    {% endfor %}
+</div>
+<p style="margin-bottom:1.5rem"><a href="{{ url_for('goals.goals') }}">Manage goals →</a></p>
+{% endif %}
+{% if has_transactions %}
+{# Collapsible on purpose (v10.13 de-scroll): open on desktop, collapsed on
+   mobile. Charts are lazily initialized on first open — Chart.js renders
+   0-height inside a closed <details>. #}
+<details id="charts-details" class="charts-details" open>
+<summary><h2>Charts</h2></summary>
+<div class="chart-grid">
+    <div class="chart-card">
+        <div class="chart-head">
+            <h3 id="categoryChartTitle">Spending by category</h3>
+            {% if income_by_category_data %}
+            <div class="chart-toggle" id="categoryChartToggle">
+                <button type="button" class="active" data-view="expense">Expenses</button>
+                <button type="button" data-view="income">Income</button>
+            </div>
+            {% endif %}
+        </div>
+        <canvas id="spendingPie"></canvas>
+    </div>
+    <div class="chart-card">
+        <h3>Account balances</h3>
+        <canvas id="accountBar"></canvas>
+    </div>
+    <div class="chart-card">
+        <h3>Spending by day of week</h3>
+        <canvas id="dowBar"></canvas>
+    </div>
+    <div class="chart-card wide">
+        <h3>Income vs expenses by month</h3>
+        <canvas id="cashFlowBar"></canvas>
+    </div>
+    <div class="chart-card wide">
+        <h3>Net balance over time</h3>
+        <canvas id="netBalanceLine"></canvas>
+    </div>
+    <div class="chart-card wide">
+        <h3>Budget vs actual</h3>
+        <canvas id="budgetBar"></canvas>
+    </div>
+</div>
+</details>
+<script>
+// Before first paint of the section: collapsed by default on mobile.
+if (window.matchMedia('(max-width: 768px)').matches)
+    document.getElementById('charts-details').removeAttribute('open');
+</script>
+<script src="{{ url_for('static', filename='chart.umd.min.js') }}"></script>
+<script>
+const spendingData = {{ spending_data | tojson }};
+const incomeByCategoryData = {{ income_by_category_data | tojson }};
+const cashFlowData = {{ cash_flow_data | tojson }};
+const netBalanceData = {{ net_balance_data | tojson }};
+const accountData = {{ account_data | tojson }};
+const budgetData = {{ budget_chart_data | tojson }};
+const dowData = {{ day_of_week_data | tojson }};
+
+// Theme Chart.js from the CSS design tokens so charts match the app (incl. dark mode).
+const _css = getComputedStyle(document.documentElement);
+const cssVar = (n) => _css.getPropertyValue(n).trim();
+const PALETTE = ['#378ADD','#1D9E75','#EF9F27','#E24B4A','#7c5cff','#D4537E','#639922'];
+// A category keeps the same color across visits and across the expense/income
+// views: hash the NAME into the palette instead of coloring by array position.
+// (Collisions possible past 7 categories — positional had the same ceiling.)
+function catColor(name) {
+    let h = 5381;
+    for (let i = 0; i < name.length; i++) h = ((h << 5) + h + name.charCodeAt(i)) >>> 0;
+    return PALETTE[h % PALETTE.length];
+}
+const colorsFor = (data) => data.map(d => catColor(d.category));
+Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+Chart.defaults.font.size = 12;
+Chart.defaults.color = cssVar('--text-muted');
+Chart.defaults.borderColor = cssVar('--border');
+Chart.defaults.plugins.legend.labels.boxWidth = 12;
+Chart.defaults.plugins.legend.labels.usePointStyle = true;
+Chart.defaults.plugins.legend.labels.padding = 14;
+const gridColor = cssVar('--border');
+const gridScales = { x: { grid: { color: gridColor } }, y: { beginAtZero: true, grid: { color: gridColor } } };
+
+// Charts (and the pill-toggle listeners that reference them) are built only
+// once the <details> is open, so canvases always have layout when Chart.js
+// measures them.
+let chartsInitialized = false;
+function initCharts() {
+if (chartsInitialized) return;
+chartsInitialized = true;
+const categoryPie = new Chart(document.getElementById('spendingPie'), {
+    type: 'doughnut',
+    data: {
+        labels: spendingData.map(d => d.category),
+        datasets: [{ data: spendingData.map(d => d.total), backgroundColor: colorsFor(spendingData), borderColor: cssVar('--surface'), borderWidth: 2 }]
+    },
+    options: { aspectRatio: 1.6, cutout: '58%', plugins: { legend: { position: 'right' } } }
+});
+// Expense/Income toggle on the category card (buttons only render when the
+// user has categorized income).
+const categoryViews = { expense: spendingData, income: incomeByCategoryData };
+const categoryTitles = { expense: 'Spending by category', income: 'Income by category' };
+document.querySelectorAll('#categoryChartToggle button').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const data = categoryViews[btn.dataset.view];
+        categoryPie.data.labels = data.map(d => d.category);
+        categoryPie.data.datasets[0].data = data.map(d => d.total);
+        categoryPie.data.datasets[0].backgroundColor = colorsFor(data);
+        categoryPie.update();
+        document.getElementById('categoryChartTitle').textContent = categoryTitles[btn.dataset.view];
+        document.querySelectorAll('#categoryChartToggle button').forEach(
+            b => b.classList.toggle('active', b === btn));
+    });
+});
+new Chart(document.getElementById('cashFlowBar'), {
+    type: 'bar',
+    data: {
+        labels: cashFlowData.map(d => d.month),
+        datasets: [
+            {label: 'Income', data: cashFlowData.map(d => d.income), backgroundColor: '#1D9E75', borderRadius: 4},
+            {label: 'Expenses', data: cashFlowData.map(d => d.expenses), backgroundColor: '#E24B4A', borderRadius: 4}
+        ]
+    },
+    options: { aspectRatio: 3.2, scales: gridScales }
+});
+new Chart(document.getElementById('netBalanceLine'), {
+    type: 'line',
+    data: {
+        labels: netBalanceData.map(d => d.month),
+        datasets: [{
+            label: 'Net balance',
+            data: netBalanceData.map(d => d.balance),
+            borderColor: '#378ADD',
+            backgroundColor: 'rgba(55,138,221,0.12)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 2
+        }]
+    },
+    options: { aspectRatio: 3.2, scales: { x: { grid: { color: gridColor } }, y: { beginAtZero: false, grid: { color: gridColor } } } }
+});
+new Chart(document.getElementById('accountBar'), {
+    type: 'bar',
+    data: {
+        labels: accountData.map(d => d.account),
+        datasets: [{
+            label: 'Balance',
+            data: accountData.map(d => d.balance),
+            backgroundColor: accountData.map(d => d.balance >= 0 ? '#1D9E75' : '#E24B4A'),
+            borderRadius: 4
+        }]
+    },
+    options: { aspectRatio: 1.6, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, grid: { color: gridColor } }, y: { grid: { color: gridColor } } } }
+});
+new Chart(document.getElementById('dowBar'), {
+    type: 'bar',
+    data: {
+        labels: dowData.map(d => d.day),
+        datasets: [{ label: 'Spent', data: dowData.map(d => d.total), backgroundColor: '#378ADD', borderRadius: 4 }]
+    },
+    options: { aspectRatio: 1.6, plugins: { legend: { display: false } }, scales: gridScales }
+});
+new Chart(document.getElementById('budgetBar'), {
+    type: 'bar',
+    data: {
+        labels: budgetData.map(d => d.category),
+        datasets: [
+            {label: 'Budget', data: budgetData.map(d => d.budget), backgroundColor: '#378ADD', borderRadius: 4},
+            {label: 'Actual', data: budgetData.map(d => d.actual), backgroundColor: '#E24B4A', borderRadius: 4}
+        ]
+    },
+    options: { aspectRatio: 3.2, scales: gridScales }
+});
+}
+
+const chartsDetails = document.getElementById('charts-details');
+if (chartsDetails.open) initCharts();
+chartsDetails.addEventListener('toggle', () => { if (chartsDetails.open) initCharts(); });
+</script>
+{% else %}
+<p style="color:var(--text-muted)">No transactions yet. <a href="{{ url_for('transactions.new_transaction') }}">Add your first transaction</a> to see your dashboard.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,248 @@
+"""CRUD happy-path tests for categories, accounts, and budgets.
+
+Phase 20 only smoke-tested that these pages render. These drive the actual
+create / edit / delete flows through the app (as the logged-in owner) and verify
+the change landed in the DB. The owner path is the complement to the 404 /
+isolation tests in test_isolation.py.
+"""
+from app.db import get_db_connection
+from tests.conftest import (
+    create_budget,
+    create_category,
+    fetch_account,
+    fetch_budget,
+    fetch_budget_by_category,
+    fetch_budget_history,
+    fetch_category,
+    fetch_category_kind,
+    find_category_id,
+)
+
+
+# --- categories -------------------------------------------------------------
+
+def test_create_category(client_a, users):
+    client_a.post("/categories", data={"name": "Groceries",
+                                        "description": "food"},
+                  follow_redirects=True)
+    cid = find_category_id(users["a"]["id"], "Groceries")
+    assert cid is not None
+    name, description, owner_id = fetch_category(cid)
+    assert name == "Groceries"
+    assert description == "food"
+    assert owner_id == users["a"]["id"]
+
+
+def test_edit_category(client_a, users):
+    cid = create_category(users["a"]["id"], "Original")
+    client_a.post(f"/categories/{cid}/edit",
+                  data={"name": "Renamed", "description": "now edited"},
+                  follow_redirects=True)
+    name, description, _ = fetch_category(cid)
+    assert name == "Renamed"
+    assert description == "now edited"
+
+
+def test_delete_category(client_a, users):
+    cid = create_category(users["a"]["id"], "Disposable")
+    client_a.delete(f"/categories/{cid}", follow_redirects=True)
+    assert fetch_category(cid) is None
+
+
+def test_create_category_income_kind(client_a, users):
+    client_a.post("/categories", data={"name": "Freelance", "kind": "income"},
+                  follow_redirects=True)
+    cid = find_category_id(users["a"]["id"], "Freelance")
+    assert cid is not None
+    assert fetch_category_kind(cid) == "income"
+
+
+def test_create_category_defaults_to_expense_kind(client_a, users):
+    # No kind posted (also the shape of every pre-v10.12 form) -> expense.
+    client_a.post("/categories", data={"name": "KindlessCat"}, follow_redirects=True)
+    cid = find_category_id(users["a"]["id"], "KindlessCat")
+    assert fetch_category_kind(cid) == "expense"
+
+
+def test_create_category_rejects_bogus_kind(client_a, users):
+    client_a.post("/categories", data={"name": "BogusKind", "kind": "sideways"},
+                  follow_redirects=True)
+    assert find_category_id(users["a"]["id"], "BogusKind") is None
+
+
+def test_edit_category_flips_kind(client_a, users):
+    cid = create_category(users["a"]["id"], "Side hustle")
+    client_a.post(f"/categories/{cid}/edit",
+                  data={"name": "Side hustle", "description": "", "kind": "income"},
+                  follow_redirects=True)
+    assert fetch_category_kind(cid) == "income"
+
+
+def test_flip_to_income_clears_saved_budget(client_a, users):
+    # Budgets are expense-only: flipping a budgeted category to income drops
+    # the budget (else it would linger unreachable — the cockpit hides the row)
+    # and logs the clear in budget_history.
+    a = users["a"]
+    cid = create_category(a["id"], "FlipMe")
+    create_budget(a["id"], cid, 150)
+    client_a.post(f"/categories/{cid}/edit",
+                  data={"name": "FlipMe", "description": "", "kind": "income"})
+    assert fetch_category_kind(cid) == "income"
+    assert fetch_budget_by_category(a["id"], cid) is None
+    history = fetch_budget_history(a["id"], cid)
+    assert history and history[-1][0] is None
+
+
+def test_budgets_cockpit_hides_income_kind(client_a, users):
+    inc_cid = create_category(users["a"]["id"], "SalaryKind", kind="income")
+    body = client_a.get("/budgets").get_data(as_text=True)
+    assert "SalaryKind" not in body
+    assert "cat-A" in body
+    assert inc_cid is not None
+
+
+def test_transaction_form_groups_categories_by_kind(client_a, users):
+    create_category(users["a"]["id"], "SalaryKind", kind="income")
+    body = client_a.get("/transactions/new").get_data(as_text=True)
+    assert 'label="Expense categories"' in body
+    assert 'label="Income categories"' in body
+    assert "SalaryKind" in body
+
+
+def test_transaction_form_no_income_group_without_income_kind(client_a, users):
+    body = client_a.get("/transactions/new").get_data(as_text=True)
+    assert 'label="Income categories"' not in body
+    assert "cat-A" in body
+
+
+def test_set_budget_rejects_income_kind_category(client_a, users):
+    inc_cid = create_category(users["a"]["id"], "SalaryKind", kind="income")
+    resp = client_a.post("/budgets/set",
+                         data={"category_id": inc_cid, "amount": "100"})
+    assert resp.status_code == 404
+    assert fetch_budget_by_category(users["a"]["id"], inc_cid) is None
+
+
+# --- accounts ---------------------------------------------------------------
+
+def _find_account_id(user_id, name):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT account_id FROM account WHERE user_id = %s AND account_name = %s",
+                (user_id, name))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return row[0] if row else None
+
+
+def test_create_account(client_a, users):
+    client_a.post("/accounts", data={"name": "Checking", "type": "Bank Account"},
+                  follow_redirects=True)
+    aid = _find_account_id(users["a"]["id"], "Checking")
+    assert aid is not None
+    account_name, acct_type, owner_id = fetch_account(aid)
+    assert account_name == "Checking"
+    assert acct_type == "Bank Account"
+    assert owner_id == users["a"]["id"]
+
+
+def test_edit_account(client_a, users):
+    client_a.post("/accounts", data={"name": "OldName", "type": "Debit Card"},
+                  follow_redirects=True)
+    aid = _find_account_id(users["a"]["id"], "OldName")
+    client_a.post(f"/accounts/{aid}/edit",
+                  data={"name": "NewName", "type": "Credit Card"},
+                  follow_redirects=True)
+    account_name, acct_type, _ = fetch_account(aid)
+    assert account_name == "NewName"
+    assert acct_type == "Credit Card"
+
+
+def _fetch_credit_limit(account_id):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT credit_limit FROM account WHERE account_id = %s",
+                (account_id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return row[0] if row else None
+
+
+def test_account_credit_limit_persists(client_a, users):
+    # v10.10: set on create.
+    client_a.post("/accounts", data={"name": "Limity", "type": "Credit Card",
+                                     "credit_limit": "5000"},
+                  follow_redirects=True)
+    aid = _find_account_id(users["a"]["id"], "Limity")
+    assert float(_fetch_credit_limit(aid)) == 5000.00
+    # Blanked on edit → NULL (not set).
+    client_a.post(f"/accounts/{aid}/edit",
+                  data={"name": "Limity", "type": "Credit Card",
+                        "credit_limit": ""},
+                  follow_redirects=True)
+    assert _fetch_credit_limit(aid) is None
+    # Set again on edit → updated.
+    client_a.post(f"/accounts/{aid}/edit",
+                  data={"name": "Limity", "type": "Credit Card",
+                        "credit_limit": "7500.50"},
+                  follow_redirects=True)
+    assert float(_fetch_credit_limit(aid)) == 7500.50
+
+
+def test_delete_account(client_a, users):
+    client_a.post("/accounts", data={"name": "ToDelete", "type": "Bank Account"},
+                  follow_redirects=True)
+    aid = _find_account_id(users["a"]["id"], "ToDelete")
+    client_a.delete(f"/accounts/{aid}", follow_redirects=True)
+    assert fetch_account(aid) is None
+
+
+# --- budgets ----------------------------------------------------------------
+
+def _find_budget_id(user_id, category_id):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM budgets WHERE user_id = %s AND category_id = %s",
+                (user_id, category_id))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return row[0] if row else None
+
+
+def test_set_budget(client_a, users):
+    cid = create_category(users["a"]["id"], "BudgetCat")
+    client_a.post("/budgets/set", data={
+        "category_id": cid, "amount": "250.00",
+    }, follow_redirects=True)
+    bid = _find_budget_id(users["a"]["id"], cid)
+    assert bid is not None
+    category_id, amount, owner_id = fetch_budget(bid)
+    assert category_id == cid
+    assert float(amount) == 250.00
+    assert owner_id == users["a"]["id"]
+
+
+def test_set_budget_upserts_in_place(client_a, users):
+    """A second set on the same category updates the existing row, not a new one."""
+    cid = create_category(users["a"]["id"], "BudgetEditCat")
+    client_a.post("/budgets/set", data={"category_id": cid, "amount": "100.00"},
+                  follow_redirects=True)
+    bid = _find_budget_id(users["a"]["id"], cid)
+    client_a.post("/budgets/set", data={"category_id": cid, "amount": "175.00"},
+                  follow_redirects=True)
+    # Same row, new amount — no duplicate row created.
+    assert _find_budget_id(users["a"]["id"], cid) == bid
+    _, amount, _ = fetch_budget(bid)
+    assert float(amount) == 175.00
+
+
+def test_clear_budget(client_a, users):
+    cid = create_category(users["a"]["id"], "BudgetDelCat")
+    client_a.post("/budgets/set", data={"category_id": cid, "amount": "50.00"},
+                  follow_redirects=True)
+    bid = _find_budget_id(users["a"]["id"], cid)
+    client_a.post("/budgets/clear", data={"category_id": cid}, follow_redirects=True)
+    assert fetch_budget(bid) is None

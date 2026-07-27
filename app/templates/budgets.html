@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% block title %}Budgets — Budget Buddy{% endblock %}
+{% block content %}
+<h1>Budgets</h1>
+<p style="font-size:13px;color:var(--text-muted);margin-bottom:1rem">
+    Each category gets a monthly budget. Untouched categories show a
+    <strong>suggested</strong> amount from your average spend over the last 6 months —
+    edit it to set your own, which then stays fixed. Suggestions need at least a month of history.
+</p>
+{% if has_categories %}
+{% if review_enabled %}
+<div class="card ai-card" style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-bottom:1rem">
+    {% include 'partials/_ai_spark.html' %}
+    <span><strong>AI budget review</strong> — right-size every category from your recent spending</span>
+    <span class="ai-badge">AI</span>
+    <button class="btn btn-primary"
+            hx-post="{{ url_for('budgets.budget_review_scan') }}"
+            hx-target="#budget-review-panel" hx-swap="innerHTML"
+            hx-indicator="#budget-review-spinner">Review →</button>
+    <span id="budget-review-spinner" class="htmx-indicator" style="color:var(--text-muted)">Reviewing your budgets…</span>
+</div>
+<div id="budget-review-panel"></div>
+{% endif %}
+<div class="table-wrapper">
+    <table>
+        <thead><tr><th>Category</th><th>Monthly budget</th><th>This month</th><th></th></tr></thead>
+        {% include 'partials/_budget_rows.html' %}
+    </table>
+</div>
+{% include 'partials/_budget_report.html' %}
+{% else %}
+<p style="color:var(--text-muted)">You need at least one <a href="{{ url_for('categories.categories') }}">category</a> before you can set a budget.</p>
+{% endif %}
+{% endblock %}

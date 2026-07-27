@@ -1,0 +1,22 @@
+{# schedule = a SCHEDULE_ROW_SQL row (namedtuple — read by field name). #}
+<tr id="schedule-{{ schedule.id }}" class="{% if schedule.transaction_type == 'income' %}income{% else %}expense{% endif %}">
+  <td>{{ schedule.transaction_type | capitalize }}</td>
+  <td>${{ schedule.amount|money }}</td>
+  <td>{{ schedule.description or '—' }}</td>
+  <td>{{ schedule.category_name or 'Uncategorised' }}</td>
+  <td>{{ schedule.account_name or 'No account' }}</td>
+  <td>
+    {{ frequency_labels.get(schedule.frequency, schedule.frequency) }}
+    {% if schedule.frequency == 'semimonthly' %}<span style="color:var(--text-muted)">({{ schedule.anchor_day }} &amp; {{ schedule.second_day }})</span>{% endif %}
+  </td>
+  <td>{{ schedule.next_due }}</td>
+  <td class="row-actions">
+    <button type="button" class="btn btn-sm"
+      hx-get="{{ url_for('schedules.edit_schedule', schedule_id=schedule.id) }}"
+      hx-target="#schedule-{{ schedule.id }}" hx-swap="outerHTML">Edit</button>
+    <button type="button" class="btn btn-sm btn-danger"
+      hx-delete="{{ url_for('schedules.delete_schedule', schedule_id=schedule.id) }}"
+      hx-target="#schedule-{{ schedule.id }}" hx-swap="outerHTML"
+      hx-confirm="Delete this schedule? Transactions it already posted stay in your history.">Delete</button>
+  </td>
+</tr>

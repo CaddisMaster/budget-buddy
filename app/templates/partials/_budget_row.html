@@ -1,0 +1,27 @@
+<tr id="budget-{{ row.cid }}">
+    {# row = a BudgetRow namedtuple (budgets.py) — read by field name. #}
+    <td>{{ row.name }}</td>
+    <td>
+        <div style="display:flex;gap:0.5rem;align-items:center">
+            <input type="number" step="1" min="1" name="amount" id="budget-amount-{{ row.cid }}"
+                   {% if row.effective is not none %}value="{{ "%.0f"|format(row.effective) }}"{% endif %}
+                   placeholder="—" style="width:7rem" required>
+            <button type="button" class="btn btn-sm btn-primary"
+                hx-post="{{ url_for('budgets.set_budget') }}"
+                hx-vals='{"category_id": "{{ row.cid }}"}'
+                hx-include="#budget-amount-{{ row.cid }}"
+                hx-target="#budget-{{ row.cid }}" hx-swap="outerHTML">Save</button>
+            {% if not row.is_set and row.suggested is not none %}
+            <span class="suggested-tag">Suggested</span>
+            {% endif %}
+        </div>
+    </td>
+    <td class="expense">${{ "%.0f"|format(row.actual) }}</td>
+    <td>
+        {% if row.is_set %}
+        <button type="button" class="btn btn-sm"
+            hx-post="{{ url_for('budgets.clear_budget') }}" hx-vals='{"category_id": "{{ row.cid }}"}'
+            hx-target="#budget-{{ row.cid }}" hx-swap="outerHTML">Clear</button>
+        {% endif %}
+    </td>
+</tr>

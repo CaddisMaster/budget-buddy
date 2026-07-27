@@ -1,0 +1,497 @@
+/* Reset */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* Variables */
+:root {
+  --sidebar-width: 220px;
+  --sidebar-collapsed: 0px;
+
+  /* Palette */
+  --accent: #378ADD;
+  --accent-hover: #185FA5;
+  --accent-soft: #eaf2fb;          /* tinted accent background */
+  --accent-2: #7c5cff;             /* the "AI assist" accent (all AI features) */
+  --accent-2-soft: #efeafe;        /* tinted AI background (badges) */
+  --text: #16202b;
+  --text-muted: #64707d;
+  --border: #e4e8ed;
+  --bg: #f2f4f7;                   /* page background */
+  --surface: #ffffff;             /* cards, sidebar, tables */
+  --surface-2: #f7f9fb;           /* subtle raised/nested fill */
+  --success: #1D9E75;
+  --success-soft: #e7f4ef;
+  --danger: #E24B4A;
+  --danger-soft: #fceceb;
+  --warning: #EF9F27;
+
+  /* Type scale */
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-base: 15px;
+  --fs-md: 17px;
+  --fs-lg: 20px;
+  --fs-xl: 26px;
+  --fs-2xl: 34px;
+
+  /* Spacing scale */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
+  /* Radius + elevation */
+  --radius: 10px;
+  --radius-sm: 7px;
+  --radius-lg: 14px;
+  --shadow-sm: 0 1px 2px rgba(16,32,43,0.05), 0 1px 3px rgba(16,32,43,0.04);
+  --shadow-md: 0 2px 6px rgba(16,32,43,0.06), 0 6px 16px rgba(16,32,43,0.06);
+  --shadow-lg: 0 8px 30px rgba(16,32,43,0.12);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --accent-soft: #16283b;
+    --accent-2-soft: #241d3d;
+    --text: #e8ecf1;
+    --text-muted: #98a4b2;
+    --border: #2b333c;
+    --bg: #12171d;
+    --surface: #1b2128;
+    --surface-2: #232a32;
+    --success-soft: #14261f;
+    --danger-soft: #2a1a1a;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+    --shadow-md: 0 2px 6px rgba(0,0,0,0.35), 0 6px 16px rgba(0,0,0,0.3);
+    --shadow-lg: 0 8px 30px rgba(0,0,0,0.5);
+  }
+}
+
+/* Base */
+/* html gets an explicit background because iOS 26 tints the standalone-PWA
+   status bar from the sampled page background (theme-color is ignored now) —
+   without it the bar renders as a gray glass band over the app. */
+html { background: var(--bg); }
+body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: var(--fs-base); color: var(--text); background: var(--bg); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-hover); }
+h1 { font-size: var(--fs-xl); font-weight: 650; letter-spacing: -0.02em; margin-bottom: var(--sp-5); }
+h2 { font-size: var(--fs-md); font-weight: 600; letter-spacing: -0.01em; margin: var(--sp-5) 0 var(--sp-3); }
+
+/* Layout */
+.app-wrapper { display: flex; min-height: 100vh; }
+
+/* Sidebar */
+.sidebar {
+  width: var(--sidebar-width);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  padding-top: env(safe-area-inset-top);
+  transition: transform 0.25s ease;
+  z-index: 100;
+  overflow: hidden;
+}
+.sidebar.collapsed { transform: translateX(calc(-1 * var(--sidebar-width))); }
+.sidebar-header { padding: 1.1rem 1rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.brand { display: flex; align-items: center; gap: 9px; font-weight: 650; font-size: var(--fs-md); letter-spacing: -0.02em; color: var(--text); }
+.brand-mark { width: 26px; height: 26px; flex-shrink: 0; display: block; }
+.brand-mark svg { width: 100%; height: 100%; display: block; }
+.sidebar-title { font-weight: 500; font-size: 15px; }
+.sidebar nav { padding: 0.6rem 0.6rem; }
+.sidebar nav a { display: flex; align-items: center; gap: 11px; padding: 0.55rem 0.7rem; margin: 1px 0; border-radius: var(--radius-sm); color: var(--text-muted); font-size: 14px; font-weight: 500; transition: background 0.15s, color 0.15s; }
+.sidebar nav a svg { width: 18px; height: 18px; flex-shrink: 0; opacity: 0.85; }
+.sidebar nav a:hover { background: var(--surface-2); color: var(--text); }
+.sidebar nav a.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.sidebar nav a.active svg { opacity: 1; }
+.nav-sep { height: 1px; background: var(--border); margin: 0.5rem 0.7rem; border: none; }
+/* v10.13 nav regroup — non-link section labels between nav groups. */
+.nav-group-label { display: block; padding: 0.7rem 0.7rem 0.15rem; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+/* Logout is a POST (CSRF-proof) so it's a tiny form — the button must render
+   exactly like the sibling nav <a> links. */
+.sidebar nav .nav-logout { margin: 0; }
+.sidebar nav .nav-logout button { display: flex; align-items: center; gap: 11px; width: 100%; padding: 0.55rem 0.7rem; margin: 1px 0; border-radius: var(--radius-sm); color: var(--text-muted); font-size: 14px; font-weight: 500; font-family: inherit; text-align: left; background: none; border: none; cursor: pointer; transition: background 0.15s, color 0.15s; }
+.sidebar nav .nav-logout button svg { width: 18px; height: 18px; flex-shrink: 0; opacity: 0.85; }
+.sidebar nav .nav-logout button:hover { background: var(--surface-2); color: var(--text); }
+
+/* Main content */
+/* min-width: 0 — as a flex item, .main-content's automatic minimum is its
+   content's min-content width; a wide table would inflate the whole page
+   past the viewport (body pans sideways) instead of scrolling inside its
+   .table-wrapper. Zeroing it keeps overflow where the wrappers expect it. */
+.main-content { flex: 1; min-width: 0; margin-left: var(--sidebar-width); padding: 2rem; transition: margin-left 0.25s ease; }
+.main-content.expanded { margin-left: 0; }
+
+/* Hamburger */
+.hamburger { background: none; border: none; cursor: pointer; padding: 4px; color: var(--text); font-size: 20px; display: flex; align-items: center; }
+.hamburger:hover { color: var(--accent); }
+
+/* v10.13 — the global "Add transaction" entry point: a pill in the topbar on
+   desktop, a floating action button on mobile (see the media block). */
+.page-topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+.quick-add-btn { display: inline-flex; align-items: center; gap: 6px; padding: 0.5rem 1.15rem; border-radius: 999px; background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; line-height: 1.2; box-shadow: var(--shadow-sm); transition: background 0.15s, transform 0.05s; }
+.quick-add-btn:hover { background: var(--accent-hover); color: #fff; }
+.quick-add-btn:active { transform: translateY(1px); }
+.quick-add-btn svg { width: 16px; height: 16px; }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); box-shadow: var(--shadow-sm); }
+th { text-align: left; padding: 0.7rem 1rem; font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); border-bottom: 1px solid var(--border); background: var(--surface-2); }
+td { padding: 0.75rem 1rem; font-size: 14px; border-bottom: 1px solid var(--border); }
+tr:last-child td { border-bottom: none; }
+tbody tr { transition: background 0.12s; }
+tr:hover td { background: var(--surface-2); }
+
+/* Colour coding */
+.income { color: var(--success); }
+.expense { color: var(--danger); }
+.checkin-stale { color: var(--warning); }  /* /accounts: never / >30d since check-in */
+
+/* Forms */
+label { display: block; font-size: 13px; font-weight: 500; color: var(--text-muted); margin-bottom: 4px; margin-top: 1rem; }
+input, select, textarea { width: 100%; padding: 0.55rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font-size: 14px; transition: border-color 0.15s, box-shadow 0.15s; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* Buttons */
+/* font-family + line-height are explicit because .btn sits on BOTH <a> and
+   <button>: anchors inherit the body's 1.6, buttons get the UA's ~1.15 — same
+   class, two heights (caught on Export CSV vs the Bulk edit toggle). */
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 0.5rem 1.15rem; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); color: var(--text); font-family: inherit; font-size: 14px; font-weight: 500; line-height: 1.2; cursor: pointer; transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.05s; }
+.btn:hover { background: var(--surface-2); border-color: var(--text-muted); }
+.btn:active { transform: translateY(1px); }
+.btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: var(--shadow-sm); }
+.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: #fff; }
+.btn-danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+.btn-danger:hover { background: #c43a39; border-color: #c43a39; color: #fff; }
+
+/* Flash messages */
+.flash { padding: 0.75rem 1rem; border-radius: var(--radius-sm); margin-bottom: 1rem; font-size: 14px; background: var(--accent-soft); border: 1px solid var(--border); border-left: 3px solid var(--accent); }
+
+/* Cards */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.35rem; margin-bottom: 1rem; box-shadow: var(--shadow-sm); }
+.card.editing { box-shadow: 0 0 0 2px var(--accent); }
+
+/* Summary stats */
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.1rem 1.2rem; box-shadow: var(--shadow-sm); }
+.stat-label { font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+.stat-value { font-size: var(--fs-xl); font-weight: 650; letter-spacing: -0.02em; margin-top: 4px; }
+
+/* Dashboard hero — this-month at a glance */
+.hero { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); padding: 1.5rem 1.6rem; margin-bottom: 1.5rem; }
+.hero-top { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.hero-label { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; color: var(--text-muted); }
+.hero-net { font-size: var(--fs-2xl); font-weight: 700; letter-spacing: -0.03em; margin: 0.2rem 0 0.1rem; line-height: 1.1; }
+.hero-net.pos { color: var(--success); }
+.hero-net.neg { color: var(--danger); }
+.hero-caption { font-size: var(--fs-sm); color: var(--text-muted); }
+.hero-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.9rem; margin-top: 1.3rem; padding-top: 1.2rem; border-top: 1px solid var(--border); }
+.hero-stat .hero-stat-label { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; color: var(--text-muted); }
+.hero-stat .hero-stat-val { font-size: var(--fs-lg); font-weight: 650; letter-spacing: -0.02em; margin-top: 3px; }
+.hero-stat .hero-stat-val.pos { color: var(--success); }
+.hero-stat .hero-stat-val.neg { color: var(--danger); }
+
+/* Chart grid — two-up on wide screens, each in its own card */
+.chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.1rem; margin-bottom: 1.5rem; }
+.chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: 1.2rem 1.25rem; }
+.chart-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 0.9rem; color: var(--text); }
+.chart-card.wide { grid-column: 1 / -1; }
+.chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; }
+.chart-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+.chart-toggle button { border: none; background: transparent; color: var(--text-muted); font: inherit; font-size: 12px; padding: 0.15rem 0.7rem; cursor: pointer; }
+.chart-toggle button.active { background: var(--accent-soft); color: var(--text); font-weight: 600; }
+
+/* Table wrapper for horizontal scroll on mobile */
+.table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* Overlay behind sidebar on mobile */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 99;
+}
+.sidebar-overlay.active { display: block; }
+
+/* Recurring badge */
+.recurring-badge {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: var(--radius);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  margin-left: 6px;
+  white-space: nowrap; /* a date/frequency label must never break mid-token */
+}
+
+.transfer-badge {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  margin-left: 6px;
+}
+
+tr.transfer td { background: var(--accent-soft); }
+
+/* Inline-edit (HTMX) */
+.btn-sm { padding: 3px 10px; font-size: 12px; border-radius: 6px; }
+.row-actions { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; white-space: nowrap; }
+/* On a <td>, display:flex replaces the table-cell box — the cell stops
+   stretching to the row height, so its border-bottom hugs the buttons and
+   drifts off the row line whenever a sibling cell is taller (v10.10's
+   utilization bar made this visible). Cells stay cells; the flex gap becomes
+   button margins. The flex rule above still serves the non-table uses
+   (goal cards). */
+td.row-actions { display: table-cell; }
+td.row-actions .btn + .btn { margin-left: 0.4rem; }
+tr.editing td { background: var(--bg); vertical-align: middle; }
+tr.editing input, tr.editing select { padding: 0.3rem 0.5rem; font-size: 13px; }
+.inline-error { color: var(--danger); font-size: 12px; }
+
+/* Bulk edit (v10.11) — the multi-select action bar on History */
+.bulk-bar {
+  display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 0.5rem 0.75rem; margin-bottom: 0.75rem;
+  font-size: 13px;
+}
+.bulk-bar[hidden] { display: none; } /* display:flex would beat the hidden attr */
+.bulk-bar select { padding: 0.3rem 0.5rem; font-size: 13px; }
+/* The checkbox column only exists while the Bulk edit toggle is on. */
+.bulk-col { display: none; }
+body.bulk-mode .bulk-col { display: table-cell; width: 2.25rem; }
+body.bulk-mode td.bulk-col { cursor: pointer; } /* whole cell toggles the box */
+.bulk-col input[type="checkbox"] {
+  width: 18px; height: 18px; margin: 0; vertical-align: middle;
+  accent-color: var(--accent); cursor: pointer;
+}
+.suggested-tag { font-size: 12px; color: var(--text-muted); }
+.htmx-request.btn, .htmx-request .btn { opacity: 0.6; pointer-events: none; }
+
+/* Goal progress bar */
+.goal-bar { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; height: 18px; margin: 0.5rem 0; overflow: hidden; }
+.goal-bar-fill { background: var(--accent); height: 100%; }
+
+/* Credit-card utilization (v10.10) — reuses the goal bar, compact */
+.credit-bar { height: 8px; margin: 0.4rem 0 0.15rem; max-width: 170px; }
+.goal-bar-fill.warn { background: var(--warning); }
+.goal-bar-fill.danger { background: var(--danger); }
+.credit-meta { font-size: 12px; color: var(--text-muted); display: block; white-space: nowrap; }
+
+/* Goals — cards, grid, and overall summary strip (v10.8 glow-up) */
+.goal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+.goal-card .goal-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 0.5rem; }
+.goal-name { font-size: var(--fs-md); font-weight: 650; letter-spacing: -0.01em; }
+.goal-account { font-size: var(--fs-sm); color: var(--text-muted); }
+.goal-figures { font-size: var(--fs-sm); margin: 0.4rem 0 0; }
+.goal-pct { color: var(--text-muted); }
+.goal-sub { font-size: 13px; color: var(--text-muted); margin: 0.5rem 0 0; line-height: 1.5; }
+.goal-actions { margin-top: 0.7rem; }
+.goal-mini { margin-bottom: 0; }
+.goal-summary { display: flex; align-items: center; gap: 0.6rem 1.1rem; flex-wrap: wrap; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.9rem 1.15rem; margin-bottom: 1rem; }
+.goal-summary-main { display: flex; align-items: baseline; gap: 0.4rem; }
+.goal-summary-saved { font-size: var(--fs-lg); font-weight: 650; letter-spacing: -0.02em; }
+.goal-summary-of { font-size: var(--fs-sm); color: var(--text-muted); }
+.goal-summary-bar { flex: 1 1 160px; margin: 0; height: 14px; }
+.goal-summary-pct { font-size: var(--fs-sm); color: var(--text-muted); font-weight: 600; white-space: nowrap; }
+
+/* v10.13 — page toolbars (filter/search rows) + pagination. */
+.toolbar { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; align-items: flex-end; }
+.toolbar form { display: flex; gap: 0.5rem; align-items: flex-end; flex-wrap: wrap; }
+.pager { display: flex; gap: 0.5rem; margin-top: 1rem; align-items: center; }
+
+/* v10.13 — the What's-new strip on the merged home/dashboard. */
+.whatsnew { padding: 0.8rem 1rem; margin-bottom: 1.25rem; }
+.whatsnew-head { display: flex; align-items: center; gap: 0.6rem; }
+.whatsnew-actions { margin-left: auto; display: flex; gap: 0.4rem; }
+.whatsnew-body { margin-top: 1rem; }
+.whatsnew-block > strong { display: block; margin-bottom: 0.35rem; }
+.whatsnew-block + .whatsnew-block { border-top: 1px solid var(--border); margin-top: 1rem; padding-top: 1rem; }
+.whatsnew-list { margin: 0; padding-left: 1.2rem; color: var(--text-muted); font-size: 14px; line-height: 1.7; }
+
+/* v10.13 — collapsible dashboard Charts section. */
+.charts-details summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none; }
+.charts-details summary::-webkit-details-marker { display: none; }
+.charts-details summary h2 { display: inline; margin: 0.5rem 0; }
+.charts-details summary::after { content: ''; width: 9px; height: 9px; border-right: 2px solid var(--text-muted); border-bottom: 2px solid var(--text-muted); transform: rotate(-45deg); transition: transform 0.15s; }
+.charts-details[open] summary::after { transform: rotate(45deg); }
+
+/* Toasts */
+#toast-host {
+  position: fixed; bottom: 1.25rem; right: 1.25rem;
+  display: flex; flex-direction: column; gap: 0.5rem;
+  z-index: 1000; max-width: min(360px, calc(100vw - 2rem));
+}
+.toast {
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-left: 4px solid var(--success);
+  border-radius: var(--radius); padding: 0.7rem 1rem; font-size: 14px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+  opacity: 0; transform: translateY(8px); transition: opacity 0.25s, transform 0.25s;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast-error { border-left-color: var(--danger); }
+
+/* Mobile */
+@media (max-width: 768px) {
+  .sidebar {
+    transform: translateX(calc(-1 * var(--sidebar-width)));
+  }
+  .sidebar.open {
+    transform: translateX(0);
+  }
+  .main-content {
+    margin-left: 0;
+    padding: 1rem;
+    /* Installed-PWA safe areas (viewport-fit=cover): keep content clear of the
+       status bar / home indicator instead of sliding under the clock. */
+    padding-top: calc(1rem + env(safe-area-inset-top));
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
+  .main-content.expanded {
+    margin-left: 0;
+  }
+  h1 { font-size: var(--fs-lg); }
+  h2 { font-size: 15px; }
+  .stats-grid { grid-template-columns: 1fr 1fr; }
+  .hero { padding: 1.2rem 1.25rem; }
+  .hero-net { font-size: var(--fs-xl); }
+  .hero-stats { grid-template-columns: 1fr 1fr; }
+  td, th { padding: 0.5rem 0.6rem; font-size: 13px; }
+  /* The quick-add pill becomes a floating action button; toasts sit above it. */
+  .quick-add-btn { position: fixed; right: 1rem; bottom: calc(1rem + env(safe-area-inset-bottom)); width: 56px; height: 56px; border-radius: 50%; justify-content: center; padding: 0; box-shadow: var(--shadow-lg); z-index: 90; }
+  .quick-add-btn svg { width: 24px; height: 24px; }
+  .quick-add-btn span { display: none; }
+  #toast-host { left: 1rem; right: 1rem; bottom: calc(1rem + 64px + env(safe-area-inset-bottom)); max-width: none; }
+
+  /* v10.13 — History becomes stacked cards on phones: same <tr> markup, the
+     9-column table is unusable at 375px. Each row is a grid card; the Type
+     cell hides (the row's income/expense class colors the amount instead). */
+  .txn-table thead { display: none; }
+  .txn-table, .txn-table tbody { display: block; }
+  .txn-table tbody tr {
+    display: grid;
+    position: relative;
+    grid-template-columns: auto auto 1fr auto;
+    grid-template-areas:
+      "desc desc desc amount"
+      "date cat  acct bal"
+      "actions actions actions actions";
+    gap: 0.15rem 0.7rem;
+    align-items: baseline;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: var(--shadow-sm);
+    padding: 0.6rem 0.8rem; margin-bottom: 0.6rem;
+  }
+  .txn-table tbody tr:hover td { background: transparent; } /* the row IS the surface */
+  .txn-table td { display: block; border: none; padding: 0; font-size: 13px; }
+  .txn-table td.c-desc { grid-area: desc; font-size: 14px; font-weight: 600; }
+  .txn-table td.c-amount { grid-area: amount; text-align: right; font-size: 14px; font-weight: 650; }
+  .txn-table tr.income td.c-amount { color: var(--success); }
+  .txn-table tr.income td.c-amount::before { content: '+'; }
+  .txn-table tr.expense td.c-amount { color: var(--danger); }
+  .txn-table tr.expense td.c-amount::before { content: '−'; }
+  .txn-table td.c-date, .txn-table td.c-cat, .txn-table td.c-acct { color: var(--text-muted); font-size: 12px; }
+  .txn-table td.c-date { grid-area: date; }
+  .txn-table td.c-cat { grid-area: cat; }
+  .txn-table td.c-acct { grid-area: acct; }
+  .txn-table td.c-bal { grid-area: bal; text-align: right; font-size: 12px; }
+  .txn-table td.c-type { display: none; }
+  .txn-table td.row-actions { grid-area: actions; display: flex; gap: 0.4rem; margin-top: 0.35rem; }
+  /* Bulk mode: the checkbox floats top-left of the card, content shifts right.
+     (No select-all — the thead is hidden; per-row selection still works.) */
+  body.bulk-mode .txn-table td.bulk-col { display: block; position: absolute; left: 0.65rem; top: 0.7rem; width: auto; }
+  body.bulk-mode .txn-table tbody tr { padding-left: 2.6rem; }
+  /* Inline edit swaps a <tr class="editing"> in — a stacked full-width form
+     card, not the grid (its cells don't map to the card areas). */
+  .txn-table tr.editing { display: block; }
+  .txn-table tr.editing td { display: block; width: 100%; padding: 0.15rem 0; }
+  .txn-table tr.editing td.bulk-col { display: none; }
+  /* Toolbars stack tighter on phones; buttons stay tappable full-row. */
+  .toolbar { gap: 0.6rem; }
+  .toolbar form { flex: 1 1 100%; }
+  .toolbar form > div { flex: 1; }
+  /* v10.15 — the What's-new head stays one line on phones: the date badge
+     hides (the version heading carries the identity; Details still expands)
+     and the heading ellipsizes instead of wrapping on very narrow screens. */
+  .whatsnew-head > strong { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .whatsnew-head .recurring-badge { display: none; }
+}
+
+/* HTMX indicator (shown while a request is in flight) */
+.htmx-indicator { opacity: 0; transition: opacity 0.2s ease-in; }
+.htmx-request .htmx-indicator, .htmx-request.htmx-indicator { opacity: 1; }
+
+/* v10.6 — shared "AI assist" identity across all five AI surfaces (Quick add,
+   Insight, Forecast, Ask, Auto-Categorize). One accent (--accent-2), one icon
+   (the sparkle in partials/_ai_spark.html), one badge, one header anatomy. */
+.ai-card { border-left: 3px solid var(--accent-2); }
+.ai-head { display: flex; align-items: center; gap: 0.55rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
+.ai-head h2, .ai-head label { margin: 0; }
+/* Read-state collapse (v10.15): the AI cards are <details> and .ai-head is
+   their <summary> — same hidden-marker + CSS-chevron treatment as
+   .charts-details. Collapsed, the card is just this header line. */
+summary.ai-head { list-style: none; cursor: pointer; user-select: none; }
+summary.ai-head::-webkit-details-marker { display: none; }
+summary.ai-head::after { content: ''; width: 9px; height: 9px; flex-shrink: 0; border-right: 2px solid var(--text-muted); border-bottom: 2px solid var(--text-muted); transform: rotate(-45deg); transition: transform 0.15s; }
+details[open] > summary.ai-head::after { transform: rotate(45deg); }
+details.ai-card:not([open]) > summary.ai-head { margin-bottom: 0; }
+.ai-headline { margin-left: auto; font-size: 13px; font-weight: 600; color: var(--text-muted); }
+.ai-headline.pos { color: var(--success); }
+.ai-headline.neg { color: var(--danger); }
+.ai-headline.warn { color: var(--warning); }
+.ai-spark { width: 18px; height: 18px; color: var(--accent-2); flex-shrink: 0; }
+.ai-badge { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-2); background: var(--accent-2-soft); border: 1px solid var(--accent-2); border-radius: 999px; padding: 1px 7px; }
+.ai-intro { font-size: 12px; color: var(--text-muted); margin: 0 0 0.6rem; }
+
+/* v10.1 Insight / v10.2 Forecast cards — now share the .ai-card border above.
+   .insight-* layout classes are still reused by both. */
+.insight-head { display: flex; align-items: center; gap: 0.6rem; }
+.insight-spinner { font-size: 12px; color: var(--text-muted); }
+.insight-intro { color: var(--text-muted); font-size: 14px; margin: 0.5rem 0 0.9rem; }
+.facts-strip { display: flex; flex-wrap: wrap; gap: 0.75rem 1.5rem; margin: 0.9rem 0; }
+.fact { display: flex; flex-direction: column; }
+.fact-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.fact-val { font-size: 18px; font-weight: 600; }
+.fact-val.pos { color: var(--success); }
+.fact-val.neg { color: var(--danger); }
+.insight-meta { font-size: 13px; color: var(--text-muted); margin: 0.2rem 0; }
+.insight-warn { color: var(--danger); }
+.insight-summary { font-size: 15px; line-height: 1.5; margin: 0.9rem 0; }
+.insight-tips { margin: 0.5rem 0 0.9rem; padding-left: 1.2rem; font-size: 14px; }
+.insight-tips li { margin: 0.25rem 0; }
+.insight-foot { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+.insight-ts { font-size: 12px; color: var(--text-muted); }
+/* Money agent card (v10.10) — the weekly-check findings list. Reuses the
+   .ai-card identity + .insight-* layout classes; these style the findings. */
+.agent-findings { list-style: none; margin: 0.9rem 0 0; padding: 0; }
+.agent-finding { padding: 0.7rem 0.9rem; margin: 0.5rem 0; background: var(--surface-2); border-left: 3px solid var(--warning); border-radius: 6px; }
+.agent-finding strong { font-size: 14px; }
+.agent-detail { font-size: 14px; line-height: 1.5; margin: 0.3rem 0 0; }
+.agent-evidence { font-size: 12px; color: var(--text-muted); margin: 0.35rem 0 0; }
+
+/* Budget report (v10.9): hit/miss month cells + trend words. The tr:hover
+   overrides keep the verdict tint from being wiped by the global hover rule. */
+.budget-report td { white-space: nowrap; }
+td.report-hit  { background: var(--success-soft); color: var(--success); }
+td.report-miss { background: var(--danger-soft);  color: var(--danger); font-weight: 600; }
+tr:hover td.report-hit  { background: var(--success-soft); }
+tr:hover td.report-miss { background: var(--danger-soft); }
+.trend-rising { color: var(--danger); }
+.trend-easing { color: var(--success); }
+.trend-steady { color: var(--text-muted); }
+
+/* v10.9 merged dashboard — Insight + Forecast share a row on wide screens;
+   a lone card (only one of the two showing) stretches full width. */
+.ai-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 1rem; align-items: start; margin-bottom: 1rem; }
+/* No height:100% here (was pre-v10.15): a collapsed card must not stretch to
+   match an expanded sibling — align-items:start sizes each to its content. */
+.ai-row .card { margin-bottom: 0; }

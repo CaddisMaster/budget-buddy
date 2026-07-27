@@ -1,0 +1,26 @@
+# Secrets — never commit. .env.example is the tracked template.
+.env
+*.env
+
+# Local-only Claude Code context: Droplet IP, vault paths, personal cadence.
+# CLAUDE.md itself IS tracked — it is the project's onboarding doc.
+CLAUDE.local.md
+
+# Real financial data — pg_dump output. Never commit.
+backups/
+*.dump
+*.sql.gz
+
+# Python
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# macOS. Note the capital S — git patterns are case-sensitive and the file
+# Finder actually creates is ".DS_Store".
+.DS_Store
+
+# Scratch data for the scripts/ ingest pipeline
+data/*.csv

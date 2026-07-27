@@ -1,0 +1,45 @@
+<tr id="txn-{{ txn.id }}" class="editing">
+  {# txn = a TxnEditRow (real fetched row or the edit route's error-path fake). #}
+  {# Empty bulk-select cell — no input, or Save's hx-include="closest tr" would post it. #}
+  <td class="bulk-col"></td>
+  <td><input type="date" name="transaction_date" value="{{ txn.transaction_date }}" required></td>
+  <td>
+    <select name="transaction_type" required>
+      <option value="expense" {% if txn.transaction_type == 'expense' %}selected{% endif %}>Expense</option>
+      <option value="income" {% if txn.transaction_type == 'income' %}selected{% endif %}>Income</option>
+    </select>
+  </td>
+  <td><input type="number" step="0.01" name="amount" value="{{ txn.amount }}" required style="width:6rem"></td>
+  <td><input type="text" name="description" value="{{ txn.description or '' }}"></td>
+  <td>
+    <select name="category_id">
+      <option value="">— none —</option>
+      {% with selected_id = txn.category_id %}
+      {% include 'partials/_category_options.html' %}
+      {% endwith %}
+    </select>
+  </td>
+  <td>
+    <select name="account_id">
+      <option value="">— none —</option>
+      {% for a in accounts %}
+      <option value="{{ a.account_id }}" {% if a.account_id == txn.account_id %}selected{% endif %}>{{ a.account_name }}</option>
+      {% endfor %}
+    </select>
+  </td>
+  <td>
+    <label style="margin:0;display:flex;align-items:center;gap:4px;font-size:12px">
+      <input type="checkbox" name="is_adjustment" value="true" style="width:auto" {% if txn.is_adjustment %}checked{% endif %}>
+      Adj.
+    </label>
+  </td>
+  <td class="row-actions">
+    <button type="button" class="btn btn-sm btn-primary"
+      hx-post="{{ url_for('transactions.edit_transaction', transaction_id=txn.id) }}?{{ filter_qs }}" hx-include="closest tr"
+      hx-target="#txn-rows" hx-swap="outerHTML">Save</button>
+    <button type="button" class="btn btn-sm"
+      hx-get="{{ url_for('transactions.transaction_rows') }}?{{ filter_qs }}"
+      hx-target="#txn-rows" hx-swap="outerHTML">Cancel</button>
+    {% if errors %}<span class="inline-error">{{ errors|join('; ') }}</span>{% endif %}
+  </td>
+</tr>
