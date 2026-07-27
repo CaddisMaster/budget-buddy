@@ -8,6 +8,16 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.0] - 2026-07-27
+
+The first release of the rebuilt repository, and a **baseline snapshot** rather
+than a feature release: the application is carried over unchanged from
+`v10.15.0`, while everything around it — workflow, CI, CD, registry, versioning
+and documentation — was rebuilt. Production moves from Docker Hub to
+`ghcr.io/caddismaster/budget-buddy` with this release.
+
 ### Added
 
 - Repository reboot: fresh history, `.env.example`, tracked
@@ -125,4 +135,5 @@ lineage, most recent first:
 - **v9.0** — conversational transaction entry (first AI feature)
 - **v1–v8** — core CRUD and deployment, UI overhaul, multi-user authentication, blueprints and pytest, ownership guards, transfers and goals, smart budgets, HTMX inline CRUD and CI
 
-[Unreleased]: https://github.com/CaddisMaster/budget-buddy/commits/main
+[Unreleased]: https://github.com/CaddisMaster/budget-buddy/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/CaddisMaster/budget-buddy/releases/tag/v0.1.0
