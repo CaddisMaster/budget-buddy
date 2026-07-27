@@ -24,13 +24,17 @@ Nginx on the host, with everything else in Docker.
 |---|---|---|
 | `budget.seandesmet.com` | Budget Buddy | Docker → `127.0.0.1:5001` |
 | `seandesmet.com` | Static landing page | Nginx directly, from `/opt/budget-buddy/landing` |
-| `mealie.seandesmet.com` | Mealie (unrelated project) | Docker → `127.0.0.1:9925` |
-| `status.seandesmet.com` | Uptime Kuma monitoring | Docker → `127.0.0.1:3001` |
 
-**Budget Buddy shares the box with two unrelated stacks.** Anything that
-restarts Docker, rewrites Nginx, or rebuilds the Droplet affects Mealie and
-Uptime Kuma as well. They are separate compose projects in separate directories
-and have their own data volumes.
+**The Droplet runs Budget Buddy alone.** It previously also hosted Mealie and
+Uptime Kuma; both were retired on 2026-07-27, along with their Nginx sites and
+TLS certificates. Their data was archived to the maintainer's machine first.
+Anything that restarts Docker or rewrites Nginx now affects only this app —
+which is a meaningful simplification, since the old warning about collateral
+damage to unrelated stacks no longer applies.
+
+> ⚠️ **`mealie.seandesmet.com` and `status.seandesmet.com` DNS records may still
+> point here.** Nothing serves them, so they fail TLS rather than showing a stale
+> page. Remove the records in Squarespace to tidy this up.
 
 Every container binds to `127.0.0.1` only. This is deliberate and load-bearing:
 **Docker publishes ports by writing iptables rules that bypass ufw entirely**, so
@@ -92,8 +96,9 @@ loopback.
 ## 3. Nginx
 
 Config lives at `/etc/nginx/sites-available/`, symlinked into `sites-enabled/`.
-Three sites are enabled: `budget-buddy`, `mealie.seandesmet.com`,
-`status.seandesmet.com`.
+One site is enabled: `budget-buddy` (plus the packaged `default`). The
+`mealie.seandesmet.com` and `status.seandesmet.com` files were removed with
+those services on 2026-07-27.
 
 The `budget-buddy` file holds **two** server blocks — the app and the landing
 page. Certbot has rewritten it, adding the TLS directives and the HTTP→HTTPS
@@ -150,25 +155,11 @@ server {
 }
 ```
 
-The Uptime Kuma site needs WebSocket upgrade headers for its live dashboard —
-without `Upgrade`/`Connection` the page loads but never updates:
-
-```nginx
-# /etc/nginx/sites-available/status.seandesmet.com  (TLS block omitted, Certbot adds it)
-server {
-  server_name status.seandesmet.com;
-  location / {
-    proxy_pass http://127.0.0.1:3001;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade    $http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_set_header Host              $host;
-    proxy_set_header X-Real-IP         $remote_addr;
-    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-  }
-}
-```
+> **Retired 2026-07-27.** This section used to document the Uptime Kuma site
+> block. Worth keeping the one transferable detail: **a proxied app with a live
+> dashboard needs `Upgrade`/`Connection "upgrade"` headers and
+> `proxy_http_version 1.1`**, or the page loads and then never updates. If a
+> WebSocket-using service is ever added here, that is the trap.
 
 After any change:
 
@@ -208,7 +199,6 @@ different domain sets and creates a new `-000N` lineage rather than replacing:
 | `seandesmet.com` | `seandesmet.com`, `www.seandesmet.com` | **No** |
 | `seandesmet.com-0001` | `seandesmet.com` only | **Yes** |
 | `budget.seandesmet.com` | `budget.seandesmet.com` | Yes |
-| `status.seandesmet.com` | `status.seandesmet.com` | Yes |
 
 **Consequence: `https://www.seandesmet.com` fails the TLS handshake.** The
 server block claims `www` but presents `seandesmet.com-0001`, which does not
@@ -432,8 +422,9 @@ The runner connects as **`DB_USER`**, never `DB_APP_USER` — the least-privileg
 
 1. **Nightly automated pull** — a launchd job on the maintainer's Mac (daily
    08:00; launchd rather than cron so a missed run fires on wake) SSHes in and
-   streams down gzipped `pg_dump`s of Budget Buddy and Mealie, plus a tarball of
-   configs. 14-day rotation.
+   streams down a gzipped `pg_dump` of Budget Buddy, plus a tarball of configs.
+   14-day rotation. (It also dumped Mealie until that service was retired on
+   2026-07-27.)
 2. **In-app** `/admin/backup` — an authenticated admin download of a live
    `pg_dump`.
 3. **Ad-hoc pre-migration dumps** left in `/opt/budget-buddy/backups/`.
@@ -489,7 +480,6 @@ boot, and storing the key on the same disk defeats the purpose.
 
 ### Gaps to be aware of
 
-- Mealie's uploaded recipe images are **not** covered by the nightly job.
 - Let's Encrypt material is not backed up, which is fine — certificates
   re-issue freely. Only DNS needs to be correct.
 
@@ -532,8 +522,7 @@ transaction is present.
 2. **Firewall:** `ufw allow OpenSSH && ufw allow 'Nginx Full' && ufw enable`
 3. **Install** Docker Engine with the Compose plugin, plus `nginx` and
    `certbot` + `python3-certbot-nginx`.
-4. **DNS:** point `seandesmet.com`, `www`, `budget`, `mealie`, and `status` at
-   the new IP. Wait for propagation — Certbot's HTTP-01 challenge needs the name
+4. **DNS:** point `seandesmet.com`, `www`, and `budget` at the new IP. Wait for propagation — Certbot's HTTP-01 challenge needs the name
    already resolving to this host.
 5. **Recreate `/opt/budget-buddy/`:** `docker-compose.yml` and `sql/` from this
    repository, `landing/` from `landing/`, and `.env` from the configs backup.
@@ -547,7 +536,7 @@ transaction is present.
 10. **Verify:** load the site over HTTPS, log in, confirm the dashboard figures
     match the pre-loss state, and confirm the container runs as a non-root user
     (`docker compose exec web whoami` → `appuser`).
-11. **Re-point** the Mac backup job and Uptime Kuma at the new host.
+11. **Re-point** the Mac backup job at the new host.
 
 ---
 
@@ -566,7 +555,12 @@ returns 200 — the login page does not touch the database — so anything
 monitoring a page reports green while the application is actually unusable.
 Verified by stopping the `db` container: `/login` → 200, `/healthz` → 503.
 
-**Point Uptime Kuma at `/healthz`**, not at the home page.
+⚠️ **There is currently NO external uptime monitoring.** Uptime Kuma was retired
+on 2026-07-27, and it had been watching the home page rather than `/healthz`
+anyway — so it would have reported green throughout a database outage. If
+monitoring is reinstated, point it at **`/healthz`** and accept only `200-299`:
+the endpoint returns **503** on database failure, so a status range that swallows
+5xx defeats the entire purpose.
 
 The compose file runs the same endpoint as a container healthcheck every 30s,
 so `docker compose ps` shows `(healthy)` / `(unhealthy)` rather than a bare
@@ -584,5 +578,7 @@ certbot certificates                       # expiry dates
 docker compose exec web whoami             # should be: appuser
 ```
 
-Reference values at the time of writing: 61% disk used, ~1 GB of 2 GB memory in
-use with three stacks running. Memory is the tighter constraint of the two.
+Reference values after retiring the other two stacks (2026-07-27): **30% disk
+used, ~0.5 GB of 2 GB memory in use** — down from 64% and ~1 GB when three stacks
+shared the box. Both are now comfortable; memory was previously the tighter
+constraint and prompted the 1 GB → 2 GB resize.
