@@ -337,11 +337,14 @@ A `sweeper` worker agent (Sonnet, tools: Read/Grep/Glob/Edit only) is defined in
   re-issue).
 - 📕 **`RUNBOOK.md` (committed) is the operational source of truth** — topology, the full Nginx
   config, TLS/certbot, prod compose, backup + **restore** procedure, and a rebuild-from-nothing
-  checklist. Read it before touching anything on the server. It also records two known issues:
-  `https://www.seandesmet.com` fails TLS (server block claims `www` but presents a cert lineage
-  that doesn't cover it), and the nightly configs backup misses the `status.seandesmet.com` site
-  file. **The Droplet also hosts Mealie + Uptime Kuma** — anything restarting Docker or rewriting
-  Nginx affects them too.
+  checklist. Read it before touching anything on the server. **The Droplet now runs Budget Buddy
+  ALONE** — Mealie and Uptime Kuma were retired 2026-07-27 (data archived first), so restarting
+  Docker or rewriting Nginx no longer has collateral effects. Disk 30%, RAM ~0.5 GB of 2 GB.
+  ⚠️ **There is currently no external uptime monitoring** — Uptime Kuma went with them, and it
+  had been watching a page that returns 200 during a database outage anyway. If it is
+  reinstated, point it at `/healthz` and accept only `200-299` (the endpoint returns 503 when
+  the database is unreachable). The two previously-recorded issues are both resolved: the `www`
+  TLS failure was fixed, and the `status.seandesmet.com` backup gap was a false claim, retracted.
 
 ## Maintainer notes (local only)
 
