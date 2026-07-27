@@ -29,8 +29,25 @@ this project uses the `0.x` versioning scheme described in
 - CI now builds the Docker image, asserts the container runs as `appuser`, and
   boots it to confirm gunicorn serves a request. Previously CI installed
   dependencies on the runner and never built the Dockerfile at all.
+- Continuous deployment (`.github/workflows/release.yml`). Publishing a GitHub
+  Release builds the image, pushes it to `ghcr.io/caddismaster/budget-buddy`
+  tagged with the version, the commit SHA and (for full releases only)
+  `latest`, boots that **pushed** image against a throwaway database to prove
+  `/healthz` answers, then pauses on a required-reviewer approval gate before
+  deploying to the Droplet and verifying the public `/healthz`. Replaces the
+  hand-run `deploy.sh` → staging → `promote.sh` sequence; the smoke job takes
+  over the "prod runs the bytes you tested" guarantee that the local staging
+  step used to provide.
+- A rollback workflow (`.github/workflows/rollback.yml`) — dispatch a version
+  and the Droplet is brought back up on that exact immutable tag, after
+  confirming the image actually exists in the registry.
 
 ### Changed
+
+- The deployed image is pinned to an exact version at deploy time
+  (`TAG=<version> docker compose up -d`) rather than tracking `latest`, so the
+  running container is always traceable to a release. `docker-compose.yml`
+  resolves `${TAG:-latest}`, keeping a hand-run `docker compose up -d` working.
 
 - CI runs on `main` and pull requests only, with a concurrency group, so a
   branch push and its pull request no longer trigger duplicate runs.
@@ -49,6 +66,16 @@ this project uses the `0.x` versioning scheme described in
   plaintext SQL, so it is now rate-limited to 5 per hour, returns `403` for
   non-admins instead of flashing and redirecting, and logs every export with
   the username. Previously a full-database export left no trace at all.
+- Deployments no longer run as `root`. The production stack moved from
+  `/root/budget-buddy` to `/opt/budget-buddy`, owned by a dedicated
+  unprivileged `deploy` user that CI authenticates as with a restricted
+  ed25519 key; the deploy secrets are scoped to the approval-gated
+  `production` environment. Moving out of `/root` also let `/root` return to
+  mode `0700` — it had been widened to `0755` so Nginx could serve the landing
+  page from inside it, which left the production `.env` (database password,
+  `SECRET_KEY`, API keys) readable by **every user on the host**. Both that
+  file and Mealie's are now unreadable to anyone but their owner.
+  (Server-side configuration change, recorded here for the history.)
 
 ### Fixed
 

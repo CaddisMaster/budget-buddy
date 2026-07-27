@@ -1,0 +1,88 @@
+name: Rollback
+
+# Immutable version tags make rollback trivial — but only if the button already
+# exists. Do not wait until it is needed to write this.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to roll back to, e.g. 0.1.0 (no leading v)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# Never let a rollback race a release deploy. Shares the `release` group on
+# purpose, and a rollback in flight is never cancelled.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    name: Roll the Droplet back
+    runs-on: ubuntu-latest
+    # Also gated: the deploy secrets live on this environment, so any job that
+    # touches the Droplet has to pass through the same approval. One extra click
+    # at 11pm is the price of the key never being readable by an ungated job.
+    environment: production
+    steps:
+      - name: Confirm the target image exists
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          # Fail here rather than after the Droplet has already pulled a
+          # nonexistent tag and compose has torn the old container down.
+          token=$(curl -s "https://ghcr.io/token?scope=repository:caddismaster/budget-buddy:pull" \
+                  | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+          code=$(curl -s -o /dev/null -w '%{http_code}' \
+                 -H "Authorization: Bearer ${token}" \
+                 -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.v2+json" \
+                 "https://ghcr.io/v2/caddismaster/budget-buddy/manifests/${VERSION}")
+          if [ "$code" != "200" ]; then
+            echo "::error::No image tagged '${VERSION}' in ghcr (manifest lookup returned ${code})."
+            exit 1
+          fi
+          echo "Found ghcr.io/caddismaster/budget-buddy:${VERSION}"
+
+      - name: Deploy that version
+        env:
+          SSH_KEY: ${{ secrets.DROPLET_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DROPLET_KNOWN_HOSTS }}
+          HOST: ${{ secrets.DROPLET_HOST }}
+          USER_NAME: ${{ secrets.DROPLET_USER }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+              "${USER_NAME}@${HOST}" \
+              "cd /opt/budget-buddy \
+               && TAG='${VERSION}' docker compose pull \
+               && TAG='${VERSION}' docker compose up -d \
+               && docker compose ps"
+
+      - name: Verify the rolled-back app is healthy
+        run: |
+          ok=""
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
+                   https://budget.seandesmet.com/healthz || true)
+            if [ "$code" = "200" ]; then ok=1; break; fi
+            echo "attempt $i: /healthz -> $code"
+            sleep 5
+          done
+          if [ -z "$ok" ]; then
+            echo "::error::Rolled back to ${{ inputs.version }} but /healthz is not 200."
+            exit 1
+          fi
+          echo "Rolled back to ${{ inputs.version }} and healthy."
+
+      - name: Scrub the key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
