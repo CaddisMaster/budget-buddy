@@ -87,6 +87,58 @@ dataset.
 The same seed and the same day always produce the same data, so a bug found
 against seeded data can be reproduced on another machine.
 
+### Set up your editor
+
+The application's dependencies live inside the Docker image, so out of the box
+your editor's language server cannot resolve a single one of them — every
+`import flask`, `import psycopg2` and `from app.db import ...` shows as
+unresolved, with no autocomplete and no go-to-definition. Two ways to fix it,
+and you can use both.
+
+**A local virtual environment** (works in a normal editor window):
+
+```bash
+brew install python@3.11          # the Mac's system 3.9 is too old — see below
+python3.11 -m venv .venv
+.venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+```
+
+`.vscode/settings.json` already points at `.venv/bin/python`. **Nothing is ever
+run from this environment** — the app and the tests still run in containers. It
+exists purely so the language server has real code to read, and it is gitignored
+and excluded from the image.
+
+It must be **3.11**, matching production. The Mac ships 3.9.6, which cannot
+evaluate the `str | None` annotations in `app/ai.py` — a 3.9 environment reports
+working code as broken.
+
+**Or the dev container** (VS Code → *Reopen in Container*): attaches to the
+`web` service you already run, so the interpreter *is* the container's Python
+with every dependency present, and `db` comes up alongside.
+
+⚠️ **There is no Docker inside the dev container.** Run `docker compose`, and
+the `verify` skill, from a Mac terminal. Start Claude Code from a Mac terminal
+too — inside the container it cannot see anything outside the repository,
+including your notes.
+
+### What is live, and what needs a restart
+
+The source is bind-mounted, so most changes need no rebuild:
+
+| Change | What to do |
+|---|---|
+| Python | nothing — gunicorn `--reload` restarts the worker |
+| Templates | nothing — `TEMPLATES_AUTO_RELOAD` re-reads them |
+| `style.css` | `docker compose restart web` (~2s) |
+| `requirements*.txt`, `Dockerfile` | `docker compose up -d --build web` |
+
+CSS is the odd one out: the `?v=` cache-buster is a hash of the file computed
+once at startup, so editing the stylesheet without a restart leaves the browser
+on the old cached copy. See the note in `app/__init__.py`.
+
+None of this reaches production — it all lives in
+`docker-compose.override.yml`, which exists only on your machine.
+
 ### Install the pre-commit hooks
 
 ```bash

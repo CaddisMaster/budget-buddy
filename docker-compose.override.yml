@@ -1,5 +1,6 @@
 # Local development overrides. Compose reads this automatically; it is NOT
-# present on the Droplet, so production always runs the published image.
+# present on the Droplet, so production never sees any of it — no bind mount, no
+# reload flag, no dev image.
 services:
   web:
     build:
@@ -10,3 +11,28 @@ services:
       # see the note at the top of the Dockerfile.
       target: dev
     image: ""
+    volumes:
+      # Live source, so a template or route change is visible on reload instead
+      # of needing `docker compose up --build`. This SHADOWS the image's
+      # build-time `COPY . .` — which is exactly what makes the dev container
+      # useful, since the editor is then reading and writing the same files the
+      # server is serving.
+      - .:/app
+      # Anonymous volumes masking host-only directories that must not leak into
+      # the container. `.venv` holds macOS-native wheels that would be wrong for
+      # Linux, and the caches are noise. A bind mount ignores .dockerignore, so
+      # these have to be masked explicitly.
+      - /app/.venv
+      - /app/.ruff_cache
+      - /app/.pytest_cache
+    environment:
+      # Makes Jinja re-read templates from disk. Without it the bind mount
+      # delivers the edited .html and the server keeps serving the compiled
+      # cache — a silent no-op that looks like the mount is broken. Read in
+      # app/__init__.py; never set on the Droplet.
+      TEMPLATES_AUTO_RELOAD: "1"
+    # Same as the image's CMD plus --reload, which restarts the worker when a
+    # source file changes. Kept in full rather than as a fragment so it is
+    # obvious this is the production command with one flag added.
+    command: ["gunicorn", "--workers", "1", "--threads", "4", "--timeout", "120",
+              "--reload", "--bind", "0.0.0.0:5000", "app:app"]
