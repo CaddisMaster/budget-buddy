@@ -7,6 +7,8 @@ from app import bcrypt, limiter
 from app.db import db_cursor
 from app.mailer import mail_enabled
 from app.models import User
+from app.pusher import public_key as push_public_key
+from app.pusher import push_enabled
 
 bp = Blueprint('auth', __name__)
 
@@ -72,11 +74,21 @@ def profile():
         acct_count = cursor.fetchone()[0]
         cursor.execute("SELECT COUNT(*) FROM goals WHERE user_id = %s", (current_user.id,))
         goal_count = cursor.fetchone()[0]
+        # #33 — how many devices this user has registered for push. The browser
+        # is the real source of truth for whether THIS device is subscribed
+        # (the page asks it on load); this is just so the card can say whether
+        # anything at all is registered.
+        cursor.execute("SELECT COUNT(*) FROM push_subscriptions WHERE user_id = %s",
+                       (current_user.id,))
+        push_device_count = cursor.fetchone()[0]
     return render_template('profile.html', created_at=created_at,
                            txn_count=txn_count, cat_count=cat_count,
                            acct_count=acct_count, goal_count=goal_count,
                            email=email, weekly_digest=weekly_digest,
-                           mail_enabled=mail_enabled())
+                           mail_enabled=mail_enabled(),
+                           push_enabled=push_enabled(),
+                           push_public_key=push_public_key(),
+                           push_device_count=push_device_count)
 
 
 @bp.route('/profile/settings', methods=['POST'])

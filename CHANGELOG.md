@@ -10,6 +10,36 @@ this project uses the `0.x` versioning scheme described in
 
 ### Added
 
+- **Bill-due push reminders** to the installed app. A notification the evening
+  before a scheduled bill or transfer is due, so there is still time to move
+  money — the app already knew every due date, but that only reached you if you
+  opened it or read the Sunday email. Opt in per device on the Profile page;
+  a phone and a laptop are separate subscriptions. Reminders are deduplicated
+  per occurrence, so a bill is never announced twice, and a subscription the
+  push service reports as gone (the app was uninstalled, site data cleared) is
+  deleted rather than retried forever.
+
+  Push is optional. With no VAPID keys configured the opt-in UI does not appear
+  and nothing is sent, exactly as the app already behaves without an Anthropic
+  or Resend key. **On iPhone, Web Push only works once the app has been added
+  to the home screen.**
+
+### Changed
+
+- **Due schedules now materialise server-side, once a day, for everyone.**
+  Previously this happened only when a page was loaded, so a user who did not
+  log in had transactions silently not posted — which then understated their
+  weekly digest, their month-ahead forecast, and the Money agent's view of
+  their own data. The daily job closes that. The login-triggered runners stay
+  as well, so logging in still catches you up immediately.
+
+  Note for anyone running their own instance: the scheduler is no longer gated
+  on an email key. It starts on `ENABLE_DIGEST_SCHEDULER` alone and each job
+  carries its own gate, because materialisation must not stop just because a
+  third-party credential is missing.
+
+### Added
+
 - A recurring schedule can have an **end date**, on both scheduled
   income/expenses and automatic transfers. A car loan has a final payment and a
   membership gets cancelled; until now the only way to stop a schedule was to

@@ -250,3 +250,33 @@ CREATE TABLE public.transfer_schedules (
     created_at timestamp without time zone DEFAULT now(),
     user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE
 );
+
+-- ------------------------------------------------------------
+-- Push subscriptions + reminder log (#33 — bill-due push reminders; see sql/32)
+-- One subscription row per DEVICE (endpoint is the push service's URL for that
+-- browser install, hence globally unique). reminder_log is the idempotency
+-- marker, keyed per OCCURRENCE so widening the reminder lead time later can't
+-- make the same bill re-notify daily; `source`/`source_id` address two tables,
+-- so they are deliberately not a foreign key.
+-- ------------------------------------------------------------
+CREATE TABLE public.push_subscriptions (
+    id SERIAL PRIMARY KEY,
+    user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    endpoint text NOT NULL UNIQUE,
+    p256dh text NOT NULL,
+    auth text NOT NULL,
+    created_at timestamp without time zone DEFAULT now()
+);
+
+CREATE INDEX push_subscriptions_user_idx ON public.push_subscriptions (user_id);
+
+CREATE TABLE public.reminder_log (
+    id SERIAL PRIMARY KEY,
+    user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    source character varying(10) NOT NULL
+        CHECK (source IN ('schedule', 'transfer')),
+    source_id integer NOT NULL,
+    occurrence_date date NOT NULL,
+    sent_at timestamp without time zone DEFAULT now(),
+    UNIQUE (user_id, source, source_id, occurrence_date)
+);
