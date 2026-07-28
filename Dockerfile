@@ -1,4 +1,11 @@
-FROM python:3.11-slim
+# ⚠️ STAGE ORDER IS LOAD-BEARING. `prod` must stay LAST.
+#
+# A Dockerfile with no explicit --target builds the FINAL stage, and three
+# things build this file with no target: CI's docker-build job, the release
+# workflow, and a bare `docker build .`. If `dev` ever becomes the last stage,
+# every one of them silently starts shipping pytest and the dev dependencies to
+# production. Add new stages ABOVE prod, never below it.
+FROM python:3.11-slim AS base
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -15,3 +22,21 @@ EXPOSE 5000
 # v10.3 Ask tool-use loop room for several sequential model calls (the default
 # 30s killed the worker mid-loop → the HTMX request hung).
 CMD ["gunicorn", "--workers", "1", "--threads", "4", "--timeout", "120", "--bind", "0.0.0.0:5000", "app:app"]
+
+# Local development only — selected by docker-compose.override.yml, which is
+# never used on the Droplet. Carries the test dependencies so `./test.sh` does
+# not reinstall pytest into a fresh container on every single run.
+#
+# Installed as root, so they land in the system site-packages alongside the
+# application's own dependencies rather than in /home/appuser/.local — which
+# means the interpreter finds them without any PATH involvement.
+FROM base AS dev
+USER root
+COPY requirements-dev.txt .
+RUN pip install --no-cache-dir -r requirements-dev.txt
+USER appuser
+
+# The shipped image. Deliberately empty: it is `base` under a name, existing
+# only so that this — and not `dev` — is the final stage. See the note at the
+# top of the file.
+FROM base AS prod

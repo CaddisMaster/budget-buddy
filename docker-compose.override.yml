@@ -1,4 +1,12 @@
+# Local development overrides. Compose reads this automatically; it is NOT
+# present on the Droplet, so production always runs the published image.
 services:
   web:
-    build: .
+    build:
+      context: .
+      # The `dev` stage is `prod` plus requirements-dev.txt. Building it here is
+      # what lets ./test.sh run pytest without reinstalling it every time.
+      # Production never selects a target and therefore gets the final stage —
+      # see the note at the top of the Dockerfile.
+      target: dev
     image: ""
