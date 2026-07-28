@@ -1,13 +1,18 @@
 {
-  // Interpreter for when the repository is opened NORMALLY (not attached to the
-  // dev container). Points at the local .venv, which exists purely so the
-  // language server can resolve flask/psycopg2/pytest — nothing is ever run
-  // from it. See CONTRIBUTING.md §1.
+  // ⚠️ DO NOT ADD `python.defaultInterpreterPath` HERE. It looks like the
+  // obvious thing to set, and it breaks the dev container.
   //
-  // When attached to the dev container, .devcontainer/devcontainer.json
-  // overrides this with the container's own interpreter, which is the same
-  // Python 3.11 the image ships.
-  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  // VS Code resolves WORKSPACE settings above REMOTE ones, so a value in this
+  // file overrides .devcontainer/devcontainer.json rather than deferring to it.
+  // A path like "${workspaceFolder}/.venv/bin/python" then follows you into the
+  // container, where ${workspaceFolder} is /app and /app/.venv is deliberately
+  // masked to an empty directory (the host venv holds macOS-native wheels that
+  // are wrong for Linux). The result is an "interpreter does not exist" error
+  // and no import resolution — the exact problem the venv exists to solve.
+  //
+  // With it absent, both cases work: the Python extension auto-discovers
+  // .venv/ in the workspace root locally, and the dev container's own setting
+  // finally applies inside the container. See issue #78.
 
   // The app is imported as `app`, and tests as `tests.*`, both from the repo
   // root — mirroring pytest.ini's `pythonpath = .`.
