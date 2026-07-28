@@ -16,11 +16,9 @@ this project uses the `0.x` versioning scheme described in
   modules — a 74-file Flask project was being written with no autocomplete, no
   go-to-definition and an unresolved-import warning on essentially every file.
 
-  Two ways to fix it, both supported: a gitignored `.venv` that the editor reads
-  (never used to *run* anything), or a `.devcontainer/` that attaches to the
-  `web` service you already run. Setup for both is in `CONTRIBUTING.md` §1. The
-  dev image carries `git`, `ps` and `curl` for the attached editor's benefit;
-  the shipped image carries none of them.
+  Fixed with a gitignored `.venv` that the editor reads and nothing is ever run
+  from — the app and the tests still run in containers. VS Code auto-discovers
+  it, so no editor settings are committed. Setup is in `CONTRIBUTING.md` §1.
 
   The source is also bind-mounted now, so a Python or template change is live
   instead of needing `docker compose up --build`. Editing `style.css` still
