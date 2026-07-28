@@ -18,7 +18,9 @@ this project uses the `0.x` versioning scheme described in
 
   Two ways to fix it, both supported: a gitignored `.venv` that the editor reads
   (never used to *run* anything), or a `.devcontainer/` that attaches to the
-  `web` service you already run. Setup for both is in `CONTRIBUTING.md` §1.
+  `web` service you already run. Setup for both is in `CONTRIBUTING.md` §1. The
+  dev image carries `git`, `ps` and `curl` for the attached editor's benefit;
+  the shipped image carries none of them.
 
   The source is also bind-mounted now, so a Python or template change is live
   instead of needing `docker compose up --build`. Editing `style.css` still
