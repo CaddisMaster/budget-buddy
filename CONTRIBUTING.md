@@ -112,8 +112,43 @@ PRs, no direct pushes to `main`.
    no observable effect — add the `skip-changelog` label and the check re-runs and
    passes. Only `app/` is covered, so docs, workflow and test-only changes need
    nothing.
-6. **Open a PR** with `Closes #<issue>` in the body. CI must be green.
-7. **Squash-merge.** `main` reads as one commit per issue.
+6. **Open a PR** with `Closes #<issue>` in the body — one line per issue the PR
+   closes. CI must be green.
+7. **Squash-merge.** `main` reads as one commit per pull request.
+
+### How much goes in one PR
+
+A PR may close several issues. Group them by **coherence, never by calendar**:
+issues belong together when they share a **file surface**, a **test surface**, or
+a **single user-facing story**. Being open in the same week is not a reason.
+
+Work happens in **weekly sessions**; a session typically produces two or three
+PRs, not fifteen. If a session finds five things wrong with the same subsystem,
+that is one PR closing five issues — not five PRs. Conversely, three unrelated
+fixes that merely happened on the same afternoon are three PRs.
+
+Two cases sit at the extremes and are worth naming:
+
+- **A documentation sweep is one PR,** however many issues it closes. Five doc
+  issues are genuinely one change; `skip-changelog` already covers it.
+- **A schema migration always stands alone.** Deploy ordering is load-bearing —
+  additive migrations go out *before* the image, drops *after* (§5) — and a PR
+  that mixes a migration with unrelated work obscures the ordering it needs.
+
+**Why not simply batch a week's work into one big PR?** It was considered, and
+it costs more than it saves:
+
+- **Revert granularity dies.** Squash-merge makes the whole week one commit. If
+  one change breaks production and the rest are fine, none of them can be backed
+  out independently, and `rollback.yml` only moves whole versions.
+- **`git bisect` stops working.** A squashed commit spanning unrelated areas
+  identifies nothing.
+- **Review has no story to follow** — including your own review, a year later.
+- **A week-long branch is the thing this project avoids.** The standing
+  preference is a feature flag or env-gate over a long-lived branch.
+- **It would not save CI anyway.** CI runs **per push, not per PR** — ten pushes
+  to one weekly branch is ten runs. Expensive CI is fixed by filtering what each
+  job does, not by merging fewer times.
 
 ### Commit messages
 
