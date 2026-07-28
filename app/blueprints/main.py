@@ -31,16 +31,23 @@ def _advance_past(occ, frequency, anchor_day, second_day, day, guard=500):
 
 
 def upcoming_occurrences(next_due, frequency, anchor_day, second_day,
-                         window_start, window_end, guard=500):
+                         window_start, window_end, guard=500, end_date=None):
     """All occurrence dates with window_start < occ <= window_end. Pure.
 
     Start is exclusive (anything due today was already materialized by the
     due-runners); end is INCLUSIVE — a bill due on payday still has to be paid
     out of this check. Each phase gets its own guard budget so a long catch-up
     can't starve the collection loop (the forecasts._remaining_scheduled
-    precedent)."""
+    precedent).
+
+    `end_date` is the schedule's optional last day (#32): nothing on or after it
+    is enumerated, so a schedule finishing mid-window is truncated rather than
+    advertised forever. It defaults to None — no end date — which is every
+    schedule created before #32 and every caller that doesn't pass one."""
     occ = _advance_past(next_due, frequency, anchor_day, second_day,
                         window_start, guard)
+    if end_date is not None and end_date < window_end:
+        window_end = end_date
     out = []
     steps = 0
     while occ <= window_end and steps < guard:

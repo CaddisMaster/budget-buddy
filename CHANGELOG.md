@@ -8,6 +8,24 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Added
+
+- A recurring schedule can have an **end date**, on both scheduled
+  income/expenses and automatic transfers. A car loan has a final payment and a
+  membership gets cancelled; until now the only way to stop a schedule was to
+  remember to delete it on the right day, and forgetting silently posted
+  transactions that never happened — which then poison balances,
+  budget-vs-actual and the forecast. The field is optional and blank means "runs
+  indefinitely", so nothing about an existing schedule changes.
+
+  A schedule that has run its course is shown as **Finished** rather than
+  quietly going inactive, which keeps it distinct from one that was paused. The
+  end date is honoured everywhere a schedule is read, not just where it posts:
+  the dashboard, the month-ahead forecast, the weekly digest and Ask all stop
+  advertising a bill that can never be charged again. A schedule whose next due
+  date went stale *and* whose end date has since passed posts nothing at all on
+  the next login, rather than back-filling every occurrence it "missed".
+
 ### Fixed
 
 - The "Ask your finances" answer panel is readable in dark mode. It was styled

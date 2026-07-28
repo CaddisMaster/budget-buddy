@@ -312,3 +312,42 @@ def test_profile_card_gated_on_mail_enabled(client_a, monkeypatch):
     assert b"Weekly email digest" not in client_a.get("/profile").data
     monkeypatch.setenv("RESEND_API_KEY", "k")
     assert b"Weekly email digest" in client_a.get("/profile").data
+
+
+# --- #32: a finished schedule is not "upcoming" -----------------------------
+
+def test_digest_excludes_a_schedule_past_its_end_date(users):
+    # The damage #32 describes, at the digest surface: without the end_date
+    # filter the email would promise a bill that can never be charged again.
+    a = users["a"]["id"]
+    acct = create_account(a, "dig-end-acct")
+    cat = create_category(a, "dig-end-cat")
+    create_schedule(a, acct, 640, "weekly", TODAY + timedelta(days=2),
+                    transaction_type="expense", category_id=cat,
+                    end_date=TODAY - timedelta(days=1))
+    facts = compute_digest_facts(a, today=TODAY)
+    assert 640.0 not in [i["amount"] for i in facts["upcoming"]]
+
+
+def test_digest_truncates_a_schedule_ending_mid_window(users):
+    # A weekly bill due in 2 and 9 days, ending after the first: the window
+    # holds only the occurrence that will actually happen.
+    a = users["a"]["id"]
+    acct = create_account(a, "dig-mid-acct")
+    cat = create_category(a, "dig-mid-cat")
+    create_schedule(a, acct, 641, "weekly", TODAY + timedelta(days=2),
+                    transaction_type="expense", category_id=cat,
+                    end_date=TODAY + timedelta(days=3))
+    facts = compute_digest_facts(a, today=TODAY)
+    assert [i["amount"] for i in facts["upcoming"]].count(641.0) == 1
+
+
+def test_digest_excludes_a_transfer_past_its_end_date(users):
+    a = users["a"]["id"]
+    acct1 = create_account(a, "dig-tr-1")
+    acct2 = create_account(a, "dig-tr-2")
+    create_transfer_schedule(a, acct1, acct2, 642, "weekly",
+                             TODAY + timedelta(days=2),
+                             end_date=TODAY - timedelta(days=1))
+    facts = compute_digest_facts(a, today=TODAY)
+    assert 642.0 not in [i["amount"] for i in facts["upcoming"]]

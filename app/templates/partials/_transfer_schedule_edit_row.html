@@ -36,6 +36,9 @@
     </div>
     <label style="font-size:11px;color:var(--text-muted);font-weight:normal;margin:0.25rem 0 0">Next date (other)</label>
     <input type="date" name="next_due" value="{{ schedule.next_due.strftime('%Y-%m-%d') if schedule.next_due else '' }}" style="margin:0">
+    {# #32 — optional. Blank clears it and the transfer runs indefinitely again. #}
+    <label style="font-size:11px;color:var(--text-muted);font-weight:normal;margin:0.25rem 0 0">End date (optional)</label>
+    <input type="date" name="end_date" value="{{ schedule.end_date.strftime('%Y-%m-%d') if schedule.end_date else '' }}" style="margin:0">
   </td>
   <td class="row-actions">
     <button type="button" class="btn btn-sm btn-primary"

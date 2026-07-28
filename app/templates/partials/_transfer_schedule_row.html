@@ -1,6 +1,5 @@
-{# transfer-schedule tuple: 0 id, 1 amount, 2 description, 3 from_account_id,
-   4 to_account_id, 5 frequency, 6 anchor_day, 7 second_day, 8 next_due,
-   9 is_active, 10 from_account_name, 11 to_account_name #}
+{# schedule = a TRANSFER_SCHEDULE_ROW_SQL row (namedtuple — read by field name,
+   so the column ORDER here doesn't matter). #}
 <tr id="transfer-schedule-{{ schedule.id }}">
   <td>{{ schedule.from_account_name or 'No account' }}</td>
   <td>{{ schedule.to_account_name or 'No account' }}</td>
@@ -10,7 +9,16 @@
     {{ frequency_labels.get(schedule.frequency, schedule.frequency) }}
     {% if schedule.frequency == 'semimonthly' %}<span style="color:var(--text-muted)">({{ schedule.anchor_day }} &amp; {{ schedule.second_day }})</span>{% endif %}
   </td>
-  <td>{{ schedule.next_due }}</td>
+  {# #32 — end date in the Next-due cell, the twin of _schedule_row.html. #}
+  <td>
+    {% if schedule.is_finished %}
+      <span class="sched-finished">Finished</span>
+      <span class="sched-until">ended {{ schedule.end_date }}</span>
+    {% else %}
+      {{ schedule.next_due }}
+      {% if schedule.end_date %}<span class="sched-until">until {{ schedule.end_date }}</span>{% endif %}
+    {% endif %}
+  </td>
   <td class="row-actions">
     <button type="button" class="btn btn-sm"
       hx-get="{{ url_for('transfers.edit_transfer_schedule', schedule_id=schedule.id) }}"

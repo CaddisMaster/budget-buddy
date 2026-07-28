@@ -10,7 +10,7 @@ is exercised by the pure project_expenses() day-weighting math and by
 compute_forecast() running directly against seeded data.
 """
 import calendar
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from dateutil.relativedelta import relativedelta
@@ -316,3 +316,20 @@ def test_dashboard_never_shows_another_users_forecast(client_a, users, monkeypat
     resp = client_a.get("/")
     assert resp.status_code == 200
     assert b"B-PRIVATE-FORECAST" not in resp.data
+
+
+def test_compute_forecast_excludes_a_schedule_past_its_end_date(users):
+    # #32 — projecting past a schedule's end date forecasts bills that can never
+    # be charged, which is exactly the poisoned-forecast damage the issue names.
+    a = users["a"]["id"]
+    today = date.today()
+    days_in_month = calendar.monthrange(today.year, today.month)[1]
+    if today.day >= days_in_month:
+        pytest.skip("last day of month — no remaining-this-month window")
+    acct = create_account(a, "fc-ended")
+    due = date(today.year, today.month, days_in_month)
+    create_schedule(a, acct, 3000, "monthly", due, transaction_type="income",
+                    end_date=today - timedelta(days=1))
+    fc = compute_forecast(a, today.year, today.month)
+    assert fc["remaining_scheduled_income"] == 0.0
+    assert not any(i["due"] == due.isoformat() for i in fc["remaining_items"])

@@ -60,6 +60,13 @@
             The first date this should post. Must be today or later.
         </p>
     </div>
+    {# #32 — outside schedDateDiv so it stays visible for semi-monthly too. #}
+    <label>End date (optional)</label>
+    <input type="date" name="end_date">
+    <p style="font-size:12px;color:var(--text-muted);margin-top:0.25rem">
+        The last day this should post — for a loan's final payment or a
+        membership you're cancelling. Leave blank to run indefinitely.
+    </p>
     <button type="submit" class="btn btn-primary" style="margin-top:1rem">Add schedule</button>
 </form>
 

@@ -52,29 +52,34 @@ def _upcoming_scheduled(user_id, today, days=UPCOMING_DAYS):
     with db_cursor() as cursor:
         cursor.execute("""
             SELECT description, amount, transaction_type, next_due,
-                   frequency, anchor_day, second_day
+                   frequency, anchor_day, second_day, end_date
             FROM schedules
             WHERE is_active = true AND user_id = %s AND next_due <= %s
+              AND (end_date IS NULL OR next_due <= end_date)
         """, (user_id, window_end))
-        for desc, amount, ttype, next_due, freq, anchor, second in cursor.fetchall():
+        for desc, amount, ttype, next_due, freq, anchor, second, end_date in cursor.fetchall():
             for due in upcoming_occurrences(next_due, freq, anchor, second,
-                                            window_start, window_end):
+                                            window_start, window_end,
+                                            end_date=end_date):
                 items.append({'description': desc or '', 'amount': float(amount),
                               'type': ttype, 'due': due.isoformat()})
 
         cursor.execute("""
             SELECT ts.description, ts.amount, ts.next_due,
-                   ts.frequency, ts.anchor_day, ts.second_day,
+                   ts.frequency, ts.anchor_day, ts.second_day, ts.end_date,
                    af.account_name AS from_account_name, at.account_name AS to_account_name
             FROM transfer_schedules ts
             JOIN account af ON ts.from_account_id = af.account_id
             JOIN account at ON ts.to_account_id = at.account_id
             WHERE ts.is_active = true AND ts.user_id = %s AND ts.next_due <= %s
+              AND (ts.end_date IS NULL OR ts.next_due <= ts.end_date)
         """, (user_id, window_end))
-        for desc, amount, next_due, freq, anchor, second, from_name, to_name in cursor.fetchall():
+        for (desc, amount, next_due, freq, anchor, second, end_date,
+             from_name, to_name) in cursor.fetchall():
             label = (desc or '').strip() or f'Transfer {from_name} → {to_name}'
             for due in upcoming_occurrences(next_due, freq, anchor, second,
-                                            window_start, window_end):
+                                            window_start, window_end,
+                                            end_date=end_date):
                 items.append({'description': label, 'amount': float(amount),
                               'type': 'transfer', 'due': due.isoformat()})
 

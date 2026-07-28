@@ -265,3 +265,64 @@ def test_cannot_edit_or_delete_other_users_transfer_schedule(client_a, users):
     assert client_a.delete(f"/transfers/recurring/{b_tsid}", headers=HX).status_code == 404
     # B's transfer untouched.
     assert fetch_transfer_schedule(b_tsid) is not None
+
+
+# --- #32 end date (the twin of test_schedules.py's block) -------------------
+
+def test_transfer_stops_materializing_at_its_end_date(users):
+    a = users["a"]
+    to_acct = _second_account(a)
+    three_weeks_ago = date.today() - timedelta(weeks=3)
+    create_transfer_schedule(a["id"], a["account_id"], to_acct, 200, "weekly",
+                             three_weeks_ago,
+                             end_date=three_weeks_ago + timedelta(weeks=1))
+    run_due_transfers(a["id"])
+    # Two occurrences (-21, -14), each a PAIR of legs → 4 rows, not 8.
+    assert len(_transfer_legs(a["id"], LABEL)) == 4
+
+
+def test_finished_transfer_never_backfills(users):
+    a = users["a"]
+    to_acct = _second_account(a)
+    long_ago = date.today() - timedelta(weeks=8)
+    create_transfer_schedule(a["id"], a["account_id"], to_acct, 200, "weekly",
+                             long_ago, end_date=long_ago - timedelta(days=1))
+    run_due_transfers(a["id"])
+    assert _transfer_legs(a["id"], LABEL) == []
+
+
+def test_transfer_without_end_date_is_unchanged(users):
+    a = users["a"]
+    to_acct = _second_account(a)
+    three_weeks_ago = date.today() - timedelta(weeks=3)
+    create_transfer_schedule(a["id"], a["account_id"], to_acct, 200, "weekly",
+                             three_weeks_ago, end_date=None)
+    run_due_transfers(a["id"])
+    # -21, -14, -7, today → 4 occurrences → 8 legs.
+    assert len(_transfer_legs(a["id"], LABEL)) == 8
+
+
+def test_finished_transfer_shows_as_finished(client_a, users):
+    a = users["a"]
+    to_acct = _second_account(a)
+    long_ago = date.today() - timedelta(weeks=8)
+    create_transfer_schedule(a["id"], a["account_id"], to_acct, 200, "weekly",
+                             long_ago, end_date=long_ago + timedelta(days=1))
+    run_due_transfers(a["id"])
+    assert "Finished" in client_a.get("/transfers").data.decode()
+
+
+def test_transfer_end_date_before_next_date_is_rejected(client_a, users):
+    a = users["a"]
+    to_acct = _second_account(a)
+    today = date.today()
+    resp = client_a.post("/transfers/recurring", data={
+        "from_account": a["account_id"], "to_account": to_acct,
+        "amount": "200", "description": "__pytest__transfer-end-reject",
+        "frequency": "monthly",
+        "next_due": (today + timedelta(days=30)).isoformat(),
+        "end_date": (today + timedelta(days=10)).isoformat(),
+    }, headers=HX)
+    assert resp.status_code == 200
+    assert "showToast" in resp.headers.get("HX-Trigger", "")
+    assert count_transfer_schedules(a["id"]) == 0

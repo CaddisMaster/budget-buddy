@@ -26,7 +26,9 @@ bp = Blueprint('schedules', __name__)
 SCHEDULE_ROW_SQL = """
     SELECT s.id, s.amount, s.description, s.category_id, s.account_id,
            s.transaction_type, s.frequency, s.anchor_day, s.second_day,
-           s.next_due, s.is_active, c.name AS category_name, a.account_name
+           s.next_due, s.end_date, s.is_active,
+           (s.end_date IS NOT NULL AND s.next_due > s.end_date) AS is_finished,
+           c.name AS category_name, a.account_name
     FROM schedules s
     LEFT JOIN categories c ON s.category_id = c.id
     LEFT JOIN account a ON s.account_id = a.account_id
@@ -64,16 +66,24 @@ def run_due_schedules(user_id):
         # the updated row, and finds nothing due.
         cursor.execute("""
             SELECT id, amount, description, category_id, account_id,
-                   transaction_type, frequency, anchor_day, second_day, next_due
+                   transaction_type, frequency, anchor_day, second_day, next_due,
+                   end_date
             FROM schedules
             WHERE is_active = true AND next_due <= %s AND user_id = %s
+              AND (end_date IS NULL OR next_due <= end_date)
             FOR UPDATE
         """, (today, user_id))
         due = cursor.fetchall()
         for (sid, amount, desc, cat_id, acc_id, ttype, freq,
-             anchor_day, second_day, next_due) in due:
+             anchor_day, second_day, next_due, end_date) in due:
+            # #32: nothing materializes past the schedule's last day. Note this
+            # also covers the nastiest case for free — a schedule whose next_due
+            # went stale AND whose end_date has since passed gives zero
+            # iterations, so the catch-up loop back-fills nothing on the next
+            # login rather than posting months of charges that never happened.
+            stop = min(today, end_date) if end_date is not None else today
             cur_due = next_due
-            while cur_due <= today:
+            while cur_due <= stop:
                 cursor.execute("""
                     INSERT INTO transactions
                         (amount, description, category_id, account_id,
@@ -146,10 +156,25 @@ def _parse_form(form):
             except ValueError:
                 errors.append('Next date must be a valid date')
 
+    # #32 — optional last day. Blank means "runs indefinitely", which is every
+    # schedule that existed before this field. It is validated against the
+    # next_due computed just above, NOT the stored one: an edit recomputes
+    # next_due from the form, so comparing against the old value would accept a
+    # pair that is already contradictory by the time it is written.
+    end_date = None
+    end_date_raw = form.get('end_date', '').strip()
+    if end_date_raw:
+        try:
+            end_date = datetime.strptime(end_date_raw, '%Y-%m-%d').date()
+            if next_due is not None and end_date < next_due:
+                errors.append('End date cannot be before the next date')
+        except ValueError:
+            errors.append('End date must be a valid date')
+
     fields = {'amount': amount, 'description': description, 'category_id': category_id,
               'account_id': account_id, 'transaction_type': transaction_type,
               'frequency': frequency, 'anchor_day': anchor_day, 'second_day': second_day,
-              'next_due': next_due}
+              'next_due': next_due, 'end_date': end_date}
     return errors, fields
 
 
@@ -184,12 +209,12 @@ def scheduled():
                     INSERT INTO schedules
                         (amount, description, category_id, account_id,
                          transaction_type, frequency, anchor_day, second_day,
-                         next_due, user_id)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                         next_due, end_date, user_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                 """, (f['amount'], f['description'], f['category_id'], f['account_id'],
                       f['transaction_type'], f['frequency'], f['anchor_day'],
-                      f['second_day'], f['next_due'], current_user.id))
+                      f['second_day'], f['next_due'], f['end_date'], current_user.id))
                 new_id = cursor.fetchone()[0]
         except psycopg2.Error:
             current_app.logger.exception('create schedule failed')
@@ -239,11 +264,12 @@ def edit_schedule(schedule_id):
                 cursor.execute("""
                     UPDATE schedules SET amount=%s, description=%s, category_id=%s,
                         account_id=%s, transaction_type=%s, frequency=%s,
-                        anchor_day=%s, second_day=%s, next_due=%s
+                        anchor_day=%s, second_day=%s, next_due=%s, end_date=%s
                     WHERE id=%s AND user_id=%s
                 """, (f['amount'], f['description'], f['category_id'], f['account_id'],
                       f['transaction_type'], f['frequency'], f['anchor_day'],
-                      f['second_day'], f['next_due'], schedule_id, current_user.id))
+                      f['second_day'], f['next_due'], f['end_date'],
+                      schedule_id, current_user.id))
         except psycopg2.Error:
             current_app.logger.exception('edit schedule failed')
             return render_template('partials/_schedule_edit_row.html',

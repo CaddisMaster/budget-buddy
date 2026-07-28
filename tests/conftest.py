@@ -406,17 +406,19 @@ def create_goal(user_id, account_id, target_amount, target_date=None, baseline=0
 
 def create_schedule(user_id, account_id, amount, frequency, next_due,
                     transaction_type="expense", category_id=None,
-                    anchor_day=None, second_day=None, is_active=True):
+                    anchor_day=None, second_day=None, is_active=True,
+                    end_date=None):
     """Insert a schedule template directly (bypassing the form)."""
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO schedules (amount, description, category_id, account_id, "
-        "transaction_type, frequency, anchor_day, second_day, next_due, is_active, "
-        "user_id) VALUES (%s, 'seed-schedule', %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+        "transaction_type, frequency, anchor_day, second_day, next_due, end_date, "
+        "is_active, user_id) "
+        "VALUES (%s, 'seed-schedule', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
         "RETURNING id",
         (amount, category_id, account_id, transaction_type, frequency, anchor_day,
-         second_day, next_due, is_active, user_id),
+         second_day, next_due, end_date, is_active, user_id),
     )
     sid = cur.fetchone()[0]
     conn.commit()
@@ -441,16 +443,18 @@ def fetch_schedule(schedule_id):
 
 def create_transfer_schedule(user_id, from_account, to_account, amount, frequency,
                              next_due, anchor_day=None, second_day=None,
-                             is_active=True, description="seed-auto-transfer"):
+                             is_active=True, description="seed-auto-transfer",
+                             end_date=None):
     """Insert a recurring-transfer template directly (bypassing the form)."""
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO transfer_schedules (amount, description, from_account_id, "
-        "to_account_id, frequency, anchor_day, second_day, next_due, is_active, "
-        "user_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+        "to_account_id, frequency, anchor_day, second_day, next_due, end_date, "
+        "is_active, user_id) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
         (amount, description, from_account, to_account, frequency, anchor_day,
-         second_day, next_due, is_active, user_id),
+         second_day, next_due, end_date, is_active, user_id),
     )
     tsid = cur.fetchone()[0]
     conn.commit()
