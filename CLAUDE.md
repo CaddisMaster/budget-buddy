@@ -247,7 +247,19 @@ live in the archived repo (`CaddisMaster/budget-buddy-archive`). Do not resurrec
 4. **New behaviour gets a test that fails without it.** Jinja's silent-empty-string failure mode
    means content-asserting tests are the only net.
 5. **Update `CHANGELOG.md`** under `## [Unreleased]`.
-6. **Open a PR** with `Closes #<issue>`; squash-merge once CI is green.
+6. **Open a PR** with `Closes #<issue>` (one line per issue closed); squash-merge once CI is green.
+
+**Batch issues into PRs by COHERENCE, never by calendar** (issue #53). A PR may close several
+issues — but only when they share a **file surface**, a **test surface**, or one **user-facing
+story**. Being open the same week is not a reason. Work runs in **weekly sessions**, each producing
+two or three PRs, not fifteen; the 2026-07-27 session merged 15, several of them fragments of one
+logical change (see #51). Five findings in one subsystem = ONE PR closing five issues. Three
+unrelated fixes on the same afternoon = three PRs. Two named extremes: a **docs sweep is one PR**
+however many issues it closes (`skip-changelog` covers it), and a **schema migration ALWAYS stands
+alone** — bundling obscures the deploy ordering it depends on (additive before the pull, drops
+after). Full rationale in `CONTRIBUTING.md` §2 "How much goes in one PR"; the short version of why
+one big weekly PR was rejected: squash-merge would destroy revert granularity and `git bisect`, and
+it saves nothing anyway because **CI runs per push, not per PR**.
 
 **Prefer a feature flag / env-gate** (like `ai_enabled()`) over a long-lived branch — ship it dark
 behind the gate, turn it on when ready.
