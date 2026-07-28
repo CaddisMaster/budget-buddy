@@ -13,9 +13,25 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: changelog-${{ github.ref }}
-  cancel-in-progress: true
+# ⚠️ Deliberately NO `concurrency` block. There was one, with
+# `cancel-in-progress: true`, and it intermittently blocked merges.
+#
+# The triggers above mean one action can raise several events at once: opening a
+# PR with two labels fires `opened` + `labeled` + `labeled` inside the same
+# second. With cancel-in-progress, those runs cancel each other, and which one
+# survives is a race. When the *newest* run for this context ends up cancelled,
+# branch protection sees the required check as unsatisfied and the PR is BLOCKED
+# with nothing actually wrong — which happened to #66, while #65 and #67 hit the
+# same race and got away with it.
+#
+# Cancelling superseded runs is worth it for ci.yml, which takes ~6 minutes.
+# This job takes 3-6 SECONDS, so the setting saved nothing and bought a
+# random merge blocker. A red check that everyone learns to re-run reflexively
+# is worse than a few seconds of wasted runner time — that habit is how a real
+# failure gets waved through.
+#
+# Every event now gets its own run and every run completes. If that ever becomes
+# noisy, narrow the TRIGGERS rather than reintroducing cancellation.
 
 jobs:
   changelog:
