@@ -176,7 +176,7 @@ assertions the feature-local grep missed. If suite time becomes the bottleneck: 
 re-`pip install`s each run (~15s recoverable); pytest-xdist would halve the serial run BUT
 conftest's fixed `__pytest__` usernames collide across workers — per-worker prefixes first.
 
-**565 tests in `tests/`.** Cross-cutting patterns: **no real API calls anywhere** — every
+**579 tests in `tests/`.** Cross-cutting patterns: **no real API calls anywhere** — every
 `ai.py::_call_*_model` seam (and `mailer.py::_call_resend`) is monkeypatched with canned
 `SimpleNamespace` responses; every feature file asserts **user isolation**; route tests assert
 anon → 302. What each file covers:

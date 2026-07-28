@@ -20,6 +20,90 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  changes:
+    name: What changed
+    runs-on: ubuntu-latest
+    # One source of truth for "can this change affect X", consumed by the jobs
+    # below. Every job keeps RUNNING and gates its expensive STEPS on these
+    # outputs. It is tempting to put `paths-ignore` on the jobs instead — do not.
+    # These are required status checks, and a required check that never runs
+    # leaves the pull request permanently unmergeable: GitHub waits forever for
+    # a status that is not coming. That is the standard trap with path filtering
+    # plus branch protection.
+    #
+    # For the same reason, every consumer below carries `if: ${{ !cancelled() }}`
+    # and treats a NON-SUCCESSFUL classification as "run everything":
+    #
+    #   run  when  needs.changes.result != 'success' || outputs.X == 'true'
+    #   skip when  needs.changes.result == 'success' && outputs.X != 'true'
+    #
+    # Without that, a failure in THIS job would skip its dependents, and a
+    # skipped required check strands the pull request exactly as above. The
+    # script already fails open on anything it cannot classify; these conditions
+    # extend the same guarantee to the job failing outright, so "fail open" holds
+    # at both levels rather than only inside the script.
+    outputs:
+      app: ${{ steps.filter.outputs.app }}
+      image: ${{ steps.filter.outputs.image }}
+      sql: ${{ steps.filter.outputs.sql }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Need history back to the base commit to diff against it.
+          fetch-depth: 0
+
+      - name: Classify the changed paths
+        id: filter
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          # Fail open, always. A push to main gates the deployable state and is
+          # never filtered; anything unexpected also runs everything. This filter
+          # exists to make CI cheaper, never to make it less trustworthy.
+          if [ "$EVENT" != "pull_request" ] || [ -z "${BASE_SHA:-}" ]; then
+            echo "Not a filterable pull request — running everything."
+            printf 'app=true\nimage=true\nsql=true\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed=$(git diff --name-only "$BASE_SHA" HEAD)
+          echo "Changed files:"
+          echo "$changed"
+          echo
+
+          matches() { echo "$changed" | grep -qE "$1"; }
+
+          # The suite validates application behaviour, so anything capable of
+          # changing that behaviour must run it: the code, the tests themselves,
+          # the dependency set, the runtime it executes on, and the schema the
+          # tests load. Getting this too NARROW recreates the exact gap the
+          # docker-build job was added to close — CI passing on something other
+          # than what ships. Only genuinely inert paths fall through: *.md,
+          # landing/, .github/ISSUE_TEMPLATE/.
+          if matches '^(app/|tests/|scripts/|sql/|requirements.*\.txt$|Dockerfile$|pyproject\.toml$|pytest\.ini$|setup\.cfg$|\.github/workflows/ci\.yml$)'; then
+            app=true
+          else
+            app=false
+          fi
+
+          # Only a change to the SHIPPED runtime justifies paying for a second,
+          # in-image run of the same suite.
+          if matches '^(Dockerfile$|requirements.*\.txt$)'; then
+            image=true
+          else
+            image=false
+          fi
+
+          if matches '^(sql/|scripts/migrate\.py$)'; then
+            sql=true
+          else
+            sql=false
+          fi
+
+          echo "app=$app  image=$image  sql=$sql"
+          printf 'app=%s\nimage=%s\nsql=%s\n' "$app" "$image" "$sql" >> "$GITHUB_OUTPUT"
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -34,6 +118,8 @@ jobs:
   test:
     name: Tests
     runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ !cancelled() }}
 
     services:
       db:
@@ -66,24 +152,35 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v7
+        if: needs.changes.result != 'success' || needs.changes.outputs.app == 'true'
         with:
           python-version: "3.11"
           cache: pip
 
       - name: Install dependencies
+        if: needs.changes.result != 'success' || needs.changes.outputs.app == 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Load schema
+        if: needs.changes.result != 'success' || needs.changes.outputs.app == 'true'
         run: psql "postgresql://budget:budget@localhost:5432/budget" -f sql/schema.sql
 
       - name: Run tests
+        if: needs.changes.result != 'success' || needs.changes.outputs.app == 'true'
         run: pytest -q
+
+      # The job still reports success, so the required check is satisfied.
+      - name: No application changes
+        if: needs.changes.result == 'success' && needs.changes.outputs.app != 'true'
+        run: echo "Nothing under app/, tests/, sql/, scripts/ or the dependency set changed — suite skipped."
 
   migrations:
     name: Migrations apply to the current schema
     runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ !cancelled() }}
 
     # The plan for this phase wanted CI to assert that schema.sql and the
     # numbered migrations produce identical schemas. That is impossible here:
@@ -119,17 +216,21 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v7
+        if: needs.changes.result != 'success' || needs.changes.outputs.sql == 'true'
         with:
           python-version: "3.11"
           cache: pip
 
       - name: Install psycopg2
+        if: needs.changes.result != 'success' || needs.changes.outputs.sql == 'true'
         run: pip install psycopg2-binary
 
       - name: Build the database from schema.sql
+        if: needs.changes.result != 'success' || needs.changes.outputs.sql == 'true'
         run: psql "postgresql://budget:budget@localhost:5432/budget" -f sql/schema.sql
 
       - name: Baseline, then apply anything newer
+        if: needs.changes.result != 'success' || needs.changes.outputs.sql == 'true'
         run: |
           # schema.sql already contains everything up to the highest numbered
           # migration, so baseline records them rather than re-running them.
@@ -139,6 +240,7 @@ jobs:
           python scripts/migrate.py
 
       - name: Runner is idempotent
+        if: needs.changes.result != 'success' || needs.changes.outputs.sql == 'true'
         run: |
           out=$(python scripts/migrate.py)
           echo "$out"
@@ -148,6 +250,7 @@ jobs:
           fi
 
       - name: A new migration must also be reflected in schema.sql
+        if: needs.changes.result != 'success' || needs.changes.outputs.sql == 'true'
         run: |
           # The drift this catches: adding sql/NN without updating schema.sql,
           # so a fresh database silently lacks what production has. Compares
@@ -172,9 +275,16 @@ jobs:
             exit 1
           fi
 
+      # The job still reports success, so the required check is satisfied.
+      - name: No schema changes
+        if: needs.changes.result == 'success' && needs.changes.outputs.sql != 'true'
+        run: echo "Nothing under sql/ or scripts/migrate.py changed — migration checks skipped."
+
   docker-build:
     name: Image builds and runs as non-root
     runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ !cancelled() }}
     # Nothing here needs the registry — this job proves the image is sound, it
     # does not publish it. Pushing happens in the release workflow.
     steps:
@@ -205,7 +315,9 @@ jobs:
             exit 1
           fi
 
-      - name: Gunicorn boots and serves a request
+      # Its own step because two things need it now: the boot check below and,
+      # when the shipped runtime changes, the in-image suite after that.
+      - name: Start Postgres and load the schema
         run: |
           docker network create ci-net
           docker run -d --name ci-db --network ci-net \
@@ -219,6 +331,8 @@ jobs:
           done
           docker exec -i ci-db psql -U budget -d budget < sql/schema.sql
 
+      - name: Gunicorn boots and serves a request
+        run: |
           docker run -d --name ci-web --network ci-net -p 5001:5000 \
             -e DB_HOST=ci-db -e DB_PORT=5432 -e DB_NAME=budget \
             -e DB_USER=budget -e DB_PASSWORD=budget \
@@ -239,6 +353,39 @@ jobs:
             exit 1
           fi
           echo "GET /login -> 200"
+
+      # The `Tests` job runs the suite on the RUNNER's Python via setup-python,
+      # which is not necessarily the Python the image ships. That gap is not
+      # hypothetical: a Dependabot PR moving the base image 3.11 -> 3.14 could go
+      # fully green with all 579 tests having executed on the runtime being
+      # replaced. So when the shipped runtime itself changes, run the suite
+      # inside the built image as well.
+      #
+      # Gated because it roughly doubles the test path. A Dockerfile or
+      # requirements change is rare; ordinary application PRs keep the fast
+      # runner job and pay nothing.
+      - name: Test suite runs inside the shipped image
+        if: needs.changes.result != 'success' || needs.changes.outputs.image == 'true'
+        run: |
+          docker run --rm --network ci-net \
+            -e DB_HOST=ci-db -e DB_PORT=5432 -e DB_NAME=budget \
+            -e DB_USER=budget -e DB_PASSWORD=budget \
+            -e SECRET_KEY=ci-secret-key \
+            budget-buddy:ci sh -c '
+              python --version
+              pip install -q -r requirements-dev.txt
+              # `python -m pytest`, not bare `pytest`: the image runs as the
+              # non-root appuser, so pip puts console scripts in
+              # /home/appuser/.local/bin, which is not on PATH. Going through
+              # the module also guarantees the interpreter that did the install
+              # is the one that runs. -p no:cacheprovider because /app is
+              # root-owned (WORKDIR created it before the COPY --chown).
+              python -m pytest -q -p no:cacheprovider
+            '
+
+      - name: Confirm what the image test covered
+        if: needs.changes.result == 'success' && needs.changes.outputs.image != 'true'
+        run: echo "Shipped runtime unchanged (no Dockerfile or requirements change) — in-image suite skipped."
 
       - name: Container logs on failure
         if: failure()
