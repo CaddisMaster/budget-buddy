@@ -63,6 +63,30 @@ docker compose exec db psql -U admin -d budget -c \
 
 Further users can then be created in the UI under Settings → Manage users.
 
+### Seed a development dataset
+
+An empty database renders empty charts, empty budget grids and empty goal cards,
+which makes almost nothing worth looking at. `scripts/seed_dev.py` fills one:
+
+```bash
+docker compose exec web python scripts/seed_dev.py
+```
+
+That creates an admin user `dev` / `dev-password-123` owning four accounts (two
+of them credit cards with limits and APRs), categories of both kinds, six months
+of transactions, budgets, schedules, recurring transfers, and two goals — enough
+for every surface in the app to show something real. It is **synthetic data**;
+none of it comes from a production or personal database.
+
+Useful flags: `--months 12` for a longer history, `--username` for a different
+account, `--seed` to vary the data, `--dry-run` to see what it would write, and
+`--force` to replace an existing seeded user. Without `--force` it refuses to
+touch a database that already has that user, so it cannot silently double a
+dataset.
+
+The same seed and the same day always produce the same data, so a bug found
+against seeded data can be reproduced on another machine.
+
 ### Install the pre-commit hooks
 
 ```bash
