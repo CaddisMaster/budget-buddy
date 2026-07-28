@@ -8,6 +8,12 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-28
+
+The first feature release since the repository reboot. Two user-facing
+additions — bill reminders and schedule end dates — plus the infrastructure work
+that had been sitting on `main` since `0.1.0`.
+
 ### Added
 
 - **Bill-due push reminders** to the installed app. A notification the evening
@@ -23,22 +29,6 @@ this project uses the `0.x` versioning scheme described in
   and nothing is sent, exactly as the app already behaves without an Anthropic
   or Resend key. **On iPhone, Web Push only works once the app has been added
   to the home screen.**
-
-### Changed
-
-- **Due schedules now materialise server-side, once a day, for everyone.**
-  Previously this happened only when a page was loaded, so a user who did not
-  log in had transactions silently not posted — which then understated their
-  weekly digest, their month-ahead forecast, and the Money agent's view of
-  their own data. The daily job closes that. The login-triggered runners stay
-  as well, so logging in still catches you up immediately.
-
-  Note for anyone running their own instance: the scheduler is no longer gated
-  on an email key. It starts on `ENABLE_DIGEST_SCHEDULER` alone and each job
-  carries its own gate, because materialisation must not stop just because a
-  third-party credential is missing.
-
-### Added
 
 - A recurring schedule can have an **end date**, on both scheduled
   income/expenses and automatic transfers. A car loan has a final payment and a
@@ -56,45 +46,6 @@ this project uses the `0.x` versioning scheme described in
   date went stale *and* whose end date has since passed posts nothing at all on
   the next login, rather than back-filling every occurrence it "missed".
 
-### Fixed
-
-- The "Ask your finances" answer panel is readable in dark mode. It was styled
-  inline against `var(--bg-subtle)`, a custom property defined nowhere in the
-  stylesheet. That never failed loudly because the declaration carried a
-  hard-coded `#f6f7f9` fallback — a pale grey that looks right in light mode and
-  leaves light text on a light panel in dark mode. Presentation moved to a real
-  `.ask-answer` rule using the theme-aware `--surface-2` token. A test now
-  asserts that every `var(--token)` in the stylesheet and templates resolves to
-  a token that is actually defined, so a phantom one cannot return unnoticed.
-
-### Changed
-
-- Logging out asks for confirmation first. It is a nav item sitting beside
-  ordinary navigation, and on the installed PWA a mis-tap costs a re-login on a
-  touch keyboard. Logout remains a POST-only form with its own CSRF token; with
-  JavaScript disabled it submits as before, without a prompt.
-
-### Removed
-
-- Mealie and Uptime Kuma were retired from the Droplet, and their cards removed
-  from the landing page. The server now runs Budget Buddy alone. Their data was
-  archived first — including Mealie's uploaded recipe images, which the nightly
-  job had never covered — and the nightly backup no longer attempts to dump a
-  database that is gone. Freed roughly 2 GB and dropped disk use from 64% to
-  30%.
-
-### Security
-
-- Recorded that the Droplet's disk is **not** encrypted at rest. This had been
-  documented as unverified; DigitalOcean states plainly that virtual disks on
-  hypervisor local storage are not encrypted, and that encrypting them is the
-  customer's responsibility. Affects the live Postgres volume, `.env`, and
-  pre-deploy dumps. `RUNBOOK.md` now carries the finding, what it does and does
-  not protect against, and the supported remedy (a LUKS-encrypted Block Storage
-  Volume) should it ever be worth closing.
-
-### Added
-
 - The changelog is now enforced rather than merely requested: a pull request
   that changes `app/` without touching `CHANGELOG.md` fails, with a
   `skip-changelog` label as the escape hatch. This is what the repository
@@ -111,15 +62,69 @@ this project uses the `0.x` versioning scheme described in
   migration also updates `schema.sql`. The last check closes a real drift risk:
   `schema.sql` builds every fresh database, so a migration missing from it means
   new environments silently lack the change.
+- CI now classifies what a pull request changed and gates the expensive steps on
+  it, so a docs-only change no longer pays for the full suite. When the runtime
+  itself changes (`Dockerfile`, `requirements*.txt`) the suite additionally runs
+  **inside the built image** — the runner's Python is not necessarily the one
+  that ships, so a base-image bump used to go green having tested the runtime it
+  was replacing.
+
+### Changed
+
+- **Due schedules now materialise server-side, once a day, for everyone.**
+  Previously this happened only when a page was loaded, so a user who did not
+  log in had transactions silently not posted — which then understated their
+  weekly digest, their month-ahead forecast, and the agent's view of their own
+  data. The daily job closes that. The login-triggered runners stay as well, so
+  logging in still catches you up immediately.
+
+  ⚠️ Note for anyone running their own instance: **the scheduler is no longer
+  gated on an email key.** It starts on `ENABLE_DIGEST_SCHEDULER` alone and each
+  job carries its own gate, because materialisation must not stop just because a
+  third-party credential is missing. If you set `ENABLE_DIGEST_SCHEDULER=1`
+  without a Resend key, nothing ran before; now the daily materialise pass does.
+
+- Logging out asks for confirmation first. It is a nav item sitting beside
+  ordinary navigation, and on the installed PWA a mis-tap costs a re-login on a
+  touch keyboard. Logout remains a POST-only form with its own CSRF token; with
+  JavaScript disabled it submits as before, without a prompt.
+
+### Fixed
+
+- The "Ask your finances" answer panel is readable in dark mode. It was styled
+  inline against `var(--bg-subtle)`, a custom property defined nowhere in the
+  stylesheet. That never failed loudly because the declaration carried a
+  hard-coded `#f6f7f9` fallback — a pale grey that looks right in light mode and
+  leaves light text on a light panel in dark mode. Presentation moved to a real
+  `.ask-answer` rule using the theme-aware `--surface-2` token. A test now
+  asserts that every `var(--token)` in the stylesheet and templates resolves to
+  a token that is actually defined, so a phantom one cannot return unnoticed.
 
 ### Removed
 
+- Mealie and Uptime Kuma were retired from the Droplet, and their cards removed
+  from the landing page. The server now runs Budget Buddy alone. Their data was
+  archived first — including Mealie's uploaded recipe images, which the nightly
+  job had never covered — and the nightly backup no longer attempts to dump a
+  database that is gone. Freed roughly 2 GB and dropped disk use from 64% to
+  30%.
 - `deploy.sh`, `promote.sh` and `docker-compose.staging.yml`. They built and
   promoted the Docker Hub image, which production no longer uses as of `0.1.0`;
   the staging step they fed is now the release workflow's `smoke` job, which
   tests the pushed artifact rather than a local rebuild. The Docker Hub image
   remains as an emergency fallback and the scripts stay in git history
   (`git show v0.1.0:deploy.sh`).
+
+### Security
+
+- Recorded that the Droplet's disk is **not** encrypted at rest. This had been
+  documented as unverified; DigitalOcean states plainly that virtual disks on
+  hypervisor local storage are not encrypted, and that encrypting them is the
+  customer's responsibility. Affects the live Postgres volume, `.env`, and
+  pre-deploy dumps. `RUNBOOK.md` now carries the finding, what it does and does
+  not protect against, and the supported remedy (a LUKS-encrypted Block Storage
+  Volume) should it ever be worth closing.
+
 
 ## [0.1.0] - 2026-07-27
 
@@ -246,5 +251,6 @@ lineage, most recent first:
 - **v9.0** — conversational transaction entry (first AI feature)
 - **v1–v8** — core CRUD and deployment, UI overhaul, multi-user authentication, blueprints and pytest, ownership guards, transfers and goals, smart budgets, HTMX inline CRUD and CI
 
-[Unreleased]: https://github.com/CaddisMaster/budget-buddy/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/CaddisMaster/budget-buddy/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/CaddisMaster/budget-buddy/releases/tag/v0.1.0

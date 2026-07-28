@@ -13,7 +13,8 @@ A personal finance tracking web app built with Flask, PostgreSQL, and Docker. De
 
 ```
 app/
-  __init__.py        # Flask app + extensions (Login, Bcrypt, Limiter, CSRF); registers the 16 blueprints; cookie flags + @after_request security headers (Secure/HSTS gated on COOKIE_SECURE); starts the weekly-digest APScheduler (gated on ENABLE_DIGEST_SCHEDULER=1 + mail_enabled(); safe only under single-worker gunicorn); |money template filter (thousands-sep, emits the NUMBER only — display templates ONLY: AI fact-builders / chart |tojson payloads / form input values stay raw, a comma'd value fails parse_positive_amount); css_v + brand_svg Jinja globals (both computed once at startup: the style.css content hash, and icons/icon.svg inlined |safe in base.html so sidebar mark + favicon share one source)
+  __init__.py        # Flask app + extensions (Login, Bcrypt, Limiter, CSRF); registers the 18 blueprints; cookie flags + @after_request security headers (Secure/HSTS gated on COOKIE_SECURE); starts the APScheduler on ENABLE_DIGEST_SCHEDULER=1 ALONE and registers each job with its OWN gate (weekly digest ← mail_enabled(); daily tasks ← always — see the scheduler gotcha; safe only under single-worker gunicorn); |money template filter (thousands-sep, emits the NUMBER only — display templates ONLY: AI fact-builders / chart |tojson payloads / form input values stay raw, a comma'd value fails parse_positive_amount); css_v + brand_svg Jinja globals (both computed once at startup: the style.css content hash, and icons/icon.svg inlined |safe in base.html so sidebar mark + favicon share one source)
+  pusher.py          # outbound Web Push seam (#33, the mailer.py twin). push_enabled() gate, public_key(), send_push(), PushError + PushGone (404/410 = the subscription is DEAD, caller deletes it; anything else is transient and retried tomorrow), single _call_webpush() network seam tests stub. NEVER touches the DB
   mailer.py          # outbound email seam (Resend). mail_enabled() gate (twin of ai_enabled()), send_email(), MailError, single _call_resend() network seam tests stub. NOT named email.py (would shadow stdlib)
   db.py              # get_db_connection() + db_cursor() context manager (commit/rollback/close); db_cursor yields a NamedTupleCursor — rows read row.field (positional still works), SELECT columns must be uniquely named (alias with AS)
   helpers.py         # is_htmx(), hx_toast(), recent_months(), ai_enabled(); parse_positive_amount() (THE shared amount validator, rejects NaN/inf — every amount form routes through it) + parse_signed_amount() (same guard, allows negative/zero — bank balances); most_recent_sunday() (the weekly period key shared by the digest idempotency guard AND the agent's run key — lives here because digests.py imports agent.py); param parsers: parse_month_param() (every ?month read), parse_page_param() (every ?page read), parse_int_param() (every posted FK id); GENERIC_ERROR (the one user-facing message for unexpected write failures — raw exception text goes to current_app.logger.exception, never the browser)
@@ -30,6 +31,8 @@ app/
     admin.py         # user mgmt, create user, backup, settings
     transfers.py     # account transfers (linked income/expense pair) + recurring transfers (transfer_schedules CRUD + run_due_transfers() materializing a paired transfer per due date)
     goals.py         # goals (save + payoff) + compute_goal_projection(..., apr=None) — payoff goals feed the linked card's apr (GOAL_SELECT carries a.apr AS account_apr; _goal_view reads rows by ATTRIBUTE): est_monthly_interest always in the dict (None unless apr + debt), pace date = bounded 600-month simulation (pace ≤ interest → None + Behind), required_per_month amortized; Goal Coach (compute_goal_coach_facts() + load_goal_coach() + POST /goals/coach/generate, cached in goal_coach); GET /goals gates the card on ai_enabled() + in-progress goals
+    push.py          # POST /push/subscribe|unsubscribe (#33) — one row per DEVICE, endpoint is the identity (globally UNIQUE, so re-subscribing upserts); validates the posted JSON, scopes every write to current_user. Profile UI gated on push_enabled()
+    reminders.py     # the DAILY job (#33). run_daily_tasks() = materialize_all_users() THEN send_due_reminders(); `flask run-daily` CLI. Materialization is UNGATED (see the scheduler gotcha); reminders gate on push_enabled(), enumerate tomorrow via main.upcoming_occurrences (so #32's end_date is honoured), and claim each occurrence in reminder_log with ON CONFLICT DO NOTHING BEFORE sending — a failed send is deliberately NOT retried (a duplicate notification is worse than a missed one)
     schedules.py     # recurring income/expense schedules (Scheduled tab); run_due_schedules() + compute_initial_semimonthly_due()
     insights.py      # monthly AI digest card on the dashboard; compute_month_facts() (deterministic figures) + POST /insights/generate (narrate via ai.py, cache in insights table)
     forecasts.py     # month-ahead AI projection card (twin of insights.py); pure project_expenses() day-weighted run-rate + compute_forecast() (MTD actuals + remaining schedules) + POST /forecasts/generate
@@ -39,7 +42,7 @@ app/
   templates/         # Jinja2 HTML templates, all extend base.html
     partials/        # HTMX fragments (_X_row.html, _X_edit_row.html, _transactions_tbody.html, cards)
     emails/          # weekly_digest.html (rendered server-side, sent via Resend)
-  static/            # style.css, htmx.min.js, chart.umd.min.js (Chart.js 4.5.1 pinned/vendored), manifest.json + sw.js + icons/ (PWA — SW is stale-while-revalidate on /static/ GETs ONLY, everything else passes through; bump the 'bb-static-vN' cache name in sw.js to purge — currently v2). icons/icon.svg = the coin-with-$ brand mark (favicon + sidebar via brand_svg); icons/icon-maskable.svg = full-bleed BUILD SOURCE only (not served) — maskable-512 AND apple-touch-icon rasterize from it (apple-touch must be full-bleed: iOS composites WHITE behind transparent corners); rasters regenerated via macOS qlmanage
+  static/            # style.css, htmx.min.js, chart.umd.min.js (Chart.js 4.5.1 pinned/vendored), manifest.json + sw.js + icons/ (PWA — SW is stale-while-revalidate on /static/ GETs ONLY, everything else passes through; bump the 'bb-static-vN' cache name in sw.js to purge — currently v3). sw.js also carries the #33 'push' + 'notificationclick' handlers. icons/icon.svg = the coin-with-$ brand mark (favicon + sidebar via brand_svg); icons/icon-maskable.svg = full-bleed BUILD SOURCE only (not served) — maskable-512 AND apple-touch-icon rasterize from it (apple-touch must be full-bleed: iOS composites WHITE behind transparent corners); rasters regenerated via macOS qlmanage
 sql/                 # Numbered migration files + schema.sql (clean single-file schema)
 scripts/             # ingest.py, clean.py, insert.py data pipeline (own requirements.txt — pandas lives THERE, not in the app image)
 landing/             # Static landing page at seandesmet.com
@@ -49,12 +52,14 @@ landing/             # Static landing page at seandesmet.com
 ## Database Tables
 
 - `transactions` — amount, description, transaction_date, category_id, account_id, transaction_type (income/expense), is_adjustment (exclude from analytics), is_transfer + transfer_group_id (transfer legs), user_id, created_at. **`is_recurring`/`frequency`/`next_due`/`recur_second_day` are LEGACY** — recurrence moved to `schedules`; kept (always default) only so the History row shape is unchanged
-- `schedules` — recurring income/expense templates: amount, description, category_id, account_id, transaction_type, frequency, anchor_day + second_day (semi-monthly), next_due, is_active, user_id, created_at. **Not a ledger row** — `run_due_schedules()` materializes a plain transaction on each due date (going forward, no back-fill) and advances `next_due`
-- `transfer_schedules` — recurring **transfer** templates (the transfer twin of `schedules`): amount, description, **from_account_id + to_account_id** (no category), frequency, anchor_day + second_day, next_due, is_active, user_id, created_at. Separate table (a transfer needs two accounts). `run_due_transfers()` (transfers.py) materializes a **paired transfer** (linked expense+income legs sharing one `transfer_group_id`, both `is_transfer=true`) per due date, looping to catch up. Reuses `compute_next_due()`/`compute_initial_semimonthly_due()`, all six frequencies
+- `schedules` — recurring income/expense templates: amount, description, category_id, account_id, transaction_type, frequency, anchor_day + second_day (semi-monthly), next_due, **`end_date` (NULL = runs indefinitely)**, is_active, user_id, created_at. **FINISHED ⇔ `end_date IS NOT NULL AND next_due > end_date`** — deliberately NOT `end_date < today` (a schedule ending the 15th whose next_due is the 1st still owes that occurrence on the 10th), and runner-independent, since next_due only moves forward and never past what was materialized. **Not a ledger row** — `run_due_schedules()` materializes a plain transaction on each due date (going forward, no back-fill) and advances `next_due`
+- `transfer_schedules` — recurring **transfer** templates (the transfer twin of `schedules`): amount, description, **from_account_id + to_account_id** (no category), frequency, anchor_day + second_day, next_due, **`end_date` (same semantics as `schedules`)**, is_active, user_id, created_at. Separate table (a transfer needs two accounts). `run_due_transfers()` (transfers.py) materializes a **paired transfer** (linked expense+income legs sharing one `transfer_group_id`, both `is_transfer=true`) per due date, looping to catch up. Reuses `compute_next_due()`/`compute_initial_semimonthly_due()`, all six frequencies
 - `insights` — cached monthly AI narration, one row per user per month: year, month, content (JSON `{summary, tips[]}`), model, user_id, created_at; **UNIQUE(user_id, year, month)** upsert. **Stores only the narrative** — figures are recomputed each load (`compute_month_facts()`), never persisted
 - `forecasts` — cached month-ahead projection, **identical shape to `insights`** (separate table, not a `kind` column). Narrative only; figures recomputed by `compute_forecast()`
 - `goal_coach` — cached goal-pace narration, identical shape to the twins, pointed at the Goals page. Monthly-keyed to reuse the load/upsert even though goals aren't month-scoped
 - `agent_runs` — cached Money-agent weekly runs: user_id, **period_start (the week's Sunday, via `helpers.most_recent_sunday` — same boundary as `last_digest_sent_on`)**, content (JSON `{summary, findings:[{title, detail, evidence}], tools_used}`), model, created_at; **UNIQUE(user_id, period_start)** upsert. Stores only the narrative + cited evidence text — no figures are trusted from it
+- `push_subscriptions` — one row per **DEVICE** (#33): user_id, `endpoint` (**globally UNIQUE** — it is the push service's URL for that browser install, so re-subscribing upserts and a different user subscribing on the same browser MOVES the row to them, which is correct), p256dh, auth, created_at. A user may have several
+- `reminder_log` — the reminder idempotency marker (#33): user_id, `source` ('schedule' | 'transfer'), `source_id`, `occurrence_date`, sent_at; **UNIQUE(user_id, source, source_id, occurrence_date)**. Keyed per **OCCURRENCE**, not a per-day column on `users` — a date marker only holds while the lead time is exactly 1 day; widen the window and the same bill re-notifies daily. The row IS the lock (claimed with `ON CONFLICT DO NOTHING`), so it survives the container restart a deploy causes. `source_id` addresses two tables, so it is deliberately **not** an FK — orphaned markers are inert
 - `categories` — id, name, description, **kind ('expense' | 'income', default 'expense')**, user_id. Kind drives which category LISTS a surface offers (cockpit/review/Auto-Categorize = expense-kind only; forms group both kinds in optgroups; quick-add parse sees all) and Ask's `total_for_category` sums by it — transaction rollups still filter on the transaction's own `transaction_type`
 - `budgets` — id, category_id, amount (one **monthly** amount per category — overrides only; no row = fall back to the suggested average), user_id, created_at; UNIQUE(user_id, category_id)
 - `budget_history` — **append-only** log of budget changes: category_id (FK **CASCADE**, not RESTRICT), amount (**NULL = cleared**), changed_at, user_id. Written by `record_budget_change()` at set/clear/review-apply. **Nothing reads it yet** — it exists because history can't be backfilled; a future budget-report upgrade grades past months against the amount in effect then
@@ -74,8 +79,9 @@ landing/             # Static landing page at seandesmet.com
 - **ALL app DB access goes through `db_cursor(commit=False)`** (`db.py`) — commits on clean exit, rolls back + re-raises on error, always closes. `get_db_connection()` remains only inside db.py and `tests/conftest.py` (deliberately). Write pattern: ownership guard in its own read `with`, then `try: with db_cursor(commit=True):` around only the writes
 - **Rows are namedtuples:** `db_cursor()` sets `cursor_factory=NamedTupleCursor` — read `row.amount`; positional access still works. Consequences: every SELECT column needs a **unique, valid-identifier name** (alias expressions — two unaliased `COALESCE(...)` columns raise `duplicate field name` at fetch); hand-built error-path rows use `row._replace(...)` or the module-level namedtuples (`CategoryRow`, `TxnEditRow`, `HistoryRow`, `GoalEditRow`, `BudgetRow`); a typo'd attribute in Jinja renders as EMPTY STRING, not an error — content-asserting tests are the net. `tests/conftest.py` stays on plain tuples — do NOT put the factory there
 - Budgets are the cockpit (`/budgets`): one monthly amount per category, `POST /budgets/set` (upsert) / `POST /budgets/clear`; no edit/delete-by-id routes. `compute_budget_suggestions()` (6-mo avg, whole-dollar) seeds the default; `compute_budget_vs_actual(user_id, year, month)` is month-based; both in budgets.py
-- **Due-runners are LAZY, login-triggered:** `run_due_schedules(user_id)` + `run_due_transfers(user_id)` fire on GET `/` (dashboard), `/transactions`, `/scheduled` (schedules only), `/transfers` (transfers only) — lazy-imported to avoid the schedules↔transactions import cycle. They materialize due rows for the CURRENT user only, **looping to catch up**, then advance `next_due` past today; new schedules seed `next_due` forward so setup never back-fills. A user who never logs in gets nothing materialized (and an understated digest/agent view) — the walkers handle a stale `next_due` (`_advance_past`), so enumeration-based surfaces stay correct. Recurring is configured ONLY on the Scheduled tab — Add Transaction is one-off entries only
-- **Due-runner locking:** the due-row SELECTs are `FOR UPDATE` — gunicorn serves on 4 threads, and without the lock two simultaneous page loads could both materialize the same occurrence. Keep the lock if those queries are ever touched
+- **Due-runners fire TWO ways (changed in `0.2.0`, #33):** the login-triggered path — GET `/` (dashboard), `/transactions`, `/scheduled` (schedules only), `/transfers` (transfers only), lazy-imported to avoid the schedules↔transactions import cycle, materializing for the CURRENT user only — **plus a daily server-side pass** (`reminders.run_daily_tasks` → `materialize_all_users()`) that runs both runners for EVERY user with an active schedule. Both **loop to catch up**, then advance `next_due` past today; new schedules seed `next_due` forward so setup never back-fills, and a schedule past its `end_date` materializes nothing (#32). The old "a user who never logs in gets nothing materialized" caveat is GONE — that was the gap #33 closed. Recurring is configured ONLY on the Scheduled tab — Add Transaction is one-off entries only
+- **Due-runner locking is now LOAD-BEARING, not merely prudent:** the due-row SELECTs are `FOR UPDATE`. They already guarded two simultaneous page loads (gunicorn serves on 4 threads); since `0.2.0` the **scheduler thread races those page loads too**. Keep the lock if those queries are ever touched — `test_push_reminders.py::test_daily_job_racing_a_page_load_materializes_once` is the net
+- **⚠️ The scheduler is NOT gated on `mail_enabled()`** (`app/__init__.py`). It was until `0.2.0`, which was fine while its only job was email — but the daily job now also materializes, and hanging that off a Resend key would mean a missing third-party credential silently stops the ledger updating. `ENABLE_DIGEST_SCHEDULER=1` starts the scheduler; **each JOB carries its own gate** (digest ← `mail_enabled()`, reminder half of the daily job ← `push_enabled()`, materialization ← nothing). Do not "tidy" this back into one condition
 - All data tables have `user_id` FK — every SELECT/INSERT/UPDATE/DELETE must be scoped to `current_user.id`
 - **Amount validation:** every form amount goes through `helpers.parse_positive_amount()` — `float('nan')` passes a plain `<= 0` check and Postgres stores NaN in numeric, poisoning every SUM(). Never hand-roll `float(x); if x <= 0`
 - **Param validation:** same rule for query/form params — `?month` → `parse_month_param()`, `?page` → `parse_page_param()`, posted FK ids → `parse_int_param()`. A raw string into a psycopg2 `%s` against an int column raises (= 500)
@@ -92,17 +98,35 @@ landing/             # Static landing page at seandesmet.com
 
 ## Current Status
 
-### On `main`, not yet deployed
+### On `main`, not yet deployed — `0.2.0` is PREPPED, awaiting the Release
 
-Prod serves `0.1.0`. Merged since, awaiting the next release (neither is user-facing, so
-**no What's-new strip** is due):
+Prod serves `0.1.0`. **`0.2.0` release prep is done and on `main`**: `CHANGELOG.md` carries a
+dated `## [0.2.0]` section, and the dashboard What's-new strip has been rewritten to `v0.2.0`
+(three blocks: push reminders, schedule end dates, logout confirmation). What remains is
+Sean's: **cut the GitHub Release, approve the `production` gate.**
 
+⚠️ **Before cutting it:** the VAPID keypair must be in the Droplet `.env`
+(`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` — `.env.example` carries a working generator), or
+push self-disables on deploy. Materialization still runs without it, by design.
+
+Bundled into `0.2.0` — the two user-facing features plus the infrastructure that had been
+sitting on `main` since `0.1.0`:
+
+- **#33** — bill-due push reminders + the daily server-side materialize pass. Migration
+  `sql/32_push_reminders.sql`.
+- **#32** — schedule end dates on both schedule tables. Migration
+  `sql/31_schedule_end_date.sql`.
+- **#34 / #35** — Ask dark-mode fix (a phantom `--bg-subtle` token) + logout confirmation.
 - **#54** — PR batching policy in `CONTRIBUTING.md` §2 + Git & Development Workflow above:
   batch by coherence, never by calendar.
 - **#55** (closes #51 + #7) — CI filters by what changed, and re-runs the suite **inside the
   shipped image** when the runtime changes. Verified by manufacturing both triggers with
   throwaway commits (a `Dockerfile` touch; a deliberate `exit 1` in the classifier) and dropping
   them — the fail-open path was watched failing, not assumed.
+
+**Still unproven at ship time: real push DELIVERY.** iOS only does Web Push for a home-screen
+PWA, so everything up to the network call is tested and the call itself is not. Check the phone
+after deploying.
 
 Open and deliberately NOT being worked: **#52**, transient Docker Hub pull failures in CI —
 record-and-watch. The one observed error was a *timeout*, not a `429`, so the obvious fix
@@ -152,20 +176,20 @@ Smoke aside carried over: POSTing `/insights/generate` without the form's year/m
 CURRENT month, not the last complete one — the UI always sends them; only bites hand-rolled
 requests.
 
-**Roadmap** — the issue tracker is authoritative; grouped here into PRs per the batching rule
-(shared file/test surface, never "same week"):
+**Roadmap** — the issue tracker is authoritative. **The `0.2.0` milestone is DONE**: #34 + #35
+shipped together as one small-UI PR (#59), #32 stood alone as its migration required (#61), and
+#33 landed as the anchor (#62). The one issue still open on the milestone is **#58** — the
+What's-new strip advertising a stale version — which this release prep closes by rewriting the
+strip to `v0.2.0`.
 
-| PR | Issues |
-|---|---|
-| Small UI fixes | **#34** Ask dark-mode fix (phantom `--bg-subtle` token in `_ask_answer.html:5` — move to a `.ask-answer` rule on `var(--surface-2)`) + **#35** logout confirmation (base.html POST form) |
-| Schedule end date | **#32** — schema change, so it **stands alone** |
-| Bill-due PUSH reminders | **#33**, the `0.2.0` anchor — Web Push to the installed PWA: VAPID + pywebpush + a `push_subscriptions` table + a daily APScheduler job walking `upcoming_occurrences()`. Open design fork: whether that job also runs the due-runners server-side, ending lazy-login-only materialization |
-
-Parked with triggers: **#36** budget-report-v2-reads-history (~Dec 2026, when the 6-mo window
+The `0.3.0` roadmap is not yet grouped; nothing is claimed. Parked with triggers: **#36** budget-report-v2-reads-history (~Dec 2026, when the 6-mo window
 sits fully inside logged history); **#8** Python 3.14 evaluation (unblocked by #7 now that CI
 tests the shipped runtime, but its own change — Dockerfile surface, can break the image);
 **#52** (see above). **#37** holds the unscheduled backlog: a tabbed AI panel, spending flags,
-sinking funds, what-if simulator, tags. Off the list: net worth over time (redundant with the
+sinking funds, what-if simulator, tags. **Settled in `0.2.0`, do not re-open as a question:** the
+#33 design fork — whether the daily job also runs the due-runners server-side — was decided YES
+(Sean, 2026-07-28), against a recommendation to keep #33 read-only; the materialization now
+happens daily for every user. Off the list: net worth over time (redundant with the
 net-balance-trend chart). **CSV import remains dropped for good.**
 
 ### Release ledger
@@ -204,11 +228,12 @@ assertions the feature-local grep missed. If suite time becomes the bottleneck: 
 re-`pip install`s each run (~15s recoverable); pytest-xdist would halve the serial run BUT
 conftest's fixed `__pytest__` usernames collide across workers — per-worker prefixes first.
 
-**579 tests in `tests/`.** Cross-cutting patterns: **no real API calls anywhere** — every
+**635 tests in `tests/`.** Cross-cutting patterns: **no real API calls anywhere** — every
 `ai.py::_call_*_model` seam (and `mailer.py::_call_resend`) is monkeypatched with canned
 `SimpleNamespace` responses; every feature file asserts **user isolation**; route tests assert
 anon → 302. What each file covers:
 
+- `test_push_reminders.py` — #33 end to end via the mocked `pusher._call_webpush` seam: the `push_enabled()` gate, subscribe/unsubscribe routes (upsert on endpoint, payload validation, 503 when unconfigured, cross-user IDOR), the reminder window (honours #32's `end_date`), per-occurrence dedup, dead-subscription (404/410) cleanup vs a KEPT transient failure, per-user isolation, and the two materialization properties — a user who never logs in gets rows, and **materialization still runs with push unconfigured** (the gating trap). Plus the threaded daily-job-vs-page-load `FOR UPDATE` twin
 - `test_apr.py` — APR: pure `_parse_apr`/`monthly_interest`, /accounts interest line (independent of the limit bar), ask enrichment, either/or facts, payoff "interest adds" render, edit error-path echo
 - `test_goal_projection.py` — pure projection incl. the APR block (apr=None backward-compat, interest pushes pace date, pace ≤ interest → no date + Behind, amortized required/mo, 600-month cap terminates)
 - `test_ai_collapse.py` — AI cards render `<details>` CLOSED with `data-ai-key`/`data-generated`; empty-state renders OPEN with no key; generate fragment's `data-generated` EQUALS the next load's (the RETURNING round-trip)

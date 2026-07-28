@@ -9,10 +9,17 @@
    release date in the badge (set/corrected at ship), and one .whatsnew-block per
    feature. One bundle per strip; only ever one strip here at a time. Dismiss is
    per-device (localStorage, keyed by version) — a new version resurfaces it. #}
-<div class="card whatsnew" id="whatsnew" data-version="v10.15.0" hidden>
+{# ⚠️ Never name the weekly agent card in here — the exact two-word label
+   ("Money" followed by "agent"). This strip renders on '/' whether or not AI is
+   configured, and test_dashboard_hides_card_without_key asserts that label is
+   ABSENT from the page when there is no API key, so writing it here turns that
+   test red. Say "weekly money check", as the v10.15.0 strip did. (This comment
+   deliberately avoids the literal too — a Jinja comment never renders, but it
+   would still show up in a grep and read as a violation.) #}
+<div class="card whatsnew" id="whatsnew" data-version="v0.2.0" hidden>
   <div class="whatsnew-head">
-    <strong>What's new in v10.15.0</strong>
-    <span class="recurring-badge">2026-07-15</span>
+    <strong>What's new in v0.2.0</strong>
+    <span class="recurring-badge">2026-07-28</span>
     <span class="whatsnew-actions">
       <button type="button" class="btn btn-sm" id="whatsnew-toggle">Details</button>
       <button type="button" class="btn btn-sm" id="whatsnew-dismiss" aria-label="Dismiss">✕</button>
@@ -20,33 +27,39 @@
   </div>
   <div class="whatsnew-body" hidden>
     <div class="whatsnew-block">
-      <strong>AI cards get out of your way</strong>
+      <strong>Get a heads-up before a bill is due</strong>
       <ul class="whatsnew-list">
-        {# "Money agent" spelled as "weekly money check" on purpose — the strip
-           renders with AI off, and tests assert the agent CARD's absence by
-           that exact string. #}
-        <li><strong>Read it once, then it folds up:</strong> Insight, Forecast, the weekly
-            money check, and Goal Coach collapse to a one-line header after you've seen
-            them — no more scrolling past paragraphs you already read.</li>
-        <li><strong>Fresh content opens itself:</strong> A new month's insight or this week's
-            agent check arrives expanded, so you never miss anything new.</li>
-        <li><strong>The header still talks:</strong> Collapsed cards show the number that
-            matters — the month's net, the projected net, or how many findings the agent
-            turned up. Tap to reopen anytime.</li>
+        <li><strong>A reminder the evening before:</strong> Budget Buddy can now send your
+            phone a notification the night before a scheduled bill or transfer is due —
+            while there's still time to move money.</li>
+        <li><strong>Turn it on per device:</strong> head to Profile and tap "Turn on for
+            this device". Your phone and your laptop are separate, so switch on only the
+            one you actually want buzzing. On iPhone, add Budget Buddy to your home screen
+            first — that's an Apple requirement, not ours.</li>
+        <li><strong>Your scheduled items now post on time either way:</strong> bills and
+            paychecks land on their due date whether or not you open the app, so your
+            balances, forecast and weekly email are right when you do.</li>
       </ul>
     </div>
     <div class="whatsnew-block">
-      <strong>See what carrying a card balance costs</strong>
+      <strong>Schedules that know when to stop</strong>
       <ul class="whatsnew-list">
-        <li><strong>Add your card's APR:</strong> edit a credit card on the Accounts
-            page and enter its interest rate — one optional field.</li>
-        <li><strong>The real monthly cost:</strong> cards carrying a balance show
-            roughly what that balance costs per month in interest, right under the
-            balance.</li>
-        <li><strong>Payoff goals got honest:</strong> the debt-free projection now
-            accounts for interest — including when interest outpaces your paydown —
-            and the monthly insight, weekly digest, and Ask can mention interest
-            cost too.</li>
+        <li><strong>Set an end date:</strong> a loan with a final payment, or a membership
+            you're cancelling in December — give the schedule an end date and it stops on
+            its own. Leave it blank and nothing changes.</li>
+        <li><strong>No more phantom bills:</strong> once a schedule ends it stops posting,
+            and it disappears from your forecast, your weekly email and Ask — so nothing
+            keeps predicting a bill you'll never be charged.</li>
+        <li><strong>Finished, not just gone:</strong> a schedule that has run its course is
+            labelled Finished with its end date, so you can tell it apart from one you
+            turned off yourself.</li>
+      </ul>
+    </div>
+    <div class="whatsnew-block">
+      <strong>Small things</strong>
+      <ul class="whatsnew-list">
+        <li><strong>Logging out asks first:</strong> it sits right next to the rest of the
+            menu, and a mis-tap on your phone meant typing your password back in.</li>
       </ul>
     </div>
     {# Next feature block:
