@@ -8,6 +8,8 @@ conftest), so its registration is asserted rather than its behaviour.
 import logging
 from unittest.mock import patch
 
+from tests.conftest import USER_ADMIN
+
 
 class _FakeCompleted:
     """Stands in for subprocess.run's result so no real pg_dump is spawned."""
@@ -59,7 +61,7 @@ def test_admin_can_download_and_it_is_logged(admin_client, caplog):
 
     logged = "\n".join(r.getMessage() for r in caplog.records)
     assert "backup: database exported" in logged
-    assert "__pytest__admin" in logged
+    assert USER_ADMIN in logged
 
 
 def test_failed_dump_does_not_leak_details(admin_client):

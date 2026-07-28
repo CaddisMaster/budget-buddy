@@ -167,9 +167,14 @@ jobs:
         if: needs.changes.result != 'success' || needs.changes.outputs.app == 'true'
         run: psql "postgresql://budget:budget@localhost:5432/budget" -f sql/schema.sql
 
+      # `-n auto` = one worker per runner CPU. Safe because tests/conftest.py
+      # derives its TEST_PREFIX from the xdist worker id, so workers never share
+      # database rows; see the note there before changing how test users are
+      # named. Runs against the single `db` service — the isolation is by row
+      # ownership, not by database.
       - name: Run tests
         if: needs.changes.result != 'success' || needs.changes.outputs.app == 'true'
-        run: pytest -q
+        run: pytest -q -n auto
 
       # The job still reports success, so the required check is satisfied.
       - name: No application changes
@@ -393,7 +398,7 @@ jobs:
               # the module also guarantees the interpreter that did the install
               # is the one that runs. -p no:cacheprovider because /app is
               # root-owned (WORKDIR created it before the COPY --chown).
-              python -m pytest -q -p no:cacheprovider
+              python -m pytest -q -p no:cacheprovider -n auto
             '
 
       - name: Confirm what the image test covered

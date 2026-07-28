@@ -4,12 +4,22 @@
 # production. Nothing is installed on your machine.
 #
 # Usage:
-#   ./test.sh                       # run the whole suite
+#   ./test.sh                       # run the whole suite (parallel, ~17s)
 #   ./test.sh tests/test_routes.py  # run one file
 #   ./test.sh -k semimonthly        # run tests matching a keyword
 #   ./test.sh -v                    # verbose output
+#   ./test.sh -n0                   # SERIAL — for pdb, or readable failure output
 #
 # Any extra arguments are passed straight through to pytest.
+#
+# Runs in PARALLEL by default (`-n auto`, one worker per CPU), which takes the
+# full suite from ~204s to ~17s. That is safe only because tests/conftest.py
+# derives its TEST_PREFIX from the xdist worker id so every worker owns its own
+# database rows — read the note there before changing how test users are named.
+#
+# Pass your own `-n` (including `-n0` for serial) and it is respected instead.
+# Reach for `-n0` when you need pdb, or when interleaved parallel output is
+# making a failure hard to read.
 #
 # Two paths, and the script says which one it took:
 #
@@ -32,7 +42,20 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-PYTEST_ARGS=(python -m pytest -p no:cacheprovider "$@")
+# Default to one worker per CPU, unless the caller specified their own -n.
+# Matched as a prefix so `-n0`, `-n 4` and `-nauto` are all recognised.
+#
+# Built as a plain string rather than an array: macOS still ships bash 3.2,
+# where expanding an EMPTY array under `set -u` is an "unbound variable" error.
+PARALLEL="-n auto"
+for arg in "$@"; do
+  case "$arg" in
+    -n*|--numprocesses*) PARALLEL="" ; break ;;
+  esac
+done
+
+# shellcheck disable=SC2206  # word-splitting $PARALLEL is intended
+PYTEST_ARGS=(python -m pytest -p no:cacheprovider $PARALLEL "$@")
 
 web_is_running() {
   docker compose ps --status running --services 2>/dev/null | grep -qx web

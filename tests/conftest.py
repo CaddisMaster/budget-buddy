@@ -8,6 +8,7 @@ Teardown deletes child rows explicitly before the user row: the user_id FKs
 cascade, but transactions->categories / transactions->account use ON DELETE
 RESTRICT, so letting the user-cascade fire first can hit a RESTRICT violation.
 """
+import os
 import time
 
 import psycopg2
@@ -18,7 +19,22 @@ from app import bcrypt, limiter
 from app.db import get_db_connection
 
 # Prefix keeps test rows obvious and easy to sweep if a run aborts mid-way.
-TEST_PREFIX = "__pytest__"
+#
+# ⚠️ It is per-WORKER, and that is what makes `-n auto` safe. Every worker is a
+# separate process running the same fixtures against the SAME database. With one
+# shared prefix they would all create, mutate and tear down the same three users:
+# worker 1's teardown deletes worker 2's fixtures mid-test, inserts collide on
+# the unique username, and the failures look like flaky tests rather than a
+# harness bug.
+#
+# pytest-xdist exports the worker id as PYTEST_XDIST_WORKER ("gw0", "gw1", ...).
+# It is absent on a serial run, so the prefix is then exactly "__pytest__" and
+# behaviour is byte-identical to before parallelism existed.
+#
+# Everything downstream derives from this — including the sweep that makes an
+# aborted run recoverable — so nothing else needs to know about workers. Do NOT
+# hardcode "__pytest__" anywhere; build names from TEST_PREFIX.
+TEST_PREFIX = "__pytest__" + os.environ.get("PYTEST_XDIST_WORKER", "")
 USER_A = TEST_PREFIX + "user_a"
 USER_B = TEST_PREFIX + "user_b"
 USER_ADMIN = TEST_PREFIX + "admin"
