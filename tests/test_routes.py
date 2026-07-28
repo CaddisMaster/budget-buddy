@@ -4,6 +4,8 @@ Smoke: every main page returns 200 for a logged-in user (catches template/query
 regressions). Auth: protected pages bounce anonymous users to /login, and the
 login form accepts good credentials / rejects bad ones.
 """
+import re
+
 import pytest
 
 from tests.conftest import USER_A
@@ -99,3 +101,17 @@ def test_logout_rejects_get(client_a):
     would log the user out), so the route is POST-only."""
     response = client_a.get("/logout")
     assert response.status_code == 405
+
+
+def test_logout_control_asks_for_confirmation(client_a):
+    """#35 — logout sits next to ordinary navigation and a mis-tap on the
+    installed PWA costs a re-login on a touch keyboard, so the control confirms
+    before it fires. The guard is on the form's submit, which keeps the route
+    POST-only (see test_logout_rejects_get) and keeps the CSRF token on a real
+    form POST rather than moving logout behind a GET-able confirmation page."""
+    body = client_a.get("/").data.decode()
+    form = re.search(r"<form[^>]*nav-logout[^>]*>", body)
+    assert form, "logout form is missing from the nav"
+    assert "onsubmit" in form.group(0)
+    assert "confirm(" in form.group(0)
+    assert 'method="post"' in form.group(0)

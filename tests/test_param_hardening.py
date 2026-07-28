@@ -15,10 +15,12 @@ the boom stub (the route's graceful ParseError fallback is the assertion).
 import re
 from contextlib import contextmanager
 from datetime import date, timedelta
+from pathlib import Path
 
 import psycopg2
 import pytest
 
+import app as app_package
 import app.ai as ai
 from app.ai import ParseError
 from app.helpers import (
@@ -302,3 +304,46 @@ def test_cache_bust_hash_rendered_on_login_and_app_pages(anon_client, client_a):
         assert match, f"{name} page is missing the style.css ?v= cache-bust hash"
         versions[name] = match.group(1)
     assert versions["login"] == versions["app"]
+
+
+# --- CSS custom properties: no phantom tokens -----------------------------------
+
+def test_no_undefined_css_custom_properties():
+    """#34 — the Ask answer panel referenced var(--bg-subtle), which is defined
+    nowhere. A phantom token fails SILENTLY: CSS drops the declaration (or, as
+    there, quietly uses the fallback), so nothing errors and the only symptom is
+    that one theme looks wrong. That is the same class of silent failure as a
+    typo'd Jinja attribute rendering as an empty string, and it wants the same
+    kind of net — an assertion, since neither the browser nor the test suite
+    would otherwise say a word.
+
+    Every var(--token) in style.css and in the templates' inline styles must
+    resolve to a token defined in style.css. Comments are stripped first — they
+    discuss token names (including this fix's own), and a comment cannot break
+    a page."""
+    def strip_comments(text):
+        for pattern in (r"/\*.*?\*/", r"\{#.*?#\}", r"<!--.*?-->"):
+            text = re.sub(pattern, " ", text, flags=re.DOTALL)
+        return text
+
+    static = Path(app_package.__file__).parent
+    style = strip_comments((static / "static" / "style.css").read_text())
+
+    defined = set(re.findall(r"(--[\w-]+)\s*:", style))
+    assert "--surface-2" in defined, "sanity: token scan found nothing"
+
+    sources = [("static/style.css", style)]
+    for template in sorted((static / "templates").rglob("*.html")):
+        sources.append((str(template.relative_to(static)),
+                        strip_comments(template.read_text())))
+
+    undefined = {
+        (name, where)
+        for where, text in sources
+        for name in re.findall(r"var\(\s*(--[\w-]+)", text)
+        if name not in defined
+    }
+    assert not undefined, (
+        "CSS custom properties referenced but never defined in style.css: "
+        + ", ".join(f"{name} ({where})" for name, where in sorted(undefined))
+    )
