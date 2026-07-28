@@ -266,9 +266,12 @@ hand-run `docker compose up -d` working.
 > build locally) and replaces `image:` with a `build:` context — on the server, where there
 > is no source, that breaks the deploy.
 
-> **Emergency fallback to Docker Hub.** `caddismaster/budget-buddy:latest` still exists
-> (`v10.15.0` code). If ghcr were unreachable, set `image:` back to it and
-> `docker compose up -d`. Remove this note once `0.1.0` has been stable a while.
+> **ghcr is the only registry.** The Docker Hub fallback was retired 2026-07-28. Those images
+> are `v10.15.0` code, so using one would have silently reverted the app by two releases —
+> and past the `31`/`32` migrations, which the old code cannot read. **If ghcr is
+> unreachable, roll FORWARD:** re-run the release workflow, or build and push from a clone.
+> To roll back a bad deploy, use `rollback.yml` with a previous ghcr version — that is a
+> different thing and still works.
 
 `schema.sql` is mounted into the Postgres init directory, which **only runs on a
 completely empty data volume**. On an existing database it is inert. This is why

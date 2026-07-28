@@ -159,8 +159,8 @@ Where it stands:
   files are **NOT replayable** — `schema.sql` is the only fresh-DB artifact, which is why
   `--baseline` exists.
 
-The Docker Hub image is no longer the source of truth; it survives only as an emergency
-fallback. **All eight phases are done and feature work is normal** — `0.1.0` was the baseline
+Docker Hub stopped being the source of truth at the cutover, and its images were retired as a
+fallback on 2026-07-28. **All eight phases are done and feature work is normal** — `0.1.0` was the baseline
 snapshot, `0.2.0` (above) the first release to carry features through the same pipeline.
 
 The pipeline is fully proven end-to-end: the post-deploy `/healthz` check passes, and a full
@@ -365,12 +365,12 @@ A `sweeper` worker agent (Sonnet, tools: Read/Grep/Glob/Edit only) is defined in
   - **Deploy secrets are Environment-scoped** to `production`, so no un-gated workflow can read
     the SSH key. `DROPLET_USER` is a repo **variable**, not a secret — as a secret, Actions
     redacted the string `deploy` inside ordinary words.
-- **Emergency route back to Docker Hub.** `deploy.sh`/`promote.sh`/`docker-compose.staging.yml`
-  were deleted at the cutover (they built and promoted the *Docker Hub* image, which prod no
-  longer uses). The old image still exists at `caddismaster/budget-buddy:latest` (`v10.15.0`
-  code) — if ghcr were unreachable, edit the Droplet's compose `image:` back to that and
-  `docker compose up -d`. Retrieve the scripts from git history if ever needed:
-  `git show v0.1.0:deploy.sh`. Delete this note once `0.1.0` has been stable a while.
+- **ghcr is the only registry.** The Docker Hub escape hatch was retired 2026-07-28 after two
+  releases (`0.1.0`, `0.2.0`) shipped from ghcr without incident — it pointed at `v10.15.0`
+  code, so "falling back" would have meant silently reverting the app by two releases and a
+  schema. If ghcr is ever unreachable, roll forward (re-push) rather than back. The retired
+  `deploy.sh`/`promote.sh`/`docker-compose.staging.yml` remain in git history if ever wanted:
+  `git show v0.1.0:deploy.sh`.
 - **Env vars:** `ANTHROPIC_API_KEY` gates every AI surface via `ai_enabled()` (optional — app runs
   fine without it). `RESEND_API_KEY` gates email (`mail_enabled()`), `ENABLE_DIGEST_SCHEDULER=1`
   starts the digest scheduler — both **Droplet-only** (unset locally/CI so nothing auto-sends).
