@@ -106,9 +106,10 @@ enters git history — after which removing it means rewriting history.
 ### Run the tests
 
 ```bash
-./test.sh                        # the whole suite (~3 minutes)
+./test.sh                        # the whole suite (~17 seconds)
 ./test.sh tests/test_routes.py   # one file
 ./test.sh -k semimonthly         # by keyword
+./test.sh -n0                    # serial — for pdb, or readable failures
 ```
 
 Runs on the same Python as production. It needs the `db` container up, because
@@ -120,6 +121,15 @@ container**, which is why there is nothing to build or install first. If nothing
 is running it builds a throwaway container instead. The script prints which path
 it took. Both use the same image, and the test dependencies are baked into its
 `dev` stage rather than installed on every run.
+
+Runs **in parallel** by default — one worker per CPU, which takes the suite from
+~204s to ~17s. Because every worker is a separate process sharing one database,
+each derives its own `TEST_PREFIX` from the xdist worker id and therefore owns
+its own rows. **If you add a test that creates users, build the name from
+`TEST_PREFIX`; never hardcode `__pytest__`.** With a shared prefix a parallel run
+produces hundreds of errors as workers tear down each other's fixtures.
+
+There is no reason to run a subset for speed any more. Run the whole thing.
 
 ---
 

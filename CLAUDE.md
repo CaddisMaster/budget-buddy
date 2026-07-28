@@ -216,6 +216,16 @@ built, no dependencies installed; otherwise it falls back to a throwaway `run --
 container started before the `dev` stage existed has no pytest, so the script probes for it and
 falls back rather than dying on an import error. Both paths run the same image.
 
+**⚠️ `tests/conftest.py`'s `TEST_PREFIX` is PER-WORKER** — `"__pytest__" + PYTEST_XDIST_WORKER`
+— and that is the single thing making `-n auto` safe. Workers are separate processes sharing ONE
+database; with a shared prefix they all create and tear down the same three users, and a run
+produces hundreds of errors (verified: 424 errors + 1 failure with the prefix hardcoded). The
+env var is absent serially, so the prefix is then exactly `__pytest__` and nothing changes.
+**Never hardcode `__pytest__` in a test** — build names from `TEST_PREFIX`. Two files had done
+so and were fixed in #71 (`test_admin_backup.py`'s log assertion, `test_seed_dev.py`'s
+`SEED_USER`); a third literal in `test_hardening.py` is a deliberately-nonexistent username and
+is fine.
+
 **⚠️ The `Dockerfile` is multi-stage and `prod` MUST STAY LAST.** `base` → `dev` (adds
 `requirements-dev.txt`) → `prod` (empty, `base` under a name). A build with no `--target` gets
 the FINAL stage, and three things build with no target: CI's `docker-build` job, the release
@@ -232,22 +242,28 @@ in `/home/appuser/.local/bin`, which is NOT on `PATH`.) `test.sh` also passes
 `-p no:cacheprovider`: `/app` is root-owned (`WORKDIR` created it before the `COPY --chown`) so
 pytest can never write its cache there, and passing it turns two warnings per run into none.
 
-**Test-run economy (a full run costs ~2:40):** on multi-commit passes, use targeted `-k` runs
-for fast signal while iterating and spend ONE full run as each commit's gate; batch mechanical
-commits coarser so each full run gates more work; when debugging a red run, capture the output
-to a file the first time. Do NOT skip the full run where the change is global (a cursor-factory
-flip, a template-wide sweep) — the suite's content assertions are the only net for Jinja's
-silent-empty-string failure mode. When planning a sweep, grep for the failure SHAPE (e.g.
-`\$[0-9]{4}`), not just assertions near the feature — the `|money` sweep broke two credit-limit
-assertions the feature-local grep missed.
+**⚠️ Test-run economy is OBSOLETE — a full run costs ~17 SECONDS.** `./test.sh` runs `-n auto`
+by default (#71, 668 tests, 15 workers on the Mac: 204s → 17.2s, measured across five
+consecutive runs at ±0.15s). **Just run the full suite.** The old rationing advice — targeted
+`-k` runs for iteration signal, one full run per commit as the gate, batching mechanical commits
+coarser so each full run gates more work, capturing red output to a file because re-running was
+expensive — was written when a run cost 2:40 and is now actively counterproductive. Delete it
+from your habits; a `-k` run saves ~16 seconds and risks missing the thing that broke.
 
-⚠️ **The old "`test.sh` re-`pip install`s each run (~15s recoverable)" note was WRONG and has
-been removed.** Measured on the Mac, that install cost ~1.5s and the whole per-invocation
-overhead was ~2.9s, not 15s. Reusing the running container (#70) cut that overhead to ~0.8s —
-a real but small win. **Do not expect invocation changes to move the full-suite number: it is
-~201s of pytest inside ~202s of wall clock.** The only remaining lever of any size is
-**pytest-xdist**, which would roughly halve the serial run BUT conftest's fixed `__pytest__`
-usernames collide across workers — per-worker prefixes first (#71).
+What still holds: the suite's content assertions are the only net for Jinja's
+silent-empty-string failure mode, so a global change (a cursor-factory flip, a template-wide
+sweep) must be gated on the full suite. And when planning a sweep, grep for the failure SHAPE
+(e.g. `\$[0-9]{4}`), not just assertions near the feature — the `|money` sweep broke two
+credit-limit assertions the feature-local grep missed.
+
+**`-n0` is the serial escape** — reach for it when you need `pdb`, or when interleaved parallel
+output makes a failure hard to read. Any explicit `-n` you pass is respected.
+
+⚠️ **Two superseded claims, recorded so they are not re-derived:** the old
+"`test.sh` re-`pip install`s each run (~15s recoverable)" note was simply WRONG — measured, the
+install cost ~1.5s and total per-invocation overhead ~2.9s, cut to ~0.8s by #70. And xdist was
+predicted to "roughly halve" the run; it actually cut it by ~12×, because the suite is
+IO/DB-bound rather than CPU-bound and parallelises far better than a CPU-bound suite would.
 
 **635 tests in `tests/`.** Cross-cutting patterns: **no real API calls anywhere** — every
 `ai.py::_call_*_model` seam (and `mailer.py::_call_resend`) is monkeypatched with canned

@@ -1,9 +1,11 @@
-# Dev / test dependencies — layered on top of the app image, which already
-# has the full requirements.txt installed (Python 3.11). Run the suite in a
-# throwaway container so nothing persists and you test on the same Python as
-# production:
+# Dev / test dependencies. Baked into the image's `dev` stage (see the
+# Dockerfile) so ./test.sh does not reinstall them on every run; CI additionally
+# installs them into the *prod* image when the shipped runtime changes, to run
+# the suite on the Python that actually ships.
 #
-#   docker compose run --rm --no-deps --build web \
-#     sh -c "pip install -q -r requirements-dev.txt && pytest"
-#
+# Not in requirements.txt on purpose — none of this belongs in production.
 pytest==9.1.1
+# Parallel test runs. Safe only because tests/conftest.py derives its TEST_PREFIX
+# from PYTEST_XDIST_WORKER — every worker owns its own database rows. Read the
+# note there before changing how test users are named.
+pytest-xdist==3.8.0

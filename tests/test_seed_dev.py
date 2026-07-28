@@ -14,9 +14,12 @@ from dateutil.relativedelta import relativedelta
 
 from app.db import get_db_connection
 from scripts import seed_dev
+from tests.conftest import TEST_PREFIX
 
 TODAY = date(2026, 7, 28)
-SEED_USER = "__pytest__seed_user"
+# Built from TEST_PREFIX, not hardcoded: the prefix carries the xdist worker id,
+# and two workers seeding the same username would collide on users.username.
+SEED_USER = TEST_PREFIX + "seed_user"
 SEED_PASSWORD = "seed-password-123"
 
 

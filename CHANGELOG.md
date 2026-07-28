@@ -10,6 +10,18 @@ this project uses the `0.x` versioning scheme described in
 
 ### Added
 
+- **The test suite runs in parallel** (`pytest-xdist`, `-n auto` by default),
+  taking a full run from **~204s to ~17s** on the maintainer's machine and
+  applying to CI as well. `./test.sh -n0` forces serial when you need `pdb` or
+  readable failure output; any explicit `-n` is respected.
+
+  What made this possible: `tests/conftest.py` now derives its `TEST_PREFIX`
+  from the xdist worker id, so each worker owns its own database rows. Workers
+  are separate processes sharing one database, and with the previously
+  hardcoded prefix they tore down each other's fixtures — a run in that state
+  produces 424 errors. Two tests that hardcoded the prefix rather than deriving
+  it were fixed at the same time.
+
 - **`scripts/seed_dev.py`** — one command turns an empty database into a useful
   development dataset: four accounts (including two credit cards with limits and
   APRs), expense and income categories, six months of transactions, budgets,
