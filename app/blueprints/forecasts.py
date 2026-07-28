@@ -115,12 +115,18 @@ def _remaining_scheduled(cursor, user_id, today, month_last):
     only) and is bounded by month-end."""
     cursor.execute("""
         SELECT description, amount, transaction_type, frequency,
-               anchor_day, second_day, next_due
+               anchor_day, second_day, next_due, end_date
         FROM schedules
         WHERE is_active = true AND user_id = %s
+          AND (end_date IS NULL OR next_due <= end_date)
     """, (user_id,))
     items = []
-    for desc, amount, ttype, freq, anchor_day, second_day, next_due in cursor.fetchall():
+    for (desc, amount, ttype, freq, anchor_day, second_day,
+         next_due, end_date) in cursor.fetchall():
+        # #32: a schedule that finishes mid-month contributes only the
+        # occurrences up to its end date — projecting past it would forecast
+        # bills that can never be charged.
+        stop = min(month_last, end_date) if end_date is not None else month_last
         occ = next_due
         # Advance to the first occurrence strictly after today (the dashboard's
         # run_due_schedules normally already did this; be robust if it didn't).
@@ -131,7 +137,7 @@ def _remaining_scheduled(cursor, user_id, today, month_last):
             occ = compute_next_due(occ, freq, anchor_day=anchor_day, second_day=second_day)
             guard += 1
         guard = 0
-        while occ <= month_last and guard < 500:
+        while occ <= stop and guard < 500:
             items.append({'description': desc, 'amount': float(amount),
                           'type': ttype, 'due': occ.isoformat()})
             occ = compute_next_due(occ, freq, anchor_day=anchor_day, second_day=second_day)

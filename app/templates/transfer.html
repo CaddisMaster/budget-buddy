@@ -90,6 +90,12 @@
             The first date this should run. Must be today or later.
         </p>
     </div>
+    {# #32 — outside autoTransferDateDiv so it stays visible for semi-monthly too. #}
+    <label>End date (optional)</label>
+    <input type="date" name="end_date">
+    <p style="font-size:12px;color:var(--text-muted);margin-top:0.25rem">
+        The last day this should run. Leave blank to run indefinitely.
+    </p>
     <button type="submit" class="btn btn-primary" style="margin-top:1rem">Add automatic transfer</button>
 </form>
 

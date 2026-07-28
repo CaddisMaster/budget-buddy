@@ -237,12 +237,17 @@ def _t_upcoming_scheduled(user_id, args):
     # doesn't fire on /ask itself, so an active schedule can still carry a
     # past next_due here — without this filter the model would report an already-
     # overdue date as "upcoming".
+    #
+    # #32: a finished schedule (next_due past its end_date) is not upcoming
+    # either — reporting it would have the model tell the user about a bill that
+    # can never be charged again.
     today = date.today()
     with db_cursor() as cursor:
         cursor.execute("""
             SELECT description, amount, transaction_type, frequency, next_due
             FROM schedules
             WHERE user_id = %s AND is_active = true AND next_due >= %s
+              AND (end_date IS NULL OR next_due <= end_date)
             ORDER BY next_due
         """, (user_id, today))
         items = [{

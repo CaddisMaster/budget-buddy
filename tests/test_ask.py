@@ -8,10 +8,10 @@ directly against seeded users — the security boundary is the tool surface, so
 that's where the isolation tests live.
 """
 import json
-from datetime import date
+from datetime import date, timedelta
 from types import SimpleNamespace
 
-from conftest import create_category, create_transaction
+from conftest import create_account, create_category, create_schedule, create_transaction
 
 import app.ai as ai
 import app.blueprints.ask as ask
@@ -236,3 +236,21 @@ def test_ask_answer_panel_is_class_styled_not_inline(client_a, users, monkeypatc
     assert "--bg-subtle" not in body
     assert "background:" not in body           # no inline background at all
     assert "You spent $40." in body
+
+
+def test_upcoming_scheduled_excludes_a_finished_schedule(users):
+    """#32 — a schedule past its end date is not upcoming. Without the filter
+    the model would tell the user about a bill that can never be charged."""
+    a = users["a"]["id"]
+    today = date.today()
+    acct = create_account(a, "ask-ended")
+    create_schedule(a, acct, 4321, "monthly", today + timedelta(days=3),
+                    transaction_type="expense",
+                    end_date=today - timedelta(days=1))
+    create_schedule(a, acct, 1234, "monthly", today + timedelta(days=3),
+                    transaction_type="expense")
+
+    content, _ = ask.dispatch(a, "upcoming_scheduled", {})
+    amounts = [s["amount"] for s in json.loads(content)["scheduled"]]
+    assert 1234.0 in amounts      # the live schedule is still reported
+    assert 4321.0 not in amounts  # the finished one is not

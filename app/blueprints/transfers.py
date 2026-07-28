@@ -19,7 +19,9 @@ bp = Blueprint('transfers', __name__)
 # tuple shape the row partials read.
 TRANSFER_SCHEDULE_ROW_SQL = """
     SELECT ts.id, ts.amount, ts.description, ts.from_account_id, ts.to_account_id,
-           ts.frequency, ts.anchor_day, ts.second_day, ts.next_due, ts.is_active,
+           ts.frequency, ts.anchor_day, ts.second_day, ts.next_due,
+           ts.end_date, ts.is_active,
+           (ts.end_date IS NOT NULL AND ts.next_due > ts.end_date) AS is_finished,
            fa.account_name AS from_account_name, ta.account_name AS to_account_name
     FROM transfer_schedules ts
     LEFT JOIN account fa ON ts.from_account_id = fa.account_id
@@ -249,17 +251,21 @@ def run_due_transfers(user_id):
         # re-evaluates next_due <= today, and finds nothing due.
         cursor.execute("""
             SELECT id, amount, description, from_account_id, to_account_id,
-                   frequency, anchor_day, second_day, next_due
+                   frequency, anchor_day, second_day, next_due, end_date
             FROM transfer_schedules
             WHERE is_active = true AND next_due <= %s AND user_id = %s
+              AND (end_date IS NULL OR next_due <= end_date)
             FOR UPDATE
         """, (today, user_id))
         due = cursor.fetchall()
         for (tsid, amount, desc, from_acc, to_acc, freq,
-             anchor_day, second_day, next_due) in due:
+             anchor_day, second_day, next_due, end_date) in due:
             label = desc or 'Transfer'
+            # #32: nothing materializes past the schedule's last day — including
+            # the stale-next_due catch-up case (zero iterations, no back-fill).
+            stop = min(today, end_date) if end_date is not None else today
             cur_due = next_due
-            while cur_due <= today:
+            while cur_due <= stop:
                 cursor.execute("SELECT nextval('transfer_group_seq')")
                 gid = cursor.fetchone()[0]
                 # Expense leg out of the From account.
@@ -333,10 +339,24 @@ def _parse_transfer_schedule_form(form, user_account_ids):
             except ValueError:
                 errors.append('Next date must be a valid date')
 
+    # #32 — optional last day, the twin of schedules._parse_form. Blank means
+    # "runs indefinitely"; validated against the next_due computed just above,
+    # since an edit recomputes it from the form.
+    end_date = None
+    end_date_raw = form.get('end_date', '').strip()
+    if end_date_raw:
+        try:
+            end_date = datetime.strptime(end_date_raw, '%Y-%m-%d').date()
+            if next_due is not None and end_date < next_due:
+                errors.append('End date cannot be before the next date')
+        except ValueError:
+            errors.append('End date must be a valid date')
+
     fields = {'amount': amount, 'description': description,
               'from_account': from_account, 'to_account': to_account,
               'frequency': frequency, 'anchor_day': anchor_day,
-              'second_day': second_day, 'next_due': next_due}
+              'second_day': second_day, 'next_due': next_due,
+              'end_date': end_date}
     return errors, fields
 
 
@@ -368,12 +388,13 @@ def create_transfer_schedule():
             cursor.execute("""
                 INSERT INTO transfer_schedules
                     (amount, description, from_account_id, to_account_id,
-                     frequency, anchor_day, second_day, next_due, user_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     frequency, anchor_day, second_day, next_due, end_date,
+                     user_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (f['amount'], f['description'], f['from_account'], f['to_account'],
                   f['frequency'], f['anchor_day'], f['second_day'], f['next_due'],
-                  current_user.id))
+                  f['end_date'], current_user.id))
             new_id = cursor.fetchone()[0]
     except psycopg2.Error:
         current_app.logger.exception('create transfer schedule failed')
@@ -411,11 +432,12 @@ def edit_transfer_schedule(schedule_id):
                 cursor.execute("""
                     UPDATE transfer_schedules SET amount=%s, description=%s,
                         from_account_id=%s, to_account_id=%s, frequency=%s,
-                        anchor_day=%s, second_day=%s, next_due=%s
+                        anchor_day=%s, second_day=%s, next_due=%s, end_date=%s
                     WHERE id=%s AND user_id=%s
                 """, (f['amount'], f['description'], f['from_account'],
                       f['to_account'], f['frequency'], f['anchor_day'],
-                      f['second_day'], f['next_due'], schedule_id, current_user.id))
+                      f['second_day'], f['next_due'], f['end_date'],
+                      schedule_id, current_user.id))
         except psycopg2.Error:
             current_app.logger.exception('edit transfer schedule failed')
             return render_template('partials/_transfer_schedule_edit_row.html',

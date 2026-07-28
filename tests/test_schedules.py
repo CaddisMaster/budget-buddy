@@ -32,6 +32,26 @@ def _schedule_count(user_id):
     return n
 
 
+def _scalar(sql, params):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(sql, params)
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return row[0] if row else None
+
+
+def _latest_schedule_id(user_id):
+    return _scalar(
+        "SELECT id FROM schedules WHERE user_id = %s ORDER BY id DESC LIMIT 1",
+        (user_id,))
+
+
+def _fetch_end_date(schedule_id):
+    return _scalar("SELECT end_date FROM schedules WHERE id = %s", (schedule_id,))
+
+
 # --- compute_initial_semimonthly_due (pure) ---------------------------------
 
 def test_semimonthly_due_before_both_pay_days():
@@ -217,3 +237,125 @@ def test_cannot_edit_or_delete_other_users_schedule(client_a, users):
     assert client_a.delete(f"/scheduled/{b_sid}", headers=HX).status_code == 404
     # B's schedule untouched.
     assert fetch_schedule(b_sid) is not None
+
+
+# --- #32 end date -----------------------------------------------------------
+
+def test_schedule_stops_materializing_at_its_end_date(users):
+    # The issue's headline scenario. A weekly schedule three weeks overdue with
+    # an end date two weeks back: the catch-up loop must post the occurrences up
+    # to the end date and then stop, not run to today.
+    uid = users["a"]["id"]
+    three_weeks_ago = date.today() - timedelta(weeks=3)
+    create_schedule(uid, users["a"]["account_id"], 20, "weekly", three_weeks_ago,
+                    end_date=three_weeks_ago + timedelta(weeks=1))
+    run_due_schedules(uid)
+    # Occurrences at -21 and -14 only; -7 and today are past the end date.
+    assert count_transactions_like(uid, "seed-schedule") == 2
+
+
+def test_finished_schedule_never_backfills(users):
+    # The trap called out in the issue: a schedule whose next_due went stale AND
+    # whose end date has since passed must post NOTHING when the user finally
+    # logs in — not a back-fill of every occurrence it "missed".
+    uid = users["a"]["id"]
+    long_ago = date.today() - timedelta(weeks=8)
+    create_schedule(uid, users["a"]["account_id"], 20, "weekly", long_ago,
+                    end_date=long_ago - timedelta(days=1))
+    run_due_schedules(uid)
+    assert count_transactions_like(uid, "seed-schedule") == 0
+
+
+def test_schedule_ending_today_still_posts_today(users):
+    # The end date is the last day the schedule RUNS, not the first day it
+    # doesn't — an off-by-one here silently drops a real final payment.
+    uid = users["a"]["id"]
+    today = date.today()
+    create_schedule(uid, users["a"]["account_id"], 20, "weekly", today,
+                    end_date=today)
+    run_due_schedules(uid)
+    assert count_transactions_like(uid, "seed-schedule") == 1
+
+
+def test_schedule_without_end_date_is_unchanged(users):
+    # Every schedule that existed before #32 has end_date NULL. Same catch-up
+    # count as test_far_behind_schedule_catches_up.
+    uid = users["a"]["id"]
+    three_weeks_ago = date.today() - timedelta(weeks=3)
+    create_schedule(uid, users["a"]["account_id"], 20, "weekly", three_weeks_ago,
+                    end_date=None)
+    run_due_schedules(uid)
+    assert count_transactions_like(uid, "seed-schedule") == 4
+
+
+def test_finished_schedule_shows_as_finished(client_a, users):
+    uid = users["a"]["id"]
+    long_ago = date.today() - timedelta(weeks=8)
+    create_schedule(uid, users["a"]["account_id"], 20, "weekly", long_ago,
+                    end_date=long_ago + timedelta(days=1))
+    run_due_schedules(uid)
+    body = client_a.get("/scheduled").data.decode()
+    # Visibly finished, not silently inactive (the fourth Gherkin scenario).
+    assert "Finished" in body
+
+
+def test_running_schedule_shows_its_end_date(client_a, users):
+    uid = users["a"]["id"]
+    end = date.today() + timedelta(days=90)
+    create_schedule(uid, users["a"]["account_id"], 20, "monthly",
+                    date.today() + timedelta(days=7), end_date=end)
+    body = client_a.get("/scheduled").data.decode()
+    assert f"until {end.isoformat()}" in body
+    assert "Finished" not in body
+
+
+def test_end_date_before_next_date_is_rejected(client_a, users):
+    today = date.today()
+    resp = client_a.post("/scheduled", data={
+        "transaction_type": "expense", "amount": "25",
+        "description": "__pytest__end-date-reject",
+        "account_id": users["a"]["account_id"], "frequency": "monthly",
+        "next_due": (today + timedelta(days=30)).isoformat(),
+        "end_date": (today + timedelta(days=10)).isoformat(),
+    }, headers=HX)
+    assert resp.status_code == 200
+    assert "showToast" in resp.headers.get("HX-Trigger", "")
+    # Nothing written — the whole point of validating before the INSERT.
+    assert _schedule_count(users["a"]["id"]) == 0
+
+
+def test_invalid_end_date_is_rejected(client_a, users):
+    today = date.today()
+    resp = client_a.post("/scheduled", data={
+        "transaction_type": "expense", "amount": "25",
+        "account_id": users["a"]["account_id"], "frequency": "monthly",
+        "next_due": (today + timedelta(days=7)).isoformat(),
+        "end_date": "not-a-date",
+    }, headers=HX)
+    assert resp.status_code == 200
+    assert "showToast" in resp.headers.get("HX-Trigger", "")
+    assert _schedule_count(users["a"]["id"]) == 0
+
+
+def test_end_date_persists_and_clears(client_a, users):
+    today = date.today()
+    end = today + timedelta(days=60)
+    client_a.post("/scheduled", data={
+        "transaction_type": "expense", "amount": "25",
+        "description": "__pytest__end-date-persist",
+        "account_id": users["a"]["account_id"], "frequency": "monthly",
+        "next_due": (today + timedelta(days=7)).isoformat(),
+        "end_date": end.isoformat(),
+    }, headers=HX)
+    sid = _latest_schedule_id(users["a"]["id"])
+    assert _fetch_end_date(sid) == end
+
+    # Blank clears it — the schedule runs indefinitely again.
+    client_a.post(f"/scheduled/{sid}/edit", data={
+        "transaction_type": "expense", "amount": "25",
+        "description": "__pytest__end-date-persist",
+        "account_id": users["a"]["account_id"], "frequency": "monthly",
+        "next_due": (today + timedelta(days=7)).isoformat(),
+        "end_date": "",
+    }, headers=HX)
+    assert _fetch_end_date(sid) is None

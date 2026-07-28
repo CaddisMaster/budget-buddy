@@ -129,6 +129,8 @@ CREATE TABLE public.schedules (
     anchor_day smallint,
     second_day smallint,
     next_due date NOT NULL,
+    -- NULL = runs indefinitely. Finished when next_due > end_date (#32).
+    end_date date,
     is_active boolean NOT NULL DEFAULT true,
     created_at timestamp without time zone DEFAULT now(),
     user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE
@@ -242,6 +244,8 @@ CREATE TABLE public.transfer_schedules (
     anchor_day smallint,
     second_day smallint,
     next_due date NOT NULL,
+    -- NULL = runs indefinitely. Finished when next_due > end_date (#32).
+    end_date date,
     is_active boolean NOT NULL DEFAULT true,
     created_at timestamp without time zone DEFAULT now(),
     user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE

@@ -255,6 +255,11 @@ td.row-actions .btn + .btn { margin-left: 0.4rem; }
 tr.editing td { background: var(--bg); vertical-align: middle; }
 tr.editing input, tr.editing select { padding: 0.3rem 0.5rem; font-size: 13px; }
 .inline-error { color: var(--danger); font-size: 12px; }
+/* #32 — a schedule that has reached its end date. Deliberately distinct from a
+   paused one (is_active = false): this one ran its course, and the row says so
+   rather than going quiet. The "until"/"ended" line carries the date. */
+.sched-finished { font-weight: 600; color: var(--text-muted); }
+.sched-until { display: block; font-size: 11px; color: var(--text-muted); }
 
 /* Bulk edit (v10.11) — the multi-select action bar on History */
 .bulk-bar {

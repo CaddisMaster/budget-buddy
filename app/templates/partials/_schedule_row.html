@@ -9,7 +9,20 @@
     {{ frequency_labels.get(schedule.frequency, schedule.frequency) }}
     {% if schedule.frequency == 'semimonthly' %}<span style="color:var(--text-muted)">({{ schedule.anchor_day }} &amp; {{ schedule.second_day }})</span>{% endif %}
   </td>
-  <td>{{ schedule.next_due }}</td>
+  {# #32 — the end date shares the Next-due cell rather than adding a column
+     (the table is already wide; .main-content's min-width:0 keeps it scrolling
+     inside .table-wrapper, and a ninth column eats that headroom). A finished
+     schedule shows so explicitly — is_finished comes from SCHEDULE_ROW_SQL, so
+     it holds whether or not the due-runner has advanced next_due yet. #}
+  <td>
+    {% if schedule.is_finished %}
+      <span class="sched-finished">Finished</span>
+      <span class="sched-until">ended {{ schedule.end_date }}</span>
+    {% else %}
+      {{ schedule.next_due }}
+      {% if schedule.end_date %}<span class="sched-until">until {{ schedule.end_date }}</span>{% endif %}
+    {% endif %}
+  </td>
   <td class="row-actions">
     <button type="button" class="btn btn-sm"
       hx-get="{{ url_for('schedules.edit_schedule', schedule_id=schedule.id) }}"
