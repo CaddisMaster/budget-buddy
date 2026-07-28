@@ -43,7 +43,7 @@ app/
 sql/                 # Numbered migration files + schema.sql (clean single-file schema)
 scripts/             # ingest.py, clean.py, insert.py data pipeline (own requirements.txt — pandas lives THERE, not in the app image)
 landing/             # Static landing page at seandesmet.com
-.github/workflows/   # ci.yml (lint + pytest on postgres:16 + image builds/boots as appuser, on every push/PR); release.yml (published Release → build+push ghcr → smoke the PUSHED image → approval gate → SSH deploy → verify /healthz); rollback.yml (workflow_dispatch a version → redeploy that exact tag)
+.github/workflows/   # ci.yml (a `changes` job classifies the diff → app/image/sql flags; jobs ALWAYS RUN and gate their expensive STEPS on them — `paths-ignore` on a required check strands the PR forever; fails open at BOTH levels, incl. `if: ${{ !cancelled() }}` + `needs.changes.result != 'success'` so a classifier failure runs everything. lint + pytest on postgres:16 + image builds/boots as appuser + the suite re-run INSIDE the built image when Dockerfile/requirements change); release.yml (published Release → build+push ghcr → smoke the PUSHED image → approval gate → SSH deploy → verify /healthz); rollback.yml (workflow_dispatch a version → redeploy that exact tag)
 ```
 
 ## Database Tables
@@ -92,6 +92,24 @@ landing/             # Static landing page at seandesmet.com
 
 ## Current Status
 
+### On `main`, not yet deployed
+
+Prod serves `0.1.0`. Merged since, awaiting the next release (neither is user-facing, so
+**no What's-new strip** is due):
+
+- **#54** — PR batching policy in `CONTRIBUTING.md` §2 + Git & Development Workflow above:
+  batch by coherence, never by calendar.
+- **#55** (closes #51 + #7) — CI filters by what changed, and re-runs the suite **inside the
+  shipped image** when the runtime changes. Verified by manufacturing both triggers with
+  throwaway commits (a `Dockerfile` touch; a deliberate `exit 1` in the classifier) and dropping
+  them — the fail-open path was watched failing, not assumed.
+
+Open and deliberately NOT being worked: **#52**, transient Docker Hub pull failures in CI —
+record-and-watch. The one observed error was a *timeout*, not a `429`, so the obvious fix
+(authenticate to Docker Hub) may not even apply; the trigger to act is a second occurrence WITH
+its verbatim error. ⚠️ Do not "fix" it by switching buildx to the `docker` driver — `type=gha`
+caching requires `docker-container`.
+
 ### ⚠️ Repository reboot in progress (started 2026-07-26)
 
 This repo is **new**. The app is mature and unchanged; the *envelope* around it is being rebuilt
@@ -134,16 +152,21 @@ Smoke aside carried over: POSTing `/insights/generate` without the form's year/m
 CURRENT month, not the last complete one — the UI always sends them; only bites hand-rolled
 requests.
 
-**Roadmap:** next up is **bill-due PUSH reminders** (Web Push to the installed PWA — VAPID +
-pywebpush + a `push_subscriptions` table + a daily APScheduler job walking
-`upcoming_occurrences()`; open design fork: whether that job also runs the due-runners
-server-side, ending lazy-login-only materialization), plus two small items: the **Ask dark-mode
-fix** (phantom `--bg-subtle` token in `_ask_answer.html:5` — move to a `.ask-answer` rule on
-`var(--surface-2)`) and a **logout confirmation** (base.html POST form). Parked with triggers:
-budget-report-v2-reads-history (~Dec 2026, when the 6-mo window sits fully inside logged
-history); a tabbed AI panel. Shortlist: spending flags, sinking funds, what-if simulator, tags.
-Off the list: net worth over time (redundant with the net-balance-trend chart). **CSV import
-remains dropped for good.**
+**Roadmap** — the issue tracker is authoritative; grouped here into PRs per the batching rule
+(shared file/test surface, never "same week"):
+
+| PR | Issues |
+|---|---|
+| Small UI fixes | **#34** Ask dark-mode fix (phantom `--bg-subtle` token in `_ask_answer.html:5` — move to a `.ask-answer` rule on `var(--surface-2)`) + **#35** logout confirmation (base.html POST form) |
+| Schedule end date | **#32** — schema change, so it **stands alone** |
+| Bill-due PUSH reminders | **#33**, the `0.2.0` anchor — Web Push to the installed PWA: VAPID + pywebpush + a `push_subscriptions` table + a daily APScheduler job walking `upcoming_occurrences()`. Open design fork: whether that job also runs the due-runners server-side, ending lazy-login-only materialization |
+
+Parked with triggers: **#36** budget-report-v2-reads-history (~Dec 2026, when the 6-mo window
+sits fully inside logged history); **#8** Python 3.14 evaluation (unblocked by #7 now that CI
+tests the shipped runtime, but its own change — Dockerfile surface, can break the image);
+**#52** (see above). **#37** holds the unscheduled backlog: a tabbed AI panel, spending flags,
+sinking funds, what-if simulator, tags. Off the list: net worth over time (redundant with the
+net-balance-trend chart). **CSV import remains dropped for good.**
 
 ### Release ledger
 
@@ -157,7 +180,12 @@ Run with **`./test.sh`** (args pass through to pytest, e.g. `./test.sh -k semimo
 It runs in a throwaway `web` container on prod's Python 3.11 — no local venv;
 `requirements-dev.txt` adds just `pytest`. Needs the dev `db` container up (route/isolation
 tests hit it). Also runs in **GitHub Actions CI** on every push/PR (`.github/workflows/ci.yml`,
-`postgres:16` service + `schema.sql`).
+`postgres:16` service + `schema.sql`) — but **only when the diff can affect behaviour** (the
+`changes` job's `app` flag; a docs-only PR skips the suite and the job still reports success).
+**When `Dockerfile`/`requirements*.txt` change, the suite ALSO runs inside the built image**
+(`docker-build`'s "Test suite runs inside the shipped image") — the runner's Python is not
+necessarily the shipped one, so a base-image bump used to go green having tested the runtime it
+was replacing.
 
 **Gotcha — `python -m pytest`, never bare `pytest`:** the image runs as non-root `appuser`, so
 pip puts console scripts in `/home/appuser/.local/bin`, which is NOT on `PATH`. Bare `pytest`
