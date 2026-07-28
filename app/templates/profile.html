@@ -37,7 +37,102 @@
 </div>
 {% endif %}
 
+{% if push_enabled %}
+<h2>Bill reminders</h2>
+<div class="card" style="max-width:480px">
+    <p style="color:var(--text-muted);font-size:14px;margin-bottom:1rem">
+        A notification the evening before a scheduled bill or transfer is due,
+        so there's still time to move money. Turn it on once per device.
+        {% if push_device_count %}
+        <br><strong>{{ push_device_count }}</strong> device{{ '' if push_device_count == 1 else 's' }} registered.
+        {% endif %}
+    </p>
+    <button type="button" class="btn btn-primary" id="push-toggle" disabled>Checking…</button>
+    <p id="push-status" style="font-size:12px;color:var(--text-muted);margin-top:0.6rem"></p>
+</div>
+{% endif %}
+
 <div style="margin-top:1.5rem">
     <a href="{{ url_for('auth.change_password') }}" class="btn">Change password</a>
 </div>
+
+{% if push_enabled %}
+<script>
+/* #33 — Web Push opt-in. Subscription lives in the BROWSER, so the button
+ * reflects this device, not the account: the server's device count can't tell
+ * us whether the phone in your hand is one of them. Permission must be asked
+ * from a real user gesture, which is why this only runs on click. iOS delivers
+ * push only to a PWA added to the home screen. */
+(() => {
+  const btn = document.getElementById('push-toggle');
+  const status = document.getElementById('push-status');
+  const CSRF = JSON.parse(document.body.getAttribute('hx-headers'))['X-CSRFToken'];
+
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    btn.textContent = 'Not supported';
+    status.textContent = 'This browser cannot receive push notifications. ' +
+      'On iPhone, add Budget Buddy to your home screen first.';
+    return;
+  }
+
+  /* The VAPID public key travels as base64url; the subscribe API wants bytes. */
+  const toBytes = (base64) => {
+    const pad = '='.repeat((4 - base64.length % 4) % 4);
+    const raw = atob((base64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+    return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+  };
+
+  const post = (url, body) => fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+    body: JSON.stringify(body)
+  }).then((r) => r.json());
+
+  let current = null;
+  const render = () => {
+    btn.disabled = false;
+    btn.textContent = current ? 'Turn off on this device' : 'Turn on for this device';
+    status.textContent = current
+      ? 'This device will get bill reminders.'
+      : (Notification.permission === 'denied'
+          ? 'Notifications are blocked for this site in your browser settings.'
+          : '');
+  };
+
+  navigator.serviceWorker.ready
+    .then((reg) => reg.pushManager.getSubscription())
+    .then((sub) => { current = sub; render(); })
+    .catch(() => { btn.textContent = 'Unavailable'; status.textContent = ''; });
+
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      if (current) {
+        await post('{{ url_for('push.unsubscribe') }}', { endpoint: current.endpoint });
+        await current.unsubscribe();
+        current = null;
+      } else {
+        if (await Notification.requestPermission() !== 'granted') {
+          status.textContent = 'Permission denied.';
+          btn.disabled = false;
+          return;
+        }
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: toBytes('{{ push_public_key }}')
+        });
+        const res = await post('{{ url_for('push.subscribe') }}', sub.toJSON());
+        if (!res.ok) { await sub.unsubscribe(); throw new Error(res.error || 'failed'); }
+        current = sub;
+      }
+      render();
+    } catch (e) {
+      status.textContent = 'Could not change the setting: ' + e.message;
+      btn.disabled = false;
+    }
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

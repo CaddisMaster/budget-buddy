@@ -107,6 +107,8 @@ from app.blueprints import (
     goals,
     insights,
     main,
+    push,
+    reminders,
     schedules,
     transactions,
     transfers,
@@ -128,25 +130,45 @@ app.register_blueprint(forecasts.bp)
 app.register_blueprint(ask.bp)
 app.register_blueprint(digests.bp)
 app.register_blueprint(agent.bp)
+app.register_blueprint(push.bp)
+app.register_blueprint(reminders.bp)
 
-# `flask send-digests` — run the weekly digest send manually (local/testing).
+# `flask send-digests` / `flask run-daily` — run either scheduled job by hand.
 app.cli.add_command(digests.send_digests_command)
+app.cli.add_command(reminders.run_daily_command)
 
-# v10.8 Weekly Email Digest — in-process scheduler. Guarded on ENABLE_DIGEST_SCHEDULER
-# so it fires ONLY in prod (never under pytest or local unless deliberately enabled),
-# and on mail_enabled() so it's a no-op without a Resend key. gunicorn runs a single
-# worker (no --preload), so exactly one scheduler instance exists — no double-fire.
-# The users.last_digest_sent_on guard + misfire_grace_time make it safe across
-# restarts. Sunday 18:00 America/New_York.
+# In-process scheduler. ENABLE_DIGEST_SCHEDULER is the master switch, so it runs
+# ONLY in prod (never under pytest, and locally only if deliberately enabled).
+# gunicorn runs a single worker (no --preload), so exactly one scheduler instance
+# exists — no double-fire. NEVER add workers.
+#
+# ⚠️ The scheduler itself is NOT gated on mail_enabled() any more (#33). It used
+# to be, which was fine while its only job was email. The daily job now also
+# materializes due schedules for every user — the invariant that used to depend
+# on someone logging in — and hanging that off a Resend key would mean a missing
+# third-party credential silently stops the ledger updating. Each JOB carries its
+# own gate instead:
+#   • weekly digest  → registered only when mail_enabled()
+#   • daily tasks    → always registered; push_enabled() gates only the reminder
+#                      half, inside the job, so materialization always runs.
 from app.mailer import mail_enabled
 
-if os.getenv('ENABLE_DIGEST_SCHEDULER') == '1' and mail_enabled():
+if os.getenv('ENABLE_DIGEST_SCHEDULER') == '1':
     from apscheduler.schedulers.background import BackgroundScheduler
 
     from app.blueprints.digests import send_weekly_digests
+    from app.blueprints.reminders import run_daily_tasks
 
     _scheduler = BackgroundScheduler(timezone='America/New_York', daemon=True)
-    _scheduler.add_job(send_weekly_digests, 'cron', day_of_week='sun', hour=18,
-                       id='weekly_digest', replace_existing=True,
+    if mail_enabled():
+        # The users.last_digest_sent_on guard + misfire_grace_time make it safe
+        # across restarts. Sunday 18:00 America/New_York.
+        _scheduler.add_job(send_weekly_digests, 'cron', day_of_week='sun', hour=18,
+                           id='weekly_digest', replace_existing=True,
+                           misfire_grace_time=3600)
+    # Daily 18:00 — the evening before a bill is due. reminder_log makes the
+    # send idempotent per occurrence across restarts and re-runs.
+    _scheduler.add_job(run_daily_tasks, 'cron', hour=18,
+                       id='daily_tasks', replace_existing=True,
                        misfire_grace_time=3600)
     _scheduler.start()

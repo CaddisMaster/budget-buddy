@@ -108,6 +108,8 @@ def _delete_user(username):
         cur.execute("DELETE FROM forecasts WHERE user_id = %s", (user_id,))
         cur.execute("DELETE FROM goal_coach WHERE user_id = %s", (user_id,))
         cur.execute("DELETE FROM agent_runs WHERE user_id = %s", (user_id,))
+        cur.execute("DELETE FROM push_subscriptions WHERE user_id = %s", (user_id,))
+        cur.execute("DELETE FROM reminder_log WHERE user_id = %s", (user_id,))
         cur.execute("DELETE FROM categories WHERE user_id = %s", (user_id,))
         cur.execute("DELETE FROM account WHERE user_id = %s", (user_id,))
         cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
