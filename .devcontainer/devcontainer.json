@@ -1,0 +1,53 @@
+// Local development container.
+//
+// This ATTACHES to the `web` service already defined in docker-compose.yml +
+// docker-compose.override.yml — it deliberately does not define a second image.
+// The editor therefore runs against the exact container that serves the app,
+// with the exact dependencies the image ships, and `db` comes up alongside it
+// automatically.
+//
+// ⚠️ There is no Docker inside this container, on purpose. `docker compose`
+// commands and the `verify` skill are run from a MAC terminal. Start Claude Code
+// from a Mac terminal too — inside the container it could not reach anything
+// outside the repository, including the Obsidian vault.
+//
+// Not using this? Nothing breaks. Opening the repo normally falls back to
+// .vscode/settings.json and the local .venv.
+{
+  "name": "Budget Buddy",
+  "dockerComposeFile": [
+    "../docker-compose.yml",
+    "../docker-compose.override.yml"
+  ],
+  "service": "web",
+  // The image's WORKDIR, and where the override bind-mounts the source.
+  "workspaceFolder": "/app",
+  // The image runs as the unprivileged appuser; the editor should too, so files
+  // it writes have the same ownership as files the app writes.
+  "remoteUser": "appuser",
+  // Leave the stack running when the editor window closes. Otherwise closing
+  // VS Code would stop the database out from under a Mac terminal still using
+  // it — including a ./test.sh run.
+  "shutdownAction": "none",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff"
+      ],
+      "settings": {
+        // The container's own interpreter — Python 3.11 with every dependency
+        // already installed. Overrides the .venv path in .vscode/settings.json
+        // for the duration of the attached session.
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.analysis.extraPaths": ["/app"],
+        "python.testing.pytestEnabled": true,
+        // Matches ./test.sh: parallel, and no cache writes (see the notes in
+        // that script).
+        "python.testing.pytestArgs": ["tests", "-n", "auto", "-p", "no:cacheprovider"],
+        "editor.formatOnSave": false
+      }
+    }
+  }
+}

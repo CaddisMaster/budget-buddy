@@ -11,8 +11,12 @@ backups/
 *.dump
 *.sql.gz
 
-# Python
+# Python. `.venv/` is the editor's interpreter — it exists so the language
+# server can resolve flask/psycopg2/pytest, NOT to run anything. The app and the
+# test suite still run in containers. Both spellings, since only `venv/` was
+# listed and the tooling default is `.venv/`.
 venv/
+.venv/
 __pycache__/
 *.pyc
 .pytest_cache/

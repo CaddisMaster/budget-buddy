@@ -10,6 +10,26 @@ this project uses the `0.x` versioning scheme described in
 
 ### Added
 
+- **Local development now has a working editor and a live-reload loop.** The
+  application's dependencies only ever existed inside the Docker image, so the
+  language server could not resolve `flask`, `psycopg2` or any of the app's own
+  modules — a 74-file Flask project was being written with no autocomplete, no
+  go-to-definition and an unresolved-import warning on essentially every file.
+
+  Two ways to fix it, both supported: a gitignored `.venv` that the editor reads
+  (never used to *run* anything), or a `.devcontainer/` that attaches to the
+  `web` service you already run. Setup for both is in `CONTRIBUTING.md` §1.
+
+  The source is also bind-mounted now, so a Python or template change is live
+  instead of needing `docker compose up --build`. Editing `style.css` still
+  needs `docker compose restart web`, because its cache-busting hash is computed
+  at startup.
+
+  **None of this reaches production** — it lives in
+  `docker-compose.override.yml`, which exists only on a developer's machine. The
+  one application change is a `TEMPLATES_AUTO_RELOAD` env gate, off unless
+  explicitly set.
+
 - **The test suite runs in parallel** (`pytest-xdist`, `-n auto` by default),
   taking a full run from **~204s to ~17s** on the maintainer's machine and
   applying to CI as well. `./test.sh -n0` forces serial when you need `pdb` or

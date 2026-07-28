@@ -31,6 +31,15 @@ app.config.update(
     REMEMBER_COOKIE_SECURE=_secure_cookies,
 )
 
+# Local development only — set by docker-compose.override.yml alongside the
+# source bind mount, never in production, where Jinja's compiled-template cache
+# is wanted. Without it a template edit reaches the container and is then
+# ignored: gunicorn's --reload watches Python modules, not .html files, so the
+# file on disk changes while the served page does not. That failure is silent
+# and looks exactly like the bind mount not working.
+if os.getenv('TEMPLATES_AUTO_RELOAD', '') == '1':
+    app.config['TEMPLATES_AUTO_RELOAD'] = True
+
 
 @app.after_request
 def set_security_headers(response):
@@ -47,9 +56,15 @@ def set_security_headers(response):
 
 
 # Auto cache-bust for the stylesheet: ?v= is a hash of style.css CONTENT,
-# computed once at startup (a deploy restarts the container; local dev rebuilds
-# the image — no bind mount), so nobody hand-bumps a version number again.
-# Both base.html and login.html (which doesn't extend base) read this global.
+# computed ONCE AT STARTUP, so nobody hand-bumps a version number again. Both
+# base.html and login.html (which doesn't extend base) read this global.
+#
+# ⚠️ Consequence for local dev, now that the source is bind-mounted: editing
+# style.css does NOT change css_v, because nothing re-imports this module —
+# gunicorn's --reload watches Python files and a .css edit is not one. The
+# browser keeps the old ?v= and serves the cached stylesheet. Python and
+# template edits are live; a CSS edit needs `docker compose restart web`
+# (~2s, still far cheaper than a rebuild).
 with open(os.path.join(app.static_folder, 'style.css'), 'rb') as _css:
     app.jinja_env.globals['css_v'] = hashlib.md5(_css.read()).hexdigest()[:8]
 
