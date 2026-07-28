@@ -98,35 +98,25 @@ landing/             # Static landing page at seandesmet.com
 
 ## Current Status
 
-### On `main`, not yet deployed — `0.2.0` is PREPPED, awaiting the Release
+### Shipped: `0.2.0` (2026-07-28)
 
-Prod serves `0.1.0`. **`0.2.0` release prep is done and on `main`**: `CHANGELOG.md` carries a
-dated `## [0.2.0]` section, and the dashboard What's-new strip has been rewritten to `v0.2.0`
-(three blocks: push reminders, schedule end dates, logout confirmation). What remains is
-Sean's: **cut the GitHub Release, approve the `production` gate.**
+**Prod runs `ghcr.io/caddismaster/budget-buddy:0.2.0`** — released, deployed and verified
+2026-07-28. The first FEATURE release under the rebuilt envelope (`0.1.0` was a baseline
+snapshot), and the first end-to-end exercise of issue → PR → Release → approval gate →
+automated deploy carrying real behaviour.
 
-⚠️ **Before cutting it:** the VAPID keypair must be in the Droplet `.env`
-(`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` — `.env.example` carries a working generator), or
-push self-disables on deploy. Materialization still runs without it, by design.
+Four PRs closing six issues: **#59** (#34 Ask dark mode + #35 logout confirm), **#61** (#32
+schedule end dates), **#62** (#33 push reminders + daily server-side materialization), **#63**
+(#58 release prep). Tests 579 → 635. Two additive migrations (`sql/31`, `sql/32`) applied
+automatically before the image pull.
 
-Bundled into `0.2.0` — the two user-facing features plus the infrastructure that had been
-sitting on `main` since `0.1.0`:
+Deploy verified independently of the workflow: `schema_migrations` carries both files, the
+pre-deploy dump is timestamped BEFORE them, the `db` container was NOT recreated (up 24h vs
+web's 23s — `pull web` held), `/healthz` 200 over TLS, and `sw.js` serves `bb-static-v3` with
+the push handlers. **Push delivery confirmed on the actual phone** — the one claim no test can
+make.
 
-- **#33** — bill-due push reminders + the daily server-side materialize pass. Migration
-  `sql/32_push_reminders.sql`.
-- **#32** — schedule end dates on both schedule tables. Migration
-  `sql/31_schedule_end_date.sql`.
-- **#34 / #35** — Ask dark-mode fix (a phantom `--bg-subtle` token) + logout confirmation.
-- **#54** — PR batching policy in `CONTRIBUTING.md` §2 + Git & Development Workflow above:
-  batch by coherence, never by calendar.
-- **#55** (closes #51 + #7) — CI filters by what changed, and re-runs the suite **inside the
-  shipped image** when the runtime changes. Verified by manufacturing both triggers with
-  throwaway commits (a `Dockerfile` touch; a deliberate `exit 1` in the classifier) and dropping
-  them — the fail-open path was watched failing, not assumed.
-
-**Still unproven at ship time: real push DELIVERY.** iOS only does Web Push for a home-screen
-PWA, so everything up to the network call is tested and the call itself is not. Check the phone
-after deploying.
+`main` is currently level with the release; nothing is merged-but-undeployed.
 
 Open and deliberately NOT being worked: **#52**, transient Docker Hub pull failures in CI —
 record-and-watch. The one observed error was a *timeout*, not a `429`, so the obvious fix
@@ -134,12 +124,16 @@ record-and-watch. The one observed error was a *timeout*, not a `429`, so the ob
 its verbatim error. ⚠️ Do not "fix" it by switching buildx to the `docker` driver — `type=gha`
 caching requires `docker-container`.
 
-### ⚠️ Repository reboot in progress (started 2026-07-26)
+### ✅ Repository reboot — COMPLETE (2026-07-26 → 27)
 
-This repo is **new**. The app is mature and unchanged; the *envelope* around it is being rebuilt
+⚠️ **Historical.** Kept because it explains why this repo starts at `0.1.0` with no earlier
+tags, and why several conventions exist. The freeze it describes is OVER — feature work is
+normal, and `0.2.0` shipped on 2026-07-28.
+
+The app is mature and unchanged; the *envelope* around it was rebuilt
 — issue→PR workflow, CI+CD in Actions, ghcr instead of Docker Hub, versioning reset to `0.x`.
-**Golden rule: new envelope, same contents — do NOT refactor the app during the move.** The only
-sanctioned code changes are the non-root Dockerfile (done), a `/healthz` endpoint, and the `ruff`
+**Golden rule during the move (now lifted): new envelope, same contents.** The only
+sanctioned code changes were the non-root Dockerfile, a `/healthz` endpoint, and the `ruff`
 formatting backlog. Everything else becomes an issue for `0.2.0`.
 
 Where it stands:
@@ -160,12 +154,14 @@ Where it stands:
   deployed and prod-verified**, legacy deploy scripts retired. The post-deploy `/healthz`
   check and a full rollback round-trip (`0.1.0` → `0.0.2-cd-test` → `0.1.0`) both pass, closing
   the two Phase 4 items that were blocked.
-- ⏳ **Phase 5/7** — migration automation (deliberately last), then issue migration + archiving.
+- ✅ **Phase 5/7 (2026-07-27)** — migration automation (`scripts/migrate.py`, tracked in
+  `schema_migrations`, prod baselined) + issue migration and archiving. ⚠️ The numbered `sql/`
+  files are **NOT replayable** — `schema.sql` is the only fresh-DB artifact, which is why
+  `--baseline` exists.
 
-**Prod now runs `ghcr.io/caddismaster/budget-buddy:0.1.0`** — released, deployed and verified
-2026-07-27. The Docker Hub image is no longer the source of truth; it survives only as an
-emergency fallback. **Feature work is UNFROZEN** — the reboot's remaining phases (5 and 7) do
-not touch the app, so `0.2.0` work can start.
+The Docker Hub image is no longer the source of truth; it survives only as an emergency
+fallback. **All eight phases are done and feature work is normal** — `0.1.0` was the baseline
+snapshot, `0.2.0` (above) the first release to carry features through the same pipeline.
 
 The pipeline is fully proven end-to-end: the post-deploy `/healthz` check passes, and a full
 rollback round-trip (`0.1.0` → `0.0.2-cd-test` → `0.1.0`) succeeded, as did the manifest guard
@@ -176,13 +172,16 @@ Smoke aside carried over: POSTing `/insights/generate` without the form's year/m
 CURRENT month, not the last complete one — the UI always sends them; only bites hand-rolled
 requests.
 
-**Roadmap** — the issue tracker is authoritative. **The `0.2.0` milestone is DONE**: #34 + #35
-shipped together as one small-UI PR (#59), #32 stood alone as its migration required (#61), and
-#33 landed as the anchor (#62). The one issue still open on the milestone is **#58** — the
-What's-new strip advertising a stale version — which this release prep closes by rewriting the
-strip to `v0.2.0`.
+**Roadmap** — the issue tracker is authoritative. **The `0.2.0` milestone is CLOSED and
+shipped** (see above). The `0.3.0` roadmap is not grouped yet and nothing is claimed.
 
-The `0.3.0` roadmap is not yet grouped; nothing is claimed. Parked with triggers: **#36** budget-report-v2-reads-history (~Dec 2026, when the 6-mo window
+New since the release: **#64** — let users report bugs/suggest features from inside the app,
+auto-filing GitHub issues. ⚠️ It carries a design question that must be settled BEFORE building:
+**this repo is public**, and a bug report about money tends to contain money. The issue lays out
+four options (warn-and-post / never auto-attach context / a private feedback repo / email Sean
+instead) and recommends the private repo. Do not start it by writing `app/github.py`.
+
+Parked with triggers: **#36** budget-report-v2-reads-history (~Dec 2026, when the 6-mo window
 sits fully inside logged history); **#8** Python 3.14 evaluation (unblocked by #7 now that CI
 tests the shipped runtime, but its own change — Dockerfile surface, can break the image);
 **#52** (see above). **#37** holds the unscheduled backlog: a tabbed AI panel, spending flags,
