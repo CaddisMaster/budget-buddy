@@ -92,10 +92,9 @@ against seeded data can be reproduced on another machine.
 The application's dependencies live inside the Docker image, so out of the box
 your editor's language server cannot resolve a single one of them — every
 `import flask`, `import psycopg2` and `from app.db import ...` shows as
-unresolved, with no autocomplete and no go-to-definition. Two ways to fix it,
-and you can use both.
+unresolved, with no autocomplete and no go-to-definition.
 
-**A local virtual environment** (works in a normal editor window):
+Create a local virtual environment for the editor to read:
 
 ```bash
 brew install python@3.11          # the Mac's system 3.9 is too old — see below
@@ -103,23 +102,21 @@ python3.11 -m venv .venv
 .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 ```
 
-`.vscode/settings.json` already points at `.venv/bin/python`. **Nothing is ever
-run from this environment** — the app and the tests still run in containers. It
-exists purely so the language server has real code to read, and it is gitignored
-and excluded from the image.
+VS Code auto-discovers a `.venv` in the workspace root, so there is nothing to
+configure and no editor settings are committed.
+
+**Nothing is ever run from this environment** — the app and the tests still run
+in containers. It exists purely so the language server has real code to read,
+and it is gitignored and excluded from the image.
 
 It must be **3.11**, matching production. The Mac ships 3.9.6, which cannot
 evaluate the `str | None` annotations in `app/ai.py` — a 3.9 environment reports
 working code as broken.
 
-**Or the dev container** (VS Code → *Reopen in Container*): attaches to the
-`web` service you already run, so the interpreter *is* the container's Python
-with every dependency present, and `db` comes up alongside.
-
-⚠️ **There is no Docker inside the dev container.** Run `docker compose`, and
-the `verify` skill, from a Mac terminal. Start Claude Code from a Mac terminal
-too — inside the container it cannot see anything outside the repository,
-including your notes.
+There is deliberately **no dev container**. One was tried and removed: it needed
+editor tooling baked into the image, had no Docker inside it (so `docker
+compose` and the `verify` skill had to move to a separate terminal anyway), and
+fixed nothing the virtual environment above does not already fix.
 
 ### What is live, and what needs a restart
 

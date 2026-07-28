@@ -32,15 +32,6 @@ CMD ["gunicorn", "--workers", "1", "--threads", "4", "--timeout", "120", "--bind
 # means the interpreter finds them without any PATH involvement.
 FROM base AS dev
 USER root
-# Tooling the EDITOR needs when attached to this container via .devcontainer/:
-# git for source control (without it VS Code reports "git not installed" and the
-# source-control view is dead), procps for `ps`, which VS Code and the Python
-# extension shell out to. curl is for poking the app from inside while
-# debugging — production deliberately has none of these, which is why the
-# healthcheck in docker-compose.yml probes through Python instead.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        git procps curl \
-    && rm -rf /var/lib/apt/lists/*
 COPY requirements-dev.txt .
 RUN pip install --no-cache-dir -r requirements-dev.txt
 USER appuser
