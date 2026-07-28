@@ -27,6 +27,22 @@ this project uses the `0.x` versioning scheme described in
   Run it with `docker compose exec web python scripts/seed_dev.py`. It refuses to
   write into a database that already has the target user unless given `--force`.
 
+### Changed
+
+- The `Dockerfile` is now multi-stage: `base` → `dev` (adds the test
+  dependencies) → `prod`. **The shipped image is unchanged** — a build with no
+  explicit target still produces exactly what it produced before, and CI now
+  asserts that by failing if `pytest` is importable in it. Local development
+  selects the `dev` stage via `docker-compose.override.yml`, which never exists
+  on the Droplet.
+
+  `./test.sh` uses that to run the suite inside the already-running `web`
+  container instead of creating a throwaway one and reinstalling pytest into it
+  on every invocation. It falls back to the old behaviour when nothing is
+  running, and says which path it took. Per-invocation overhead measured on the
+  maintainer's machine: ~2.9s before, ~0.8s after. The full suite is unaffected —
+  it is ~201s of pytest either way.
+
 ## [0.2.0] - 2026-07-28
 
 The first feature release since the repository reboot. Two user-facing

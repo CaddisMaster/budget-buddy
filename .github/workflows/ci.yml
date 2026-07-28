@@ -315,6 +315,19 @@ jobs:
             exit 1
           fi
 
+      # The Dockerfile has a `dev` stage carrying pytest for ./test.sh, and the
+      # build above passes no --target, so it gets the FINAL stage. This asserts
+      # that final stage is still `prod`. Reordering the stages so `dev` lands
+      # last would otherwise ship the test dependencies to production silently —
+      # nothing else in the pipeline would notice.
+      - name: Shipped image carries no test dependencies
+        run: |
+          if docker run --rm budget-buddy:ci python -c 'import pytest' 2>/dev/null; then
+            echo "::error::pytest is present in the shipped image. The Dockerfile's final stage must be 'prod', not 'dev' — see the note at the top of that file."
+            exit 1
+          fi
+          echo "no pytest in the shipped image, as expected"
+
       # Its own step because two things need it now: the boot check below and,
       # when the shipped runtime changes, the in-image suite after that.
       - name: Start Postgres and load the schema

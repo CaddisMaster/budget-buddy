@@ -111,9 +111,15 @@ enters git history — after which removing it means rewriting history.
 ./test.sh -k semimonthly         # by keyword
 ```
 
-Runs in a throwaway container on the same Python as production. It needs the
-`db` container up, because the route and isolation tests hit a real database —
-they create and clean up their own `__pytest__`-prefixed users.
+Runs on the same Python as production. It needs the `db` container up, because
+the route and isolation tests hit a real database — they create and clean up
+their own `__pytest__`-prefixed users.
+
+If the dev stack is already running, the suite runs **inside the live `web`
+container**, which is why there is nothing to build or install first. If nothing
+is running it builds a throwaway container instead. The script prints which path
+it took. Both use the same image, and the test dependencies are baked into its
+`dev` stage rather than installed on every run.
 
 ---
 

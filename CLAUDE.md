@@ -210,11 +210,27 @@ tests hit it). Also runs in **GitHub Actions CI** on every push/PR (`.github/wor
 necessarily the shipped one, so a base-image bump used to go green having tested the runtime it
 was replacing.
 
-**Gotcha — `python -m pytest`, never bare `pytest`:** the image runs as non-root `appuser`, so
-pip puts console scripts in `/home/appuser/.local/bin`, which is NOT on `PATH`. Bare `pytest`
-fails with `not found`. (Harmless side effect: pytest can't write its cache to `/app` — that
-directory is root-owned because `WORKDIR` created it before the `COPY --chown`. Two warnings per
-run, no impact.)
+**`test.sh` takes one of two paths and says which:** if the dev stack is up it runs the suite
+inside the **live `web` container** (`docker compose exec`) — no container created, no image
+built, no dependencies installed; otherwise it falls back to a throwaway `run --rm --build`. A
+container started before the `dev` stage existed has no pytest, so the script probes for it and
+falls back rather than dying on an import error. Both paths run the same image.
+
+**⚠️ The `Dockerfile` is multi-stage and `prod` MUST STAY LAST.** `base` → `dev` (adds
+`requirements-dev.txt`) → `prod` (empty, `base` under a name). A build with no `--target` gets
+the FINAL stage, and three things build with no target: CI's `docker-build` job, the release
+workflow, and a bare `docker build .`. Make `dev` last and all three silently ship pytest to
+production. `docker-compose.override.yml` (local only, never on the Droplet) selects
+`target: dev`. CI's "Shipped image carries no test dependencies" step is the enforcement —
+it asserts `import pytest` FAILS in the built image.
+
+**Gotcha — `python -m pytest`, never bare `pytest`:** going through the module guarantees the
+interpreter holding the dependencies is the one that runs them. (In the `dev` stage they are
+installed as root into system site-packages, so bare `pytest` would in fact resolve there — but
+CI installs `requirements-dev.txt` into the *prod* image as `appuser`, where console scripts land
+in `/home/appuser/.local/bin`, which is NOT on `PATH`.) `test.sh` also passes
+`-p no:cacheprovider`: `/app` is root-owned (`WORKDIR` created it before the `COPY --chown`) so
+pytest can never write its cache there, and passing it turns two warnings per run into none.
 
 **Test-run economy (a full run costs ~2:40):** on multi-commit passes, use targeted `-k` runs
 for fast signal while iterating and spend ONE full run as each commit's gate; batch mechanical
@@ -223,9 +239,15 @@ to a file the first time. Do NOT skip the full run where the change is global (a
 flip, a template-wide sweep) — the suite's content assertions are the only net for Jinja's
 silent-empty-string failure mode. When planning a sweep, grep for the failure SHAPE (e.g.
 `\$[0-9]{4}`), not just assertions near the feature — the `|money` sweep broke two credit-limit
-assertions the feature-local grep missed. If suite time becomes the bottleneck: `test.sh`
-re-`pip install`s each run (~15s recoverable); pytest-xdist would halve the serial run BUT
-conftest's fixed `__pytest__` usernames collide across workers — per-worker prefixes first.
+assertions the feature-local grep missed.
+
+⚠️ **The old "`test.sh` re-`pip install`s each run (~15s recoverable)" note was WRONG and has
+been removed.** Measured on the Mac, that install cost ~1.5s and the whole per-invocation
+overhead was ~2.9s, not 15s. Reusing the running container (#70) cut that overhead to ~0.8s —
+a real but small win. **Do not expect invocation changes to move the full-suite number: it is
+~201s of pytest inside ~202s of wall clock.** The only remaining lever of any size is
+**pytest-xdist**, which would roughly halve the serial run BUT conftest's fixed `__pytest__`
+usernames collide across workers — per-worker prefixes first (#71).
 
 **635 tests in `tests/`.** Cross-cutting patterns: **no real API calls anywhere** — every
 `ai.py::_call_*_model` seam (and `mailer.py::_call_resend`) is monkeypatched with canned
