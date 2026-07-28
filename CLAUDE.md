@@ -44,7 +44,7 @@ app/
     emails/          # weekly_digest.html (rendered server-side, sent via Resend)
   static/            # style.css, htmx.min.js, chart.umd.min.js (Chart.js 4.5.1 pinned/vendored), manifest.json + sw.js + icons/ (PWA — SW is stale-while-revalidate on /static/ GETs ONLY, everything else passes through; bump the 'bb-static-vN' cache name in sw.js to purge — currently v3). sw.js also carries the #33 'push' + 'notificationclick' handlers. icons/icon.svg = the coin-with-$ brand mark (favicon + sidebar via brand_svg); icons/icon-maskable.svg = full-bleed BUILD SOURCE only (not served) — maskable-512 AND apple-touch-icon rasterize from it (apple-touch must be full-bleed: iOS composites WHITE behind transparent corners); rasters regenerated via macOS qlmanage
 sql/                 # Numbered migration files + schema.sql (clean single-file schema)
-scripts/             # ingest.py, clean.py, insert.py data pipeline (own requirements.txt — pandas lives THERE, not in the app image)
+scripts/             # ingest.py, clean.py, insert.py data pipeline (own requirements.txt — pandas lives THERE, not in the app image); migrate.py; seed_dev.py (#69 — synthetic dev dataset; PURE build_seed_plan() + thin write_plan(), standalone like migrate.py, never imports the app)
 landing/             # Static landing page at seandesmet.com
 .github/workflows/   # ci.yml (a `changes` job classifies the diff → app/image/sql flags; jobs ALWAYS RUN and gate their expensive STEPS on them — `paths-ignore` on a required check strands the PR forever; fails open at BOTH levels, incl. `if: ${{ !cancelled() }}` + `needs.changes.result != 'success'` so a classifier failure runs everything. lint + pytest on postgres:16 + image builds/boots as appuser + the suite re-run INSIDE the built image when Dockerfile/requirements change); release.yml (published Release → build+push ghcr → smoke the PUSHED image → approval gate → SSH deploy → verify /healthz); rollback.yml (workflow_dispatch a version → redeploy that exact tag)
 ```
@@ -100,6 +100,27 @@ landing/             # Static landing page at seandesmet.com
 - **AI-card collapse:** the four AI narration cards are `<details>` with `data-ai-key` + `data-generated` (the cache row's `created_at.isoformat()`; `initAiCollapse` in base.html + localStorage `bb-ai-seen:<key>` drive read-state). Generate routes must get the timestamp via `RETURNING created_at` — a route-local `datetime.today()` makes every regenerate read as new twice. Server renders CLOSED except empty-state (Generate must work without JS) and `just_generated` fragments. The What's-new strip says "weekly money check", NOT "Money agent" — a dashboard test asserts the agent CARD's absence by that exact string
 
 ## Current Status
+
+### On `main`, NOT yet deployed — developer tooling pass (2026-07-28)
+
+Five PRs closing seven issues, **all tooling, zero user-facing change**. Sitting under
+`## [Unreleased]` in `CHANGELOG.md`; prod still runs `0.2.0`.
+
+- **#69 / PR #73** — `scripts/seed_dev.py`, a synthetic 6-month dev dataset from one command.
+- **#70 / PR #74** — `Dockerfile` gained a `dev` stage; `test.sh` execs into the running
+  container instead of building a throwaway one and reinstalling pytest.
+- **#71 / PR #75** — `pytest-xdist`, `-n auto` by default. **204s → 17.2s**, tests 635 → 668.
+- **#76 / PR #77** — `.venv` for the editor + source bind mount with live reload.
+- **#78 / PR #79**, then **#80 / PR #81** — a dev container was added, broke twice, and was
+  removed. The venv, bind mount and reload all stayed.
+
+Also closed without code: **#72** (Codespaces — premise didn't hold, see the `.venv` note above)
+and **#60** (`test.sh`'s unquoted `$*`, fixed as a side effect of #70 and verified before
+closing).
+
+⚠️ **The local dev database was wiped and reseeded** from `seed_dev.py` — the old hand-built
+demo data is gone deliberately. Reseed with
+`docker compose exec web python scripts/seed_dev.py --username sean`.
 
 ### Shipped: `0.2.0` (2026-07-28)
 
@@ -268,11 +289,12 @@ install cost ~1.5s and total per-invocation overhead ~2.9s, cut to ~0.8s by #70.
 predicted to "roughly halve" the run; it actually cut it by ~12×, because the suite is
 IO/DB-bound rather than CPU-bound and parallelises far better than a CPU-bound suite would.
 
-**635 tests in `tests/`.** Cross-cutting patterns: **no real API calls anywhere** — every
+**668 tests in `tests/`.** Cross-cutting patterns: **no real API calls anywhere** — every
 `ai.py::_call_*_model` seam (and `mailer.py::_call_resend`) is monkeypatched with canned
 `SimpleNamespace` responses; every feature file asserts **user isolation**; route tests assert
 anon → 302. What each file covers:
 
+- `test_seed_dev.py` — `scripts/seed_dev.py` (#69): determinism (same seed+day → identical rows), dates derived from `today` not hardcoded, **the fixture scaling property** (parametrized 2–36 months — a fixed opening debt pays the card off entirely on a long window and a fixed goal target gets overshot), analytics-exclusion coverage, schedule `next_due` always FUTURE, plus a DB round-trip: persistence counts, transfer-pair shape, login + populated dashboard, **loading `/` materializes nothing**, refuse/force/dry-run paths
 - `test_push_reminders.py` — #33 end to end via the mocked `pusher._call_webpush` seam: the `push_enabled()` gate, subscribe/unsubscribe routes (upsert on endpoint, payload validation, 503 when unconfigured, cross-user IDOR), the reminder window (honours #32's `end_date`), per-occurrence dedup, dead-subscription (404/410) cleanup vs a KEPT transient failure, per-user isolation, and the two materialization properties — a user who never logs in gets rows, and **materialization still runs with push unconfigured** (the gating trap). Plus the threaded daily-job-vs-page-load `FOR UPDATE` twin
 - `test_apr.py` — APR: pure `_parse_apr`/`monthly_interest`, /accounts interest line (independent of the limit bar), ask enrichment, either/or facts, payoff "interest adds" render, edit error-path echo
 - `test_goal_projection.py` — pure projection incl. the APR block (apr=None backward-compat, interest pushes pace date, pace ≤ interest → no date + Behind, amortized required/mo, 600-month cap terminates)
