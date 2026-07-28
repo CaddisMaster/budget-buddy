@@ -8,6 +8,24 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Fixed
+
+- The "Ask your finances" answer panel is readable in dark mode. It was styled
+  inline against `var(--bg-subtle)`, a custom property defined nowhere in the
+  stylesheet. That never failed loudly because the declaration carried a
+  hard-coded `#f6f7f9` fallback — a pale grey that looks right in light mode and
+  leaves light text on a light panel in dark mode. Presentation moved to a real
+  `.ask-answer` rule using the theme-aware `--surface-2` token. A test now
+  asserts that every `var(--token)` in the stylesheet and templates resolves to
+  a token that is actually defined, so a phantom one cannot return unnoticed.
+
+### Changed
+
+- Logging out asks for confirmation first. It is a nav item sitting beside
+  ordinary navigation, and on the installed PWA a mis-tap costs a re-login on a
+  touch keyboard. Logout remains a POST-only form with its own CSRF token; with
+  JavaScript disabled it submits as before, without a prompt.
+
 ### Removed
 
 - Mealie and Uptime Kuma were retired from the Droplet, and their cards removed

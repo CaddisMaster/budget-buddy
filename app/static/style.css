@@ -451,6 +451,14 @@ details.ai-card:not([open]) > summary.ai-head { margin-bottom: 0; }
 .ai-spark { width: 18px; height: 18px; color: var(--accent-2); flex-shrink: 0; }
 .ai-badge { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-2); background: var(--accent-2-soft); border: 1px solid var(--accent-2); border-radius: 999px; padding: 1px 7px; }
 .ai-intro { font-size: 12px; color: var(--text-muted); margin: 0 0 0.6rem; }
+/* Ask answer panel (#34). Was styled inline against var(--bg-subtle) — a token
+   that is defined nowhere. The inline declaration carried a #f6f7f9 fallback,
+   so it never failed loudly: it hard-coded a pale grey that reads fine in light
+   mode and leaves light text on a light panel in dark mode. Uses the real
+   surface token, same treatment as .agent-finding. */
+.ask-answer { margin-top: 0.8rem; padding: 0.8rem 1rem; background: var(--surface-2); border-radius: 8px; }
+.ask-answer p { margin: 0; white-space: pre-line; }
+.ask-answer .ask-tools { font-size: 11px; color: var(--text-muted); margin: 0.5rem 0 0; }
 
 /* v10.1 Insight / v10.2 Forecast cards — now share the .ai-card border above.
    .insight-* layout classes are still reused by both. */

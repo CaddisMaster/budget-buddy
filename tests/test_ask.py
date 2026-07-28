@@ -215,3 +215,24 @@ def test_ask_empty_question_prompts(client_a, users):
     resp = client_a.post("/ask", data={"question": "  "}, headers=HX)
     assert resp.status_code == 200
     assert "showToast" in resp.headers.get("HX-Trigger", "")
+
+
+def test_ask_answer_panel_is_class_styled_not_inline(client_a, users, monkeypatch):
+    """#34 — the answer panel was inline-styled against var(--bg-subtle), a
+    token defined nowhere. The inline fallback (#f6f7f9) hard-coded a pale grey,
+    so dark mode rendered light text on a light panel. Presentation now lives in
+    the .ask-answer rule, which uses the real --surface-2 token (theme-aware).
+
+    This asserts the panel carries the class and no longer ships a background of
+    its own; test_no_undefined_css_custom_properties (test_param_hardening.py)
+    is what stops the phantom token coming back anywhere in the app."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(ai, "_call_ask_model",
+                        lambda *a, **k: _resp([_text_block("You spent $40.")], "end_turn"))
+    resp = client_a.post("/ask", data={"question": "how much?"}, headers=HX)
+    body = resp.data.decode()
+
+    assert 'class="ask-answer"' in body
+    assert "--bg-subtle" not in body
+    assert "background:" not in body           # no inline background at all
+    assert "You spent $40." in body
