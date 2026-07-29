@@ -45,9 +45,25 @@ jobs:
           # on the SAME usage budget as local Claude Code sessions — hence the
           # opened-only trigger and the turn cap below.
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # --allowedTools: Bash is NOT available by default — the action ships
+          # file reads (Read/Grep/Glob) and comment management, nothing more. The
+          # prompt below runs `gh issue view` and `gh issue comment`, so both must
+          # be allowlisted explicitly or every call is denied (#91: the first real
+          # run burned all 15 turns on 10 denials and posted nothing).
+          #
+          # Keep this list to exactly these two. It is what holds the job to "read
+          # the issue, post one comment" — a broader grant (Bash(gh:*), or bare
+          # Bash) would let it edit issues, push, or open PRs, which is the
+          # read-only guarantee #84 was built around. `contents: read` blocks the
+          # git half; this blocks the API half.
+          #
+          # Nothing below is a shell script: claude_args is parsed as CLI
+          # arguments, so a '#' comment inside the block would be passed through
+          # as a literal argument. Comments stay out here.
           claude_args: |
-            --max-turns 15
+            --max-turns 30
             --model claude-sonnet-5
+            --allowedTools "Bash(gh issue view:*),Bash(gh issue comment:*)"
           prompt: |
             You are doing a FIRST-PASS TRIAGE of issue #${{ github.event.issue.number }}
             in this repository. Read it with `gh issue view ${{ github.event.issue.number }}`.
