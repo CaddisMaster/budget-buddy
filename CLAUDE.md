@@ -46,7 +46,7 @@ app/
 sql/                 # Numbered migration files + schema.sql (clean single-file schema)
 scripts/             # ingest.py, clean.py, insert.py data pipeline (own requirements.txt — pandas lives THERE, not in the app image); migrate.py; seed_dev.py (#69 — synthetic dev dataset; PURE build_seed_plan() + thin write_plan(), standalone like migrate.py, never imports the app)
 landing/             # Static landing page at seandesmet.com
-.github/workflows/   # ci.yml (a `changes` job classifies the diff → app/image/sql flags; jobs ALWAYS RUN and gate their expensive STEPS on them — `paths-ignore` on a required check strands the PR forever; fails open at BOTH levels, incl. `if: ${{ !cancelled() }}` + `needs.changes.result != 'success'` so a classifier failure runs everything. lint + pytest on postgres:16 + image builds/boots as appuser + the suite re-run INSIDE the built image when Dockerfile/requirements change); release.yml (published Release → build+push ghcr → smoke the PUSHED image → approval gate → SSH deploy → verify /healthz); rollback.yml (workflow_dispatch a version → redeploy that exact tag)
+.github/workflows/   # ci.yml (a `changes` job classifies the diff → app/image/sql flags; jobs ALWAYS RUN and gate their expensive STEPS on them — `paths-ignore` on a required check strands the PR forever; fails open at BOTH levels, incl. `if: ${{ !cancelled() }}` + `needs.changes.result != 'success'` so a classifier failure runs everything. lint + pytest on postgres:16 + image builds/boots as appuser + the suite re-run INSIDE the built image when Dockerfile/requirements change); release.yml (published Release → build+push ghcr → smoke the PUSHED image → approval gate → SSH deploy → verify /healthz); rollback.yml (workflow_dispatch a version → redeploy that exact tag); changelog.yml (app changes must touch CHANGELOG.md unless labelled `skip-changelog`); claude-triage.yml (automated first-pass comment on a new issue — see the Automated issue triage section below)
 ```
 
 ## Database Tables
@@ -100,6 +100,19 @@ landing/             # Static landing page at seandesmet.com
 - **AI-card collapse:** the four AI narration cards are `<details>` with `data-ai-key` + `data-generated` (the cache row's `created_at.isoformat()`; `initAiCollapse` in base.html + localStorage `bb-ai-seen:<key>` drive read-state). Generate routes must get the timestamp via `RETURNING created_at` — a route-local `datetime.today()` makes every regenerate read as new twice. Server renders CLOSED except empty-state (Generate must work without JS) and `just_generated` fragments. The What's-new strip says "weekly money check", NOT "Money agent" — a dashboard test asserts the agent CARD's absence by that exact string
 
 ## Current Status
+
+### On `main`, NOT yet deployed — automated issue triage (2026-07-29)
+
+Six PRs (#85, #89, #92, #95, #97, #99) closing #84, #88, #91, #94, #96, #98.
+**No app code changed** — every one touched `.github/workflows/claude-triage.yml`
+and nothing else, so all six carried `skip-changelog` and there is no
+`CHANGELOG.md` entry. See "Automated issue triage" below for how it works.
+
+⚠️ **When you file an issue from a session, add the `skip-triage` label.** It is
+the whole convention: measured on 2026-07-29, auto-reviewing session-written
+issues produced two comments nobody read (~$1 of subscription budget), while all
+three genuinely useful runs were dispatched deliberately. A dispatch ignores the
+label on purpose — hand-written issues are the ones most worth a second read.
 
 ### On `main`, NOT yet deployed — developer tooling pass (2026-07-28)
 
@@ -388,6 +401,51 @@ the actual ship date. Security/patch fixes and no-UI infrastructure are NOT feat
 
 Release: cut a GitHub Release for the version → Actions builds, pushes the image, and pauses on
 an approval gate before deploying (see Deployment).
+
+## Automated issue triage (`.github/workflows/claude-triage.yml`)
+
+A newly opened issue gets an automated first-pass comment in ~2 minutes. Two prompts behind a
+label branch, resolved by querying the issue's labels:
+
+- **`enhancement` → SPECIFY** — restates the idea against real files, drafts Gherkin acceptance
+  criteria, names the file surface, lists the applicable gotchas from this file, and raises the
+  open design questions. Built for a rough idea filed from the GitHub phone app; it is instructed
+  NOT to invent requirements and to put real choices in Open questions instead.
+- **anything else (incl. unlabelled) → TRIAGE** — diagnoses: what the code actually does, whether
+  a stated cause holds, what a fix would touch.
+
+**READ-ONLY by construction**, and it is enforced in two independent places: `permissions:` gives
+`contents: read` with no `pull-requests` at all, and `--allowedTools` grants exactly
+`Bash(gh issue view:*),Bash(gh issue comment:*)`. It comments; it never edits the issue, pushes,
+or opens a PR. **Do not widen the allowlist to `Bash(gh:*)`** — that reaches `gh issue edit`,
+`gh pr create` and `gh api`, i.e. write access to everything, through the one control you thought
+was constraining it. `contents: read` blocks the git half; the allowlist is the only thing
+blocking the API half.
+
+- **`skip-triage` suppresses the automatic run** — apply it to every issue you file from a
+  session (see Current Status for the measurement behind this). A **dispatch deliberately ignores
+  it**: hand-written issues are exactly the ones worth a second read, so honouring it there would
+  make them the only issues that could never be reviewed.
+- **Manual run:** `gh workflow run claude-triage.yml -f issue=<n>` — the only way to review an
+  issue opened before the workflow existed, since `issues: opened` cannot reach it and reopening
+  is not `opened`.
+- **Cost ~$0.50 / ~9 turns per run**, billed against the Claude **subscription** (via
+  `claude_code_oauth_token`), so it competes with local Claude Code usage — hence `opened`-only,
+  the turn cap, and `skip-triage`.
+
+⚠️ **A change to this workflow CANNOT be verified before merge, and the failure is silent.**
+`claude-code-action` refuses to run when the workflow file differs from the copy on the default
+branch (a deliberate control — otherwise a branch could edit the workflow and exfiltrate the
+token). `workflow_dispatch --ref <branch>` does not help. **The run reports SUCCESS while posting
+nothing** — only the log says why. Merge small, verify immediately by dispatching, revert if
+wrong; a workflow-only change reverts cleanly.
+
+Two gotchas worth not rediscovering: `permissions:` needs **`id-token: write`** (the action swaps
+an OIDC token for an installation token, and fails before reaching the model without it), and
+**`github.event.issue.labels` does not exist on a dispatch** — an expression like
+`contains(github.event.issue.labels.*.name, …)` silently evaluates false on every dispatched run,
+which is why the label is queried with `gh` instead. A `#` comment inside `claude_args` is passed
+through as a literal CLI argument; comments go outside the block.
 
 ## Delegation (worker agents)
 
