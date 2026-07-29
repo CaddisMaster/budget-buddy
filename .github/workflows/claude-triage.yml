@@ -18,6 +18,12 @@ on:
 permissions:
   contents: read
   issues: write
+  # Required by claude-code-action, which requests an OIDC identity token from
+  # the runner and exchanges it for a GitHub App installation token (#88 — the
+  # workflow failed on every run without it, before reaching the model). This
+  # does NOT weaken the read-only guarantee above: it permits requesting an
+  # identity token for this job, not writing repository contents.
+  id-token: write
 
 # One triage run per issue; a rapid edit-and-reopen shouldn't stack runs against
 # the shared subscription usage budget.
