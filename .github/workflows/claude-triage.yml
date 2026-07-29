@@ -31,13 +31,24 @@ name: Claude Issue Triage
 on:
   issues:
     types: [opened]
-  # Manual re-run against an issue that already exists (#96). Two things this
-  # buys that the `opened` trigger cannot:
-  #   - issues opened BEFORE this workflow existed can still be triaged, without
-  #     closing and re-filing them to change their number;
-  #   - a change to this workflow can be exercised from its own branch before
-  #     merging (`gh workflow run ... --ref <branch>`), because a dispatch runs
-  #     the chosen ref's copy while `opened` always runs the default branch's.
+  # Manual run against an issue that already exists (#96) — `gh workflow run
+  # claude-triage.yml -f issue=87`. What it buys: an issue opened before this
+  # workflow existed, or one carrying `skip-triage`, can still be reviewed on
+  # demand without closing and re-filing it to change its number.
+  #
+  # ⚠️ It does NOT let you test a change to this workflow before merging, and
+  # the `--ref <branch>` flag will not help. claude-code-action refuses to run
+  # when the workflow file differs from the copy on the default branch:
+  #
+  #     Skipping action due to workflow validation: ... must exist and have
+  #     identical content to the version on the repository's default branch
+  #
+  # That is a deliberate control in the action — otherwise a branch could edit
+  # the workflow and use it to exfiltrate the token — and the run reports
+  # SUCCESS while posting nothing, so it looks like it worked. Verified on run
+  # 30454973970 (#98). Changes to this file are verified AFTER merge by
+  # dispatching; a workflow-only change reverts cleanly if it is wrong.
+  #
   # Dispatch requires repo write access, so only maintainers can spend budget.
   workflow_dispatch:
     inputs:
@@ -78,6 +89,24 @@ jobs:
       # evaluates false on every dispatch and would send an `enhancement` issue
       # down the TRIAGE path. Querying works identically for both triggers.
       #
+      # `skip-triage` (#98) suppresses the automatic run. It exists because an
+      # issue written during a Claude Code session has already had the code read
+      # and the analysis done — re-reviewing it seconds later mostly restates
+      # work that just happened. Measured on 2026-07-29: #94 and #96 were both
+      # auto-triaged, cost roughly $0.50 each against the subscription, and
+      # neither comment was ever read by anyone. The two runs that DID find
+      # something (#86, #87) were both dispatched deliberately, at a moment a
+      # second opinion was actually wanted.
+      #
+      # It cannot be an author check — `gh` authenticates as the repo owner, so
+      # a session-filed issue and a phone-filed one have the same author. The
+      # label is applied by hand at creation; forgetting it costs one run.
+      #
+      # ⚠️ A DISPATCH IGNORES `skip-triage` ON PURPOSE. Dispatching is already a
+      # deliberate act, and the issues most worth a second read are exactly the
+      # hand-written ones that carry the label — honouring it here would make
+      # them the only issues that could never be reviewed.
+      #
       # The issue number is passed through `env:` and NOT interpolated straight
       # into the run block. A `${{ inputs.issue }}` inside the script would be
       # substituted before bash ever sees it, so a crafted value would execute as
@@ -100,12 +129,27 @@ jobs:
 
           labels="$(gh issue view "$ISSUE" --repo "$GITHUB_REPOSITORY" \
                       --json labels -q '.labels[].name')"
-          mode=triage
+          has_skip=false
+          has_enhancement=false
           while IFS= read -r label; do
-            [ "$label" = "enhancement" ] && mode=specify
+            [ "$label" = "skip-triage" ] && has_skip=true
+            [ "$label" = "enhancement" ] && has_enhancement=true
           done <<< "$labels"
+
+          if [ "$has_skip" = true ] && [ "$GITHUB_EVENT_NAME" = "issues" ]; then
+            mode=skip
+          elif [ "$has_enhancement" = true ]; then
+            mode=specify
+          else
+            mode=triage
+          fi
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
-          echo "Issue #$ISSUE -> $mode"
+
+          if [ "$mode" = skip ]; then
+            echo "Issue #$ISSUE carries skip-triage — no automatic review." \
+                 "Dispatch manually if a second read is wanted." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "Issue #$ISSUE -> $mode (event: $GITHUB_EVENT_NAME)"
 
       # TRIAGE — the default path. Runs for `bug` and for anything unlabelled.
       - name: Triage a reported defect
