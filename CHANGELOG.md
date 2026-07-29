@@ -59,6 +59,28 @@ this project uses the `0.x` versioning scheme described in
   Run it with `docker compose exec web python scripts/seed_dev.py`. It refuses to
   write into a database that already has the target user unless given `--force`.
 
+- **Automated first-pass triage on newly opened issues** —
+  `.github/workflows/claude-triage.yml` runs `anthropics/claude-code-action@v1`
+  when an issue is opened and posts a single comment: what the code actually does,
+  which files a fix would touch, the `CLAUDE.md` constraints that apply, and the
+  decisions still left to a human.
+
+  It is **read-only by design** — no branch, no commit, no pull request. The job
+  holds `contents: read` and no `pull-requests` permission at all, so that is
+  structural rather than a matter of instruction. The reason it stops at a comment
+  is that a change here has to be verified in the running app as well as by the
+  suite, and a runner can go green on a change that looks wrong.
+
+  The motivating case was issue #83, filed with two competing hypotheses; checking
+  which one was true took a mechanical pass over the real inputs, which is exactly
+  the work a runner can do before anyone sits down.
+
+  Nothing runs until a repository admin installs the Claude GitHub App and adds a
+  `CLAUDE_CODE_OAUTH_TOKEN` secret; without it the workflow is inert. That token
+  bills against the existing Claude subscription rather than metered API credits —
+  the same budget local sessions draw on, which is why the trigger is
+  issue-opened only and the run is capped by `--max-turns` and `timeout-minutes`.
+
 ### Changed
 
 - The `Dockerfile` is now multi-stage: `base` → `dev` (adds the test
