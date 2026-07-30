@@ -110,6 +110,19 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The dashboard's category doughnut now shows the six largest categories and
+  folds the rest into a single "Other" slice**, in both the Expenses and Income
+  views. A doughnut is a part-to-whole-at-a-glance form and stops being readable
+  well before the ten-plus slices it was previously willing to draw: only about
+  four hues clear all-pairs colour-vision separation, so past that, slices start
+  reading as each other regardless of which palette is used.
+
+  The card's total is unchanged — "Other" is exactly the sum of what it
+  replaces, and hovering it says how many categories it stands for. Nothing else
+  is affected: the fold happens when the chart payload is built, so budgets,
+  insights, forecasts, the CSV export and every other surface still see complete
+  per-category figures. Users with six or fewer categories see no change at all.
+
 - The `Dockerfile` is now multi-stage: `base` → `dev` (adds the test
   dependencies) → `prod`. **The shipped image is unchanged** — a build with no
   explicit target still produces exactly what it produced before, and CI now

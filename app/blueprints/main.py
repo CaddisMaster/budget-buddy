@@ -58,6 +58,47 @@ def upcoming_occurrences(next_due, frequency, anchor_day, second_day,
     return out
 
 
+# Doughnut tail fold (#108). A doughnut is a part-to-whole-at-a-glance form and
+# is past its readable limit around six slices: #83 validated the palette with a
+# CVD/contrast checker and only ~4 hues clear all-pairs separation, so the
+# seven-slice production chart had pairs below the "hard to tell apart even with
+# full colour vision" floor. Showing fewer segments is the fix; a ninth hue is
+# not (see the --series-N comment in style.css).
+#
+# Presentation only, and deliberately NOT pushed into the SQL rollup — every
+# other surface (budgets, insights, forecasts, the hero figures) needs the
+# complete per-category figures. The card's own total is derived from cash_flow,
+# not from this list, so folding cannot move it.
+#
+# ⚠️ This does NOT fix the palette wrap, contrary to what #108 assumed. A slot is
+# CREATION order, not rank, so a user whose 1st- and 9th-created categories are
+# both top-6 spenders still gets two identical slices. Folding lowers the odds;
+# only set-membership-dependent colouring would remove it, and that is precisely
+# what #83 rejected and what test_dashboard_merge.py now forbids. Tracked
+# separately — do not "fix" it here.
+def fold_chart_tail(rows, limit=6, label='Other'):
+    """Top `limit` rows by total; the remainder summed into one entry. Pure.
+
+    Takes and returns the chart payload's {'category', 'total'} dicts. The
+    folded entry carries is_other=True — the template colours it neutral off
+    that FLAG, never off the label, because a user may legitimately have a
+    category actually named "Other" and it must keep its own hue.
+
+    `limit` or fewer rows are returned unchanged, with no folded entry at all —
+    the common case. Sorts defensively: every caller's query already ends
+    ORDER BY total DESC, but a pure function shouldn't depend on that."""
+    if len(rows) <= limit:
+        return rows
+    ranked = sorted(rows, key=lambda r: r['total'], reverse=True)
+    tail = ranked[limit:]
+    return ranked[:limit] + [{
+        'category': label,
+        'total': sum(r['total'] for r in tail),
+        'is_other': True,
+        'folded': len(tail),
+    }]
+
+
 @bp.route('/sw.js')
 def service_worker():
     """The PWA service worker (v10.13). Served from the root — a worker's
@@ -316,17 +357,26 @@ def index():
     # Chart payloads — plain lists the template renders with |tojson, which
     # HTML-escapes into the script block (the old json.dumps + |safe let a
     # </script> in a category/account name break out of it).
-    spending_data = [{'category': r[0], 'total': float(r[1])} for r in spending]
-    income_by_category_data = [{'category': r[0], 'total': float(r[1])} for r in income_by_category]
+    # Both doughnut payloads fold their tail (#108) — the two pill-toggle views
+    # share one canvas, one palette and one slot map, so both need it.
+    spending_data = fold_chart_tail(
+        [{'category': r[0], 'total': float(r[1])} for r in spending])
+    income_by_category_data = fold_chart_tail(
+        [{'category': r[0], 'total': float(r[1])} for r in income_by_category])
     cash_flow_data = [{'month': r[0], 'income': float(r[1]), 'expenses': float(r[2])} for r in cash_flow]
     net_balance_data = [{'month': r[0], 'balance': float(r[1])} for r in net_balance_trend]
     account_data = [{'account': r[0], 'balance': float(r[1])} for r in account_balances]
     budget_chart_data = [{'category': r[0], 'budget': float(r[1]), 'actual': float(r[2])} for r in budget_data]
     day_of_week_data = [{'day': r[1].strip(), 'total': float(r[2])} for r in spending_by_day]
     # Narrowed to the categories the doughnut can actually paint (both pill
-    # views), so the page doesn't carry the user's whole category list. The slot
-    # VALUES stay global creation order, which is what keeps a colour stable
-    # when a filter changes the set — restricting the keys doesn't touch that.
+    # views, post-fold), so the page doesn't carry the user's whole category
+    # list. The slot VALUES stay global creation order, which is what keeps a
+    # colour stable when a filter changes the set — and equally when the FOLD
+    # changes it. Restricting the keys doesn't touch that.
+    #
+    # The synthetic "Other" row has no entry here unless the user happens to own
+    # a real category by that name, and even then the template ignores it: the
+    # folded slice is coloured off its is_other flag, not off a slot.
     category_slots = {d['category']: category_order[d['category']]
                       for d in spending_data + income_by_category_data
                       if d['category'] in category_order}

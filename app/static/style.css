@@ -38,6 +38,12 @@
   --series-6: #008300;
   --series-7: #4a3aa7;
   --series-8: #e34948;
+  /* The folded-tail slice (#108). Deliberately ACHROMATIC so it reads as "not a
+     category" beside any of the eight hues, and deliberately NOT named
+     --series-9: it is not a ninth palette entry, and the stylesheet test counts
+     --series-<digit> to catch a duplicate hex. Don't loosen that regex to
+     [\w-]+ or this starts failing it. Clears 3:1 against --surface. */
+  --series-other: #8a9199;
 
   /* Type scale */
   --fs-xs: 12px;
@@ -87,6 +93,8 @@
     --series-6: #008300;
     --series-7: #9085e9;
     --series-8: #e66767;
+    /* Lighter step so the folded slice still clears 3:1 on the dark surface. */
+    --series-other: #98a0a9;
     --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
     --shadow-md: 0 2px 6px rgba(0,0,0,0.35), 0 6px 16px rgba(0,0,0,0.3);
     --shadow-lg: 0 8px 30px rgba(0,0,0,0.5);
