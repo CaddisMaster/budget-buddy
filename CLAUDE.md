@@ -23,7 +23,7 @@ app/
   blueprints/        # all routes, one module per area, registered with NO url_prefix
     auth.py          # login, logout (POST-only — GET was CSRF-able; base.html renders a form button styled as a nav link), change_password (72-BYTE bcrypt cap; reached via its Profile-page link, no nav entry), profile + digest opt-in; login rate-limit + constant-bcrypt (no enumeration) + session.clear() on login; login_user(remember=True) — the installed-PWA case
     main.py          # index() at '/' IS the dashboard (endpoint name main.index preserved for the redirect call sites; due-runners fire on '/'); dashboard() = 302 stub → / carrying ?month; service_worker() serves /sw.js from the ROOT (a SW's scope is capped at its URL dir — /static/sw.js could never control '/'). Pure _advance_past()/upcoming_occurrences() walkers over compute_next_due (the digest's upcoming-week enumerator imports them lazily). Dashboard owns the day-of-week + year-over-year queries (yoy only when a month is filtered AND last year has data); chart payloads are PLAIN LISTS rendered with |tojson (NOT json.dumps + |safe — script-tag breakout); an income-by-category rollup feeds the Spending card's Expense/Income pill toggle (hidden when empty)
-    transactions.py  # transaction CRUD (inline), CSV export (_csv_safe() formula-injection sanitizer), render_history_tbody(), quick-add parse route; owns pure compute_next_due() + the shared validate_category_account() write-side ownership guard (both reused by schedules.py); Auto-Categorize (count_uncategorized/_load_cleanup_candidates — expense-scoped — + POST /transactions/cleanup/scan|apply, the History banner); Bulk edit (POST /transactions/bulk/category|delete — full guard stack + is_transfer=false so a transfer pair can't be half-edited; transfer rows get no checkbox in the UI either; selection is page-scoped, vanilla-JS bar in history.html); _load_history seeds the running-balance walk with the signed SUM of all filtered rows OLDER than the page slice (pages connect; filtered views carry the matching rows' net)
+    transactions.py  # transaction CRUD (inline), CSV export (_csv_safe() formula-injection sanitizer + pure _export_kind() → the Kind column, transfer/adjustment/blank, #87 — rows are NOT filtered, the export mirrors History), render_history_tbody(), quick-add parse route; owns pure compute_next_due() + the shared validate_category_account() write-side ownership guard (both reused by schedules.py); Auto-Categorize (count_uncategorized/_load_cleanup_candidates — expense-scoped — + POST /transactions/cleanup/scan|apply, the History banner); Bulk edit (POST /transactions/bulk/category|delete — full guard stack + is_transfer=false so a transfer pair can't be half-edited; transfer rows get no checkbox in the UI either; selection is page-scoped, vanilla-JS bar in history.html); _load_history seeds the running-balance walk with the signed SUM of all filtered rows OLDER than the page slice (pages connect; filtered views carry the matching rows' net); Pending (#86 — is_pending on create, POST /transactions/<id>/mark-posted to clear, pin sorted in PYTHON after the fetch — see the gotcha)
     categories.py    # category CRUD (inline); kind ('expense'|'income') on create/edit — flipping a BUDGETED category to income clears its budget in the same txn (logged via budgets.record_budget_change, lazy import)
     accounts.py      # account CRUD (inline); ACCOUNT_ROW_SQL (THE canonical balance formula, reused by ask.py — namedtuple read by NAME everywhere, column order doesn't matter); pure Jinja globals credit_utilization() (warn ≥30% / danger ≥80%, pct uncapped / bar capped 100, Decimal→float) + monthly_interest(balance, apr) (None when apr unusable OR debt ≤ 0 — THE gate every surface checks; ~monthly = debt × apr/100/12, "~" wording); _parse_credit_limit()/_parse_apr() (blank → NULL; apr REJECTS > 100 — the units-typo guard); credit_card_utilization_facts(user_id) (per-card facts for Insight/Digest — a card qualifies with usable utilization OR interest, per-key presence); Balance check-in (GET/POST /accounts/<id>/checkin — recomputes balance server-side in a FOR UPDATE-locked txn, inserts ONE is_adjustment transaction closing the gap, always stamps last_checked_in); edit error paths re-render via account._replace(...) echoing the RAW posted string
     budgets.py       # budget cockpit (set/clear) + compute_budget_suggestions/_vs_actual helpers; AI Budget Review (compute_budget_review_facts() + load_budget_rows() + POST /budgets/review/scan|apply); Budget report (pure build_budget_report() hit/miss grid + streaks + ±10% 3-vs-3 trend, load_budget_report() calendar-aligned last-6-COMPLETE-months — NOT the review facts' rolling window; only SAVED budgets grade, vs the CURRENT amount); record_budget_change() appends to budget_history at all THREE write points (set/clear/review-apply), before the upsert/delete in the same txn, no-ops skipped — writer only, nothing reads the log yet
@@ -51,7 +51,7 @@ landing/             # Static landing page at seandesmet.com
 
 ## Database Tables
 
-- `transactions` — amount, description, transaction_date, category_id, account_id, transaction_type (income/expense), is_adjustment (exclude from analytics), is_transfer + transfer_group_id (transfer legs), user_id, created_at. **`is_recurring`/`frequency`/`next_due`/`recur_second_day` are LEGACY** — recurrence moved to `schedules`; kept (always default) only so the History row shape is unchanged
+- `transactions` — amount, description, transaction_date, category_id, account_id, transaction_type (income/expense), is_adjustment (exclude from analytics), is_transfer + transfer_group_id (transfer legs), **is_pending (#86 — a DISPLAY flag, pins the row to the top of History; excludes it from NOTHING, the opposite of is_adjustment)**, user_id, created_at. **`is_recurring`/`frequency`/`next_due`/`recur_second_day` are LEGACY** — recurrence moved to `schedules`; kept (always default) only so the History row shape is unchanged
 - `schedules` — recurring income/expense templates: amount, description, category_id, account_id, transaction_type, frequency, anchor_day + second_day (semi-monthly), next_due, **`end_date` (NULL = runs indefinitely)**, is_active, user_id, created_at. **FINISHED ⇔ `end_date IS NOT NULL AND next_due > end_date`** — deliberately NOT `end_date < today` (a schedule ending the 15th whose next_due is the 1st still owes that occurrence on the 10th), and runner-independent, since next_due only moves forward and never past what was materialized. **Not a ledger row** — `run_due_schedules()` materializes a plain transaction on each due date (going forward, no back-fill) and advances `next_due`
 - `transfer_schedules` — recurring **transfer** templates (the transfer twin of `schedules`): amount, description, **from_account_id + to_account_id** (no category), frequency, anchor_day + second_day, next_due, **`end_date` (same semantics as `schedules`)**, is_active, user_id, created_at. Separate table (a transfer needs two accounts). `run_due_transfers()` (transfers.py) materializes a **paired transfer** (linked expense+income legs sharing one `transfer_group_id`, both `is_transfer=true`) per due date, looping to catch up. Reuses `compute_next_due()`/`compute_initial_semimonthly_due()`, all six frequencies
 - `insights` — cached monthly AI narration, one row per user per month: year, month, content (JSON `{summary, tips[]}`), model, user_id, created_at; **UNIQUE(user_id, year, month)** upsert. **Stores only the narrative** — figures are recomputed each load (`compute_month_facts()`), never persisted
@@ -83,6 +83,33 @@ landing/             # Static landing page at seandesmet.com
 - **Due-runner locking is now LOAD-BEARING, not merely prudent:** the due-row SELECTs are `FOR UPDATE`. They already guarded two simultaneous page loads (gunicorn serves on 4 threads); since `0.2.0` the **scheduler thread races those page loads too**. Keep the lock if those queries are ever touched — `test_push_reminders.py::test_daily_job_racing_a_page_load_materializes_once` is the net
 - **⚠️ The scheduler is NOT gated on `mail_enabled()`** (`app/__init__.py`). It was until `0.2.0`, which was fine while its only job was email — but the daily job now also materializes, and hanging that off a Resend key would mean a missing third-party credential silently stops the ledger updating. `ENABLE_DIGEST_SCHEDULER=1` starts the scheduler; **each JOB carries its own gate** (digest ← `mail_enabled()`, reminder half of the daily job ← `push_enabled()`, materialization ← nothing). Do not "tidy" this back into one condition
 - All data tables have `user_id` FK — every SELECT/INSERT/UPDATE/DELETE must be scoped to `current_user.id`
+- ⚠️ **The History pending-pin is sorted in PYTHON, never in SQL** (#86). `_load_history`
+  seeds its balance walk from a SUM of every filtered row *older* than the page — and the
+  seed query **defines "older" by repeating the page query's `ORDER BY`** with
+  `OFFSET offset+per_page`. So those two `ORDER BY` clauses are ONE coupled unit: an
+  `is_pending DESC` prefix on either does not merely reorder the display, it redefines
+  which rows count as older, and the balance breaks for the pinned rows AND every row
+  beneath them — invisible until pagination or a filter is active. Both queries and the
+  walk are byte-identical to pre-#86; only the finished list is sorted, relying on
+  `list.sort` being **stable** to keep both groups date-descending. Consequence accepted
+  deliberately: **the pin is page-scoped** (a pending row 100 rows deep pins to the top of
+  page 4). `test_pending_transactions.py::test_posted_balances_are_unchanged_by_a_pending_row`
+  is the net
+- **`is_pending` is a DISPLAY flag and the exact OPPOSITE of `is_adjustment`** despite the
+  identical type/default: it excludes a row from **nothing** (dashboard, budgets, insights,
+  forecasts, running balance all count it — the money did leave the account). Do **not** add
+  it to the ~23 `is_adjustment = false AND is_transfer = false` filter lists. Set by a
+  checkbox on the **create form only**; cleared by `POST /transactions/<id>/mark-posted`
+  (clears only, never sets). `edit_transaction`'s UPDATE deliberately never mentions the
+  column, which is what makes "editing the amount doesn't clear the flag" free and keeps
+  `TxnEditRow` unchanged. Pending rows render an em dash in the balance cell
+- **Chart series colours live in `style.css` as `--series-1..8`**, read via `cssVar()` so dark
+  mode swaps with no JS; **dark has its own steps** (three light values fail 3:1 on the dark
+  card). ⚠️ **The slot ORDER is load-bearing** — adjacent slots are the pairs a reader
+  compares, and reordering breaks CVD validation (verified: red beside magenta, violet beside
+  blue both fail). A category's slot is its **creation order** (`main.py`'s `category_slots`,
+  built `ORDER BY id`, narrowed to the categories actually on the chart so the page carries no
+  extra names). Never colour by position in the rendered array — that shifts with every filter
 - **Amount validation:** every form amount goes through `helpers.parse_positive_amount()` — `float('nan')` passes a plain `<= 0` check and Postgres stores NaN in numeric, poisoning every SUM(). Never hand-roll `float(x); if x <= 0`
 - **Param validation:** same rule for query/form params — `?month` → `parse_month_param()`, `?page` → `parse_page_param()`, posted FK ids → `parse_int_param()`. A raw string into a psycopg2 `%s` against an int column raises (= 500)
 - **Write-side FK ownership:** when a form posts a `category_id`/`account_id`, validate it belongs to the user *before* the INSERT/UPDATE — `validate_category_account()` in transactions.py, folded into the route's validation-error path. Used by transaction new/edit, schedule create/edit, bulk edit, cleanup apply
@@ -100,6 +127,46 @@ landing/             # Static landing page at seandesmet.com
 - **AI-card collapse:** the four AI narration cards are `<details>` with `data-ai-key` + `data-generated` (the cache row's `created_at.isoformat()`; `initAiCollapse` in base.html + localStorage `bb-ai-seen:<key>` drive read-state). Generate routes must get the timestamp via `RETURNING created_at` — a route-local `datetime.today()` makes every regenerate read as new twice. Server renders CLOSED except empty-state (Generate must work without JS) and `just_generated` fragments. The What's-new strip says "weekly money check", NOT "Money agent" — a dashboard test asserts the agent CARD's absence by that exact string
 
 ## Current Status
+
+### On `main`, NOT yet deployed — the triaged backlog, built (2026-07-29)
+
+Four PRs closing three issues: **#104** (#83 doughnut colours), **#105** (#87 CSV
+`Kind` column), **#106** (the `is_pending` migration, standing alone), **#107**
+(#86 Pending transactions). Tests **668 → 706**. Two `### Fixed` changelog
+entries and one `### Added`. Prod still runs `0.2.0`.
+
+**One additive migration, `sql/33_pending_transactions.sql`** — applies BEFORE
+the image pull, which `release.yml` already does automatically.
+
+All three issues had a specified approach that was **wrong on contact**, and the
+corrections are the durable part:
+
+- **#87** — the issue said the export should exclude transfers/adjustments like
+  the analytics do. Wrong peer: the export's filter list is byte-identical to
+  `_load_history()`'s because it is a download of the **History view**.
+  Excluding them would break "download what you see". A derived `Kind` column
+  (`transfer`/`adjustment`/**blank**) was added instead; rows are unchanged.
+- **#83** — the recommended probe-for-a-free-slot was rejected: it makes a colour
+  depend on which *other* categories are on screen, and the `?month` filter
+  changes exactly that, so switching months could repaint a survivor. Colours now
+  come from **creation order** (`ORDER BY id`), which is collision-free *and*
+  immovable. See the two gotchas below.
+- **#86** — see the ⚠️ pin gotcha below; it is the one place a natural-looking
+  one-line change ships a silent bug.
+
+⚠️ **A doughnut cannot carry seven distinguishable slices, and #83 does not fix
+that.** Validated with a real CVD/contrast checker: only ~4 hues clear all-pairs
+separation, and at 8 the worst pair is red↔orange at ΔE 7.1 against a floor of
+15 — which is *literally* #83's original "two slices read as oranges" complaint.
+The collision fix removes identical hex (the acute bug) but #83's own acceptance
+criterion is **not fully met and cannot be by any palette**. Tracked as **#108**
+(top-6 + "Other", or ranked horizontal bars). Do not "fix" it by adding a ninth
+hue.
+
+⚠️ **Nobody has looked at the rendered doughnut.** No browser was available in the
+session. The palette is validated and the stylesheet is asserted, but if
+`cssVar('--series-N')` ever returned empty the slices would draw transparent, and
+only looking rules that out. Worth one glance in light and dark.
 
 ### On `main`, NOT yet deployed — automated issue triage (2026-07-29)
 
@@ -217,6 +284,13 @@ auto-filing GitHub issues. ⚠️ It carries a design question that must be sett
 **this repo is public**, and a bug report about money tends to contain money. The issue lays out
 four options (warn-and-post / never auto-attach context / a private feedback repo / email Sean
 instead) and recommends the private repo. Do not start it by writing `app/github.py`.
+**Deferred again on 2026-07-29** (Sean's call) — still unsettled, still not started.
+
+**#108** (new, 2026-07-29) — the category doughnut is past its readable limit at seven
+slices; show the top six and fold the tail into "Other", or switch the form to ranked
+horizontal bars. Comes out of #83, which fixed the colour *collision* but could not fix
+the form. Colour assignment is settled and should not be revisited — a fold must not
+reintroduce set-membership-dependent colouring, which is what the tests guard.
 
 Parked with triggers: **#36** budget-report-v2-reads-history (~Dec 2026, when the 6-mo window
 sits fully inside logged history); **#8** Python 3.14 evaluation (unblocked by #7 now that CI
@@ -302,11 +376,12 @@ install cost ~1.5s and total per-invocation overhead ~2.9s, cut to ~0.8s by #70.
 predicted to "roughly halve" the run; it actually cut it by ~12×, because the suite is
 IO/DB-bound rather than CPU-bound and parallelises far better than a CPU-bound suite would.
 
-**668 tests in `tests/`.** Cross-cutting patterns: **no real API calls anywhere** — every
+**706 tests in `tests/`.** Cross-cutting patterns: **no real API calls anywhere** — every
 `ai.py::_call_*_model` seam (and `mailer.py::_call_resend`) is monkeypatched with canned
 `SimpleNamespace` responses; every feature file asserts **user isolation**; route tests assert
 anon → 302. What each file covers:
 
+- `test_pending_transactions.py` — #86 end to end: create/badge (content-asserting — `HistoryRow` is positional), the page-scoped pin, several pending rows staying newest-first (the stable-sort property), pinning NOT overriding `?month`, the em-dash balance cell **anchored to the actual `<td>`** (a bare `"—"` also matches the edit selects' "— none —" and passes without the feature), **the walk-guard property** (posted rows' balance cells are character-identical whether a sibling is pending or posted — this fails if anyone moves the pin into SQL), page-1 top balance still equalling the full net, mark-posted (clears only, whole-tbody fragment, returns the row to date order), edit-preserves-the-flag, pending counting in month spending, a pending row still being an Auto-Categorize candidate (i.e. NOT behaving like `is_adjustment`), export + cleanup keeping pure date order, and the isolation/anon set
 - `test_seed_dev.py` — `scripts/seed_dev.py` (#69): determinism (same seed+day → identical rows), dates derived from `today` not hardcoded, **the fixture scaling property** (parametrized 2–36 months — a fixed opening debt pays the card off entirely on a long window and a fixed goal target gets overshot), analytics-exclusion coverage, schedule `next_due` always FUTURE, plus a DB round-trip: persistence counts, transfer-pair shape, login + populated dashboard, **loading `/` materializes nothing**, refuse/force/dry-run paths
 - `test_push_reminders.py` — #33 end to end via the mocked `pusher._call_webpush` seam: the `push_enabled()` gate, subscribe/unsubscribe routes (upsert on endpoint, payload validation, 503 when unconfigured, cross-user IDOR), the reminder window (honours #32's `end_date`), per-occurrence dedup, dead-subscription (404/410) cleanup vs a KEPT transient failure, per-user isolation, and the two materialization properties — a user who never logs in gets rows, and **materialization still runs with push unconfigured** (the gating trap). Plus the threaded daily-job-vs-page-load `FOR UPDATE` twin
 - `test_apr.py` — APR: pure `_parse_apr`/`monthly_interest`, /accounts interest line (independent of the limit bar), ask enrichment, either/or facts, payoff "interest adds" render, edit error-path echo
@@ -320,7 +395,7 @@ anon → 302. What each file covers:
 - `test_money_agent.py` — the agent loop via the mocked seam (grounding guard, nudge recovery, turn cap), `_normalize_findings`, `recent_transactions` dispatch, `run_money_agent` week-key upsert + isolation, `/agent/run` route, digest integration (cached run reused; agent failure → email still sends)
 - `test_credit_limits.py` — pure `credit_utilization`/`_parse_credit_limit` (tier boundaries, over-limit, Decimal), edit error-path echo regression, /accounts bar rendering, ask enrichment, facts + isolation
 - `test_budget_history.py` — `record_budget_change` at set/clear/review-apply, no-ops skipped, NULL = cleared, isolation
-- `test_dashboard_merge.py` — /analytics redirect, Ask box on /, day-of-week chart, YoY gating, **the tojson regression** (a `</script>` category name arrives escaped)
+- `test_dashboard_merge.py` — /analytics redirect, Ask box on /, day-of-week chart, YoY gating, **the tojson regression** (a `</script>` category name arrives escaped); plus #83's colour slots (seven categories → seven distinct slots, a new category does not repaint, a month filter does not repaint, per-user) and a **stylesheet** assertion that `--series-1..8` are eight distinct hexes in BOTH mode blocks (the palette is CSS, so no request renders it)
 - `test_budget_report.py` — pure grid derivation (grades, streaks, ±10% trend, ordering) + DB loader window (seed dates derived from `_report_months()`, never `timedelta` — no month-boundary flake) + route smoke
 - `test_occurrences.py` — pure walkers (`_advance_past` stale catch-up, `upcoming_occurrences` start-exclusive/end-INCLUSIVE, weekly multi-occurrence)
 - `test_checkin.py` — check-in: one adjustment closes the gap, match = stamp only, **the trust property** (balance moves, month facts unchanged), cross-user 404s
@@ -331,7 +406,7 @@ anon → 302. What each file covers:
 - `test_autocategorize.py` — suggestion normalization, expense-only candidates, scan filter, apply write-side guards, banner count
 - `test_transfer_schedules.py` — paired materialization + catch-up + gates + CRUD validation/IDOR + the FOR UPDATE concurrency twin
 - `test_ask.py` — tool dispatch arg validation, per-user scoping, the multi-turn loop (turn cap, tools_used), /ask route
-- `test_hardening.py` — `_csv_safe` + CSV end-to-end, security headers, cookie flags, constant-bcrypt path
+- `test_hardening.py` — `_csv_safe` + CSV end-to-end, security headers, cookie flags, constant-bcrypt path; plus #87's `Kind` column — pure `_export_kind()`, the header contract, per-row labelling, that transfer legs/adjustments are still PRESENT (a regression test against "fixing" it by filtering), and **the reconciliation arithmetic** (all rows minus blank-Kind rows == the transfer legs + adjustment exactly)
 - `test_ai_parse.py` — quick-add `_normalize`/`_match_id`, parse route, every graceful-fallback path
 - `test_insight.py` / `test_forecast.py` — facts, generate route, **cache-hit (page load never calls the model)**, fallback, not-enough-data skip, isolation; forecast adds pure `project_expenses()`
 - `test_schedules.py` — semimonthly init math, materialize/catch-up/gates, the **4-thread FOR UPDATE concurrency test** (verified red without the lock), CRUD
