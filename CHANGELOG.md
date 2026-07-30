@@ -99,6 +99,35 @@ this project uses the `0.x` versioning scheme described in
 
 ### Fixed
 
+- **Two slices of the dashboard's category doughnut could be the same colour.**
+  With seven categories on screen only five distinct colours were issued — two
+  palette slots went unused while two were handed out twice — so two pairs of
+  slices, and their legend swatches, were identical. There was no colour
+  information distinguishing either pair at all.
+
+  The cause was hashing the category *name* into a seven-entry palette. That
+  kept a category's colour stable, which was the point, but seven names land in
+  seven slots distinctly only about 0.6% of the time, so a collision was the
+  expected outcome rather than an edge case. The comment in the code claimed
+  collisions were only possible *past* seven categories, which is backwards and
+  is probably why it shipped.
+
+  Colours now come from each category's creation order, computed server-side, so
+  they cannot collide while there are eight or fewer. That is also strictly more
+  stable than the hash was: a category keeps its colour when a month filter
+  changes which categories are on screen, and adding a new category gives it the
+  next unused colour instead of shifting anyone else's.
+
+  The palette itself was replaced with eight hues validated for colour-vision
+  deficiency and contrast, and it now lives in `style.css` as `--series-1..8`
+  with **separate steps chosen for dark mode** rather than reusing the light
+  ones, which did not have enough contrast against the dark card background.
+
+  Known limit, unchanged by this fix: a doughnut stops being readable somewhere
+  around six slices no matter how good the palette is, and a ninth category
+  wraps back onto the first one's colour. Both point at showing fewer segments
+  rather than inventing more hues, which is filed separately.
+
 - **The History CSV export now says what each row is.** It carries a **Kind**
   column: `transfer`, `adjustment`, or empty for an ordinary transaction.
 

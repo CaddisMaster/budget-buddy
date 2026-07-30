@@ -239,14 +239,29 @@ const dowData = {{ day_of_week_data | tojson }};
 // Theme Chart.js from the CSS design tokens so charts match the app (incl. dark mode).
 const _css = getComputedStyle(document.documentElement);
 const cssVar = (n) => _css.getPropertyValue(n).trim();
-const PALETTE = ['#378ADD','#1D9E75','#EF9F27','#E24B4A','#7c5cff','#D4537E','#639922'];
-// A category keeps the same color across visits and across the expense/income
-// views: hash the NAME into the palette instead of coloring by array position.
-// (Collisions possible past 7 categories — positional had the same ceiling.)
+// Eight validated categorical hues, read from CSS so dark mode swaps them
+// without a second array here. Order is load-bearing — see style.css.
+const PALETTE = Array.from({length: 8}, (_, i) => cssVar(`--series-${i + 1}`));
+// CATEGORY_SLOTS maps a category name to its creation-order index (built
+// server-side). Slot N always paints the Nth category the user created, so a
+// colour is stable across visits, across the expense/income toggle, and across
+// a month filter that changes which categories are on screen — and adding a
+// category never repaints an existing one.
+//
+// This REPLACED hashing the name into the palette. Hashing looked stable but
+// collided: seven categories over seven slots issued only five distinct
+// colours, so two pairs of slices were byte-identical and the legend swatches
+// collided with them. Collisions started well BELOW the palette size (seven
+// names land in seven slots distinctly only ~0.6% of the time), which the old
+// comment here had backwards. Indexing removes them outright up to PALETTE
+// length; past that it wraps, so a 9th category shares slot 1's colour with
+// the 1st. A doughnut is already past its readable limit around six slices, so
+// the fix for that is fewer segments (fold the tail into "Other") rather than a
+// ninth hue — tracked separately, not worked around here.
+const CATEGORY_SLOTS = {{ category_slots | tojson }};
 function catColor(name) {
-    let h = 5381;
-    for (let i = 0; i < name.length; i++) h = ((h << 5) + h + name.charCodeAt(i)) >>> 0;
-    return PALETTE[h % PALETTE.length];
+    const slot = CATEGORY_SLOTS[name];
+    return PALETTE[(slot === undefined ? 0 : slot) % PALETTE.length];
 }
 const colorsFor = (data) => data.map(d => catColor(d.category));
 Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
