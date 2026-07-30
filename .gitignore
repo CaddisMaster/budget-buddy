@@ -2,6 +2,13 @@
 .env
 *.env
 
+# Bitwarden .env rebuild shim + its rollback copy. Both listed EXPLICITLY:
+# `*.env` matches files ENDING in .env, so it catches neither `bw-env.sh` nor
+# `.env.bak`. The .bak holds real secrets — without this line it is committable.
+bw-env.sh
+bw-seed.sh
+.env.bak*
+
 # Local-only Claude Code context: Droplet IP, vault paths, personal cadence.
 # CLAUDE.md itself IS tracked — it is the project's onboarding doc.
 CLAUDE.local.md

@@ -6,8 +6,14 @@ moved Ask box, the two ported sections (spending by day of week, year over
 year), and the tojson switch — chart data is HTML-escaped into the script
 block, where the old json.dumps + |safe let a crafted category name break
 out of it.
+
+Also the doughnut's colour assignment (#83): a server-built creation-order slot
+per category, which replaced hashing the name into the palette.
 """
+import json
+import re
 from datetime import date
+from pathlib import Path
 
 from tests.conftest import create_category, create_transaction
 
@@ -181,3 +187,95 @@ def test_chart_json_escapes_script_breakout(client_a, users):
     assert b"</script><script>alert(1)</script>" not in response.data
     # The name still made it into the payload — just \u-escaped by |tojson.
     assert b"\\u003c/script\\u003e" in response.data
+
+
+# --- category chart colours (#83) ---------------------------------------------
+#
+# The doughnut used to hash the category NAME into a 7-entry palette, which
+# collided: seven categories issued only five distinct colours, so two pairs of
+# slices (and their legend swatches) were byte-identical. Colours now come from a
+# server-built creation-order slot map, which cannot collide below palette size.
+# The palette itself lives in style.css as --series-1..8.
+
+def _slot_map(body):
+    """Pull the CATEGORY_SLOTS literal out of the rendered dashboard."""
+    match = re.search(r"const CATEGORY_SLOTS = (\{.*?\});", body)
+    assert match, "CATEGORY_SLOTS missing from the dashboard"
+    return json.loads(match.group(1))
+
+
+def test_category_slots_are_distinct_per_category(client_a, users):
+    # The whole bug: two categories must never share a slot. Seven of them is
+    # the count that was actually broken in production.
+    a = users["a"]
+    names = ["Shopping", "Monthly Bills", "Housing", "Food & Dining",
+             "Entertainment", "Transportation", "Personal Care"]
+    for name in names:
+        cat_id = create_category(a["id"], name)
+        create_transaction(a["id"], a["account_id"], 10.00, date.today(),
+                           category_id=cat_id)
+
+    slots = _slot_map(client_a.get("/").data.decode())
+    assigned = [slots[n] for n in names]
+    assert len(set(assigned)) == len(names), f"colliding slots: {slots}"
+    assert max(assigned) < 8, "slot past the palette wraps to a duplicate colour"
+
+
+def test_category_slot_survives_a_new_category(client_a, users):
+    # Adding a category must not repaint an existing one — the property that
+    # ruled out probing for a free slot within the rendered set.
+    a = users["a"]
+    first = create_category(a["id"], "Groceries")
+    create_transaction(a["id"], a["account_id"], 25.00, date.today(),
+                       category_id=first)
+    before = _slot_map(client_a.get("/").data.decode())["Groceries"]
+
+    later = create_category(a["id"], "Pet Supplies")
+    create_transaction(a["id"], a["account_id"], 40.00, date.today(),
+                       category_id=later)
+    after = _slot_map(client_a.get("/").data.decode())
+    assert after["Groceries"] == before
+    assert after["Pet Supplies"] != before
+
+
+def test_category_slot_is_stable_across_the_month_filter(client_a, users):
+    # A month filter changes which categories are on screen. The surviving
+    # category must keep its colour, so the slot cannot depend on the set.
+    a = users["a"]
+    old = create_category(a["id"], "Old Thing")
+    kept = create_category(a["id"], "Kept Thing")
+    create_transaction(a["id"], a["account_id"], 10.00, date(2026, 1, 15),
+                       category_id=old)
+    create_transaction(a["id"], a["account_id"], 20.00, date(2026, 2, 15),
+                       category_id=kept)
+
+    both = _slot_map(client_a.get("/").data.decode())["Kept Thing"]
+    filtered = _slot_map(client_a.get("/?month=2026-02").data.decode())["Kept Thing"]
+    assert filtered == both
+
+
+def test_category_slots_are_per_user(client_a, users):
+    # B's categories must not occupy slots in A's map, or A's colours would
+    # shift when an unrelated user creates a category.
+    create_category(users["b"]["id"], "Someone Elses Category")
+    a_cat = create_category(users["a"]["id"], "Mine")
+    create_transaction(users["a"]["id"], users["a"]["account_id"], 15.00,
+                       date.today(), category_id=a_cat)
+
+    slots = _slot_map(client_a.get("/").data.decode())
+    assert "Someone Elses Category" not in slots
+    # B's category was created between A's fixture category and "Mine", so a
+    # map built without a user_id filter would push "Mine" a slot further along.
+    assert slots["Mine"] == 1
+
+
+def test_series_palette_is_eight_distinct_hues_in_both_modes():
+    # The palette is CSS, so no request renders it — assert the stylesheet
+    # itself. A duplicate hex here is the one way the collision bug returns.
+    css = (Path(__file__).resolve().parents[1]
+           / "app" / "static" / "style.css").read_text()
+    light, dark = css.split("@media (prefers-color-scheme: dark)", 1)
+    for mode, block in (("light", light), ("dark", dark)):
+        hexes = re.findall(r"--series-\d:\s*(#[0-9a-fA-F]{6})", block)
+        assert len(hexes) == 8, f"{mode}: expected 8 series slots, got {len(hexes)}"
+        assert len({h.lower() for h in hexes}) == 8, f"{mode}: duplicate hex in {hexes}"
