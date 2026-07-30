@@ -278,4 +278,4 @@ def test_series_palette_is_eight_distinct_hues_in_both_modes():
     for mode, block in (("light", light), ("dark", dark)):
         hexes = re.findall(r"--series-\d:\s*(#[0-9a-fA-F]{6})", block)
         assert len(hexes) == 8, f"{mode}: expected 8 series slots, got {len(hexes)}"
-        assert len(set(h.lower() for h in hexes)) == 8, f"{mode}: duplicate hex in {hexes}"
+        assert len({h.lower() for h in hexes}) == 8, f"{mode}: duplicate hex in {hexes}"
