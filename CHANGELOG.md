@@ -128,6 +128,23 @@ this project uses the `0.x` versioning scheme described in
   wraps back onto the first one's colour. Both point at showing fewer segments
   rather than inventing more hues, which is filed separately.
 
+- **The History CSV export now says what each row is.** It carries a **Kind**
+  column: `transfer`, `adjustment`, or empty for an ordinary transaction.
+
+  The export is a download of the History view, so it deliberately includes
+  transfer legs and balance-check-in adjustments as rows — that is what the page
+  shows. But History badges those rows and the CSV had no column that did, so
+  once the file was open there was no way to tell them apart. Summing the Amount
+  column therefore double-counted every transfer (both legs are in the file) and
+  folded in adjustments, giving a total that silently disagreed with the app for
+  the same month.
+
+  The rows are unchanged — filtering them out would have broken "download what
+  you see" and made the export disagree with the page it came from. Filtering to
+  the empty Kind cells now reconciles against the app's own figures.
+
+## [0.2.0] - 2026-07-28
+
 The first feature release since the repository reboot. Two user-facing
 additions — bill reminders and schedule end dates — plus the infrastructure work
 that had been sitting on `main` since `0.1.0`.
