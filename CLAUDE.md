@@ -110,6 +110,15 @@ landing/             # Static landing page at seandesmet.com
   blue both fail). A category's slot is its **creation order** (`main.py`'s `category_slots`,
   built `ORDER BY id`, narrowed to the categories actually on the chart so the page carries no
   extra names). Never colour by position in the rendered array — that shifts with every filter
+- **The doughnut folds to top-6 + "Other"** (#108/#110) via pure `main.fold_chart_tail()`, in the
+  **payload builder, NOT the SQL rollup** — every other surface needs complete per-category
+  figures, and the card total comes from `cash_flow` so the fold can't move it. Applied to BOTH
+  pill views (one canvas, one palette, one slot map). ⚠️ **The folded slice is coloured off its
+  `is_other` FLAG, never its label** — a user may own a real category *named* "Other", and
+  label-matching would grey out the real one and steal its slot. Its `--series-other` token is
+  achromatic and deliberately **not** `--series-9`: the stylesheet test counts `--series-<digit>`
+  to catch duplicate hex, so don't loosen that regex to `[\w-]+`. ⚠️ The fold does **NOT** fix the
+  past-8 creation-order wrap (#111) — that claim in #108 was wrong; folding only lowers the odds
 - **Amount validation:** every form amount goes through `helpers.parse_positive_amount()` — `float('nan')` passes a plain `<= 0` check and Postgres stores NaN in numeric, poisoning every SUM(). Never hand-roll `float(x); if x <= 0`
 - **Param validation:** same rule for query/form params — `?month` → `parse_month_param()`, `?page` → `parse_page_param()`, posted FK ids → `parse_int_param()`. A raw string into a psycopg2 `%s` against an int column raises (= 500)
 - **Write-side FK ownership:** when a form posts a `category_id`/`account_id`, validate it belongs to the user *before* the INSERT/UPDATE — `validate_category_account()` in transactions.py, folded into the route's validation-error path. Used by transaction new/edit, schedule create/edit, bulk edit, cleanup apply
@@ -127,6 +136,37 @@ landing/             # Static landing page at seandesmet.com
 - **AI-card collapse:** the four AI narration cards are `<details>` with `data-ai-key` + `data-generated` (the cache row's `created_at.isoformat()`; `initAiCollapse` in base.html + localStorage `bb-ai-seen:<key>` drive read-state). Generate routes must get the timestamp via `RETURNING created_at` — a route-local `datetime.today()` makes every regenerate read as new twice. Server renders CLOSED except empty-state (Generate must work without JS) and `just_generated` fragments. The What's-new strip says "weekly money check", NOT "Money agent" — a dashboard test asserts the agent CARD's absence by that exact string
 
 ## Current Status
+
+### On `main`, NOT yet deployed — the doughnut fold (2026-07-30)
+
+**PR #110** closing **#108**: the category doughnut now draws the **top six
+categories + one neutral "Other"** — seven segments max, both pill-toggle views.
+Tests **706 → 717**. One `### Changed` changelog entry. No migration. Prod still
+runs `0.2.0`.
+
+- `fold_chart_tail()` (`main.py`, pure, alongside the occurrence walkers) runs in
+  the **payload builder, never the SQL rollup** — budgets/insights/forecasts/CSV
+  and the hero figures keep complete per-category figures, and the card total
+  (derived from `cash_flow`) is structurally unmovable.
+- ⚠️ **The folded slice is coloured off an `is_other` FLAG, never its label.** A
+  user may own a real category *named* "Other"; label-matching would grey out that
+  real category AND pull the wrong slot for the synthetic one. New
+  `--series-other` token in BOTH mode blocks of `style.css` — achromatic on
+  purpose, and deliberately **not** named `--series-9`, because the stylesheet test
+  counts `--series-<digit>` to catch a duplicate hex. Don't loosen that regex.
+- ⚠️ **#108's own claim that the fold "fixes the wrap too" is WRONG**, and was
+  corrected rather than implemented. See **#111** below. That is now four issues
+  running (#87, #83, #86, #108) whose specified approach was wrong on contact —
+  treat a filed approach as a hypothesis, and check it before building it.
+- Tie-flake caught in review: the pre-existing slot test seeded seven categories at
+  `10.00` each, so once six of seven are drawn, "which six" fell to SQL
+  tie-breaking. It now seeds distinct descending amounts.
+
+⚠️ **Still nobody has looked at the rendered doughnut** — no browser in this session
+either. The token names ARE now confirmed byte-identical between template and served
+stylesheet (which closes the transparent-slice mode), and the fold is verified against
+the real dev dashboard end-to-end (7 segments, payload sum matching `SUM(amount)`
+exactly). But the chart itself in light and dark is still unseen. Worth one glance.
 
 ### On `main`, NOT yet deployed — the triaged backlog, built (2026-07-29)
 
@@ -159,14 +199,9 @@ that.** Validated with a real CVD/contrast checker: only ~4 hues clear all-pairs
 separation, and at 8 the worst pair is red↔orange at ΔE 7.1 against a floor of
 15 — which is *literally* #83's original "two slices read as oranges" complaint.
 The collision fix removes identical hex (the acute bug) but #83's own acceptance
-criterion is **not fully met and cannot be by any palette**. Tracked as **#108**
-(top-6 + "Other", or ranked horizontal bars). Do not "fix" it by adding a ninth
-hue.
-
-⚠️ **Nobody has looked at the rendered doughnut.** No browser was available in the
-session. The palette is validated and the stylesheet is asserted, but if
-`cssVar('--series-N')` ever returned empty the slices would draw transparent, and
-only looking rules that out. Worth one glance in light and dark.
+criterion is **not fully met and cannot be by any palette**. Do not "fix" it by
+adding a ninth hue. ✅ **Addressed in #110** (2026-07-30) by folding to top-6 +
+"Other" — see the block above.
 
 ### On `main`, NOT yet deployed — automated issue triage (2026-07-29)
 
@@ -279,18 +314,25 @@ requests.
 **Roadmap** — the issue tracker is authoritative. **The `0.2.0` milestone is CLOSED and
 shipped** (see above). The `0.3.0` roadmap is not grouped yet and nothing is claimed.
 
-New since the release: **#64** — let users report bugs/suggest features from inside the app,
-auto-filing GitHub issues. ⚠️ It carries a design question that must be settled BEFORE building:
-**this repo is public**, and a bug report about money tends to contain money. The issue lays out
-four options (warn-and-post / never auto-attach context / a private feedback repo / email Sean
-instead) and recommends the private repo. Do not start it by writing `app/github.py`.
-**Deferred again on 2026-07-29** (Sean's call) — still unsettled, still not started.
+**#64** — let users report bugs/suggest features from inside the app, auto-filing GitHub
+issues. ✅ **The privacy fork that deferred it twice is SETTLED (Sean, 2026-07-30): warn
+plainly in the form + never auto-attach context**, filing into this public repo. Post only
+what the user typed — no account names, balances, transaction rows, **and no username**.
+The private-feedback-repo option was declined. Two consequences accepted knowingly and
+recorded on the issue: every report appears **self-filed with no way to follow up with the
+reporter**, and the free-text leak risk is unchanged since the warning is the only control.
+Do not re-open the question. **Not built** — scope is unchanged from the issue
+(`app/github.py` seam, Droplet-only `GITHUB_TOKEN`, rate-limited `POST /feedback`,
+`from-app` label).
 
-**#108** (new, 2026-07-29) — the category doughnut is past its readable limit at seven
-slices; show the top six and fold the tail into "Other", or switch the form to ranked
-horizontal bars. Comes out of #83, which fixed the colour *collision* but could not fix
-the form. Colour assignment is settled and should not be revisited — a fold must not
-reintroduce set-membership-dependent colouring, which is what the tests guard.
+**#111** (new, 2026-07-30) — a category past the **eighth created** still wraps onto an
+earlier one's colour. ⚠️ **#108 claimed the fold fixed this; it does not, and #110 did not
+fix it either.** A slot is *creation order*, not rank, so the wrap is independent of how
+many segments are drawn — folding only lowers the odds of both landing on screen. Already
+reachable: the seeded dev account's slot map reaches 10. The two obvious fixes are both
+ruled out — more hues (#83's palette is at its validated limit) and probing for a free slot
+among the drawn set (set-membership-dependent colouring, which three tests now forbid).
+Design against: **colour must be a pure function of the category, never of the set drawn.**
 
 Parked with triggers: **#36** budget-report-v2-reads-history (~Dec 2026, when the 6-mo window
 sits fully inside logged history); **#8** Python 3.14 evaluation (unblocked by #7 now that CI
@@ -376,7 +418,7 @@ install cost ~1.5s and total per-invocation overhead ~2.9s, cut to ~0.8s by #70.
 predicted to "roughly halve" the run; it actually cut it by ~12×, because the suite is
 IO/DB-bound rather than CPU-bound and parallelises far better than a CPU-bound suite would.
 
-**706 tests in `tests/`.** Cross-cutting patterns: **no real API calls anywhere** — every
+**717 tests in `tests/`.** Cross-cutting patterns: **no real API calls anywhere** — every
 `ai.py::_call_*_model` seam (and `mailer.py::_call_resend`) is monkeypatched with canned
 `SimpleNamespace` responses; every feature file asserts **user isolation**; route tests assert
 anon → 302. What each file covers:
@@ -395,7 +437,7 @@ anon → 302. What each file covers:
 - `test_money_agent.py` — the agent loop via the mocked seam (grounding guard, nudge recovery, turn cap), `_normalize_findings`, `recent_transactions` dispatch, `run_money_agent` week-key upsert + isolation, `/agent/run` route, digest integration (cached run reused; agent failure → email still sends)
 - `test_credit_limits.py` — pure `credit_utilization`/`_parse_credit_limit` (tier boundaries, over-limit, Decimal), edit error-path echo regression, /accounts bar rendering, ask enrichment, facts + isolation
 - `test_budget_history.py` — `record_budget_change` at set/clear/review-apply, no-ops skipped, NULL = cleared, isolation
-- `test_dashboard_merge.py` — /analytics redirect, Ask box on /, day-of-week chart, YoY gating, **the tojson regression** (a `</script>` category name arrives escaped); plus #83's colour slots (seven categories → seven distinct slots, a new category does not repaint, a month filter does not repaint, per-user) and a **stylesheet** assertion that `--series-1..8` are eight distinct hexes in BOTH mode blocks (the palette is CSS, so no request renders it)
+- `test_dashboard_merge.py` — /analytics redirect, Ask box on /, day-of-week chart, YoY gating, **the tojson regression** (a `</script>` category name arrives escaped); plus #83's colour slots (a new category does not repaint, a month filter does not repaint, per-user) and a **stylesheet** assertion that `--series-1..8` are eight distinct hexes in BOTH mode blocks (the palette is CSS, so no request renders it). Also #108's fold: pure `fold_chart_tail` (short list untouched, tail arithmetic, ranks by total not input order, **only the synthetic row flagged** — a real category named "Other" keeps its hue), route-level (never >7 segments, **total conserved against `SUM(amount)`**, no premature fold, income view folds too, a survivor keeps its colour across months), and `--series-other` being present, unused by any category, and actually neutral in both modes. ⚠️ The slot test seeds **distinct descending amounts** — tied totals leave "which six survive" to SQL tie-breaking, which flakes
 - `test_budget_report.py` — pure grid derivation (grades, streaks, ±10% trend, ordering) + DB loader window (seed dates derived from `_report_months()`, never `timedelta` — no month-boundary flake) + route smoke
 - `test_occurrences.py` — pure walkers (`_advance_past` stale catch-up, `upcoming_occurrences` start-exclusive/end-INCLUSIVE, weekly multi-occurrence)
 - `test_checkin.py` — check-in: one adjustment closes the gap, match = stamp only, **the trust property** (balance moves, month facts unchanged), cross-user 404s
