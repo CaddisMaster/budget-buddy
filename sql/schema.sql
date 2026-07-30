@@ -62,6 +62,9 @@ CREATE TABLE public.transactions (
     recur_second_day SMALLINT DEFAULT NULL,
     is_adjustment BOOLEAN NOT NULL DEFAULT false,
     is_transfer BOOLEAN NOT NULL DEFAULT false,
+    -- A DISPLAY flag, unlike is_adjustment above: a pending row is pinned to the
+    -- top of History but counts normally in every figure. See sql/33.
+    is_pending BOOLEAN NOT NULL DEFAULT false,
     transfer_group_id integer,
     user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT valid_transaction_type CHECK (transaction_type IN ('expense', 'income'))
