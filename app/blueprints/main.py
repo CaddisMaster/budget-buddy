@@ -266,6 +266,16 @@ def index():
 
         goals_view = build_goals_view(cursor, current_user.id)
 
+        # Chart colour slots, keyed by category NAME because that is all the
+        # chart payloads carry. Ordered by id — i.e. creation order — so a
+        # category's colour never moves: not when the month filter changes the
+        # set on screen, and not when a NEW category is added (it takes the
+        # next slot instead of shifting everyone along). Both would happen if
+        # the slot came from the rendered array's position.
+        cursor.execute("SELECT id, name FROM categories WHERE user_id = %s ORDER BY id",
+                       (current_user.id,))
+        category_order = {row.name: i for i, row in enumerate(cursor.fetchall())}
+
     # AI cards (both independent of the chart month filter so their cache keys
     # stay stable; cache-only on load, no model call). Each is positioned at a
     # distinct moment in time and HIDDEN entirely when its target month has
@@ -313,6 +323,13 @@ def index():
     account_data = [{'account': r[0], 'balance': float(r[1])} for r in account_balances]
     budget_chart_data = [{'category': r[0], 'budget': float(r[1]), 'actual': float(r[2])} for r in budget_data]
     day_of_week_data = [{'day': r[1].strip(), 'total': float(r[2])} for r in spending_by_day]
+    # Narrowed to the categories the doughnut can actually paint (both pill
+    # views), so the page doesn't carry the user's whole category list. The slot
+    # VALUES stay global creation order, which is what keeps a colour stable
+    # when a filter changes the set — restricting the keys doesn't touch that.
+    category_slots = {d['category']: category_order[d['category']]
+                      for d in spending_data + income_by_category_data
+                      if d['category'] in category_order}
 
     has_transactions = bool(cash_flow) or bool(spending)
 
@@ -349,6 +366,7 @@ def index():
         account_data=account_data,
         budget_chart_data=budget_chart_data,
         day_of_week_data=day_of_week_data,
+        category_slots=category_slots,
         months=months,
         selected_month=selected_month,
         has_transactions=has_transactions,

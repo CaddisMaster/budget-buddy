@@ -96,6 +96,26 @@ def _csv_safe(value):
     return value
 
 
+def _export_kind(row):
+    """The CSV's Kind cell: 'transfer', 'adjustment', or '' for an ordinary
+    transaction. Pure (unit-testable).
+
+    The export is a download of the History view, so it carries transfer legs and
+    balance adjustments as rows exactly as the page does. Without this column
+    nothing in the file says which rows those are, and summing Amount then
+    double-counts every transfer (both legs are present) and folds in
+    check-in adjustments. Blank rather than a word for the ordinary case, so
+    filtering to the real transactions is filtering to the empty cells.
+
+    'transfer' wins if a row is somehow both — a transfer leg is never created as
+    an adjustment, but the flags are independent columns."""
+    if row.is_transfer:
+        return 'transfer'
+    if row.is_adjustment:
+        return 'adjustment'
+    return ''
+
+
 def _clamp_to_month(year, month, day):
     """Build a date, clamping the day to the last valid day of that month
     (so a '31st' pay day lands on the 28th/30th in shorter months)."""
@@ -576,7 +596,8 @@ def export_transactions():
     with db_cursor() as cursor:
         cursor.execute(f"""
             SELECT t.transaction_date, t.transaction_type, t.amount,
-                   t.description, c.name, a.account_name
+                   t.description, c.name AS category_name, a.account_name,
+                   t.is_transfer, t.is_adjustment
             FROM transactions t
             LEFT JOIN categories c ON t.category_id = c.id
             LEFT JOIN account a ON t.account_id = a.account_id
@@ -586,8 +607,18 @@ def export_transactions():
         rows = cursor.fetchall()
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['Date', 'Type', 'Amount', 'Description', 'Category', 'Account'])
-    writer.writerows([_csv_safe(cell) for cell in row] for row in rows)
+    writer.writerow(['Date', 'Type', 'Amount', 'Description', 'Category', 'Account', 'Kind'])
+    # Cells are built by ATTRIBUTE, not by unpacking the row — the header and the
+    # SELECT are only kept in step by hand, and Kind is derived rather than
+    # selected, so a positional comprehension would silently shift on the next
+    # column added here.
+    writer.writerows(
+        [_csv_safe(cell) for cell in (row.transaction_date, row.transaction_type,
+                                      row.amount, row.description,
+                                      row.category_name, row.account_name,
+                                      _export_kind(row))]
+        for row in rows
+    )
     output.seek(0)
     response = make_response(output.getvalue())
     response.headers['Content-Disposition'] = 'attachment; filename=transactions.csv'
