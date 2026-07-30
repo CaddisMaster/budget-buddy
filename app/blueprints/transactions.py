@@ -42,12 +42,15 @@ FREQUENCY_LABELS = {
 }
 
 
-# The History row shape: the 12-column history SELECT plus the per-page
-# running balance appended in _load_history. Field names mirror the SELECT.
+# The History row shape: the 13-column history SELECT plus the per-page
+# running balance appended in _load_history. Field names mirror the SELECT, and
+# it is built POSITIONALLY (HistoryRow(*t, running_balance)) — so a column added
+# to that SELECT must be added here in the same place, or every field after it
+# silently shifts and Jinja renders the wrong value with no error.
 HistoryRow = namedtuple('HistoryRow', (
     'id amount description category_name account_name transaction_date '
     'transaction_type is_recurring frequency is_adjustment is_transfer '
-    'transfer_group_id running_balance'
+    'transfer_group_id is_pending running_balance'
 ))
 
 # Hand-built rows for the edit error/re-render paths — field names mirror the
@@ -172,6 +175,7 @@ def new_transaction():
         if transaction_type not in ('income', 'expense'):
             errors.append('Transaction type must be income or expense')
         is_adjustment = request.form.get('is_adjustment') == 'true'
+        is_pending = request.form.get('is_pending') == 'true'
         if not errors:
             with db_cursor() as cursor:
                 errors += validate_category_account(cursor, current_user.id, category_id, account_id)
@@ -182,8 +186,8 @@ def new_transaction():
         try:
             with db_cursor(commit=True) as cursor:
                 cursor.execute(
-                    "INSERT INTO transactions (amount, description, transaction_date, category_id, account_id, transaction_type, is_adjustment, user_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-                    (amount, description, transaction_date, category_id, account_id, transaction_type, is_adjustment, current_user.id)
+                    "INSERT INTO transactions (amount, description, transaction_date, category_id, account_id, transaction_type, is_adjustment, is_pending, user_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                    (amount, description, transaction_date, category_id, account_id, transaction_type, is_adjustment, is_pending, current_user.id)
                 )
             flash('Transaction added successfully')
         except psycopg2.Error:
@@ -283,7 +287,7 @@ def _load_history(user_id, selected_month, search, page, per_page=PER_PAGE):
             SELECT t.id, t.amount, t.description, c.name AS category_name, a.account_name,
                 t.transaction_date, t.transaction_type,
                 t.is_recurring, t.frequency, t.is_adjustment,
-                t.is_transfer, t.transfer_group_id
+                t.is_transfer, t.transfer_group_id, t.is_pending
             FROM transactions t
             LEFT JOIN categories c ON t.category_id = c.id
             LEFT JOIN account a ON t.account_id = a.account_id
@@ -316,6 +320,24 @@ def _load_history(user_id, selected_month, search, page, per_page=PER_PAGE):
             running_balance -= t.amount
         transactions_with_balance.append(HistoryRow(*t, running_balance))
     transactions_with_balance.reverse()
+    # Pin pending rows to the top (#86). Sorted HERE, in Python, and deliberately
+    # NOT as an `is_pending DESC` prefix on the ORDER BY above.
+    #
+    # Both queries above are ordered by date, and the seed query defines "older
+    # than this page" as "further down that same ordering" (it repeats the ORDER
+    # BY with OFFSET offset+per_page). Prefixing either one would not merely
+    # reorder the display — it would redefine which rows count as older, so the
+    # balance would be wrong for the pinned rows AND for every row beneath them.
+    # Sorting the finished list leaves the walk untouched.
+    #
+    # The pin is therefore scoped to the page being viewed: a pending row 100
+    # rows deep pins to the top of page 4, not page 1. Accepted — a pending row
+    # is entered when the charge happens, so at 25 rows a page it is on page 1 in
+    # practice (settled, Sean, 2026-07-29).
+    #
+    # list.sort is STABLE, which is what keeps both groups in date-descending
+    # order internally. A sort that wasn't would scramble the posted rows.
+    transactions_with_balance.sort(key=lambda t: t.is_pending, reverse=True)
     return transactions_with_balance, total, total_pages
 
 
@@ -453,6 +475,32 @@ def delete_transaction(transaction_id):
         current_app.logger.exception('delete transaction failed')
         return hx_toast(make_response(render_history_tbody()), GENERIC_ERROR, 'error')
     return hx_toast(make_response(render_history_tbody()), 'Transaction deleted')
+
+
+@bp.route('/transactions/<int:transaction_id>/mark-posted', methods=['POST'])
+@login_required
+def mark_posted(transaction_id):
+    """Clear the pending flag on one row (#86).
+
+    One direction only — this route can never SET the flag. Pending is chosen
+    when the transaction is entered; from then on the only move is to confirm the
+    real amount has landed. A toggle would let a settled row be marked
+    provisional again, which means nothing.
+
+    Returns the whole tbody rather than the single row, because clearing the flag
+    un-pins the row and therefore reorders every row on the page."""
+    with db_cursor() as cursor:
+        cursor.execute("SELECT 1 FROM transactions WHERE id = %s AND user_id = %s", (transaction_id, current_user.id))
+        if cursor.fetchone() is None:
+            abort(404)
+    try:
+        with db_cursor(commit=True) as cursor:
+            cursor.execute("UPDATE transactions SET is_pending = false WHERE id = %s AND user_id = %s",
+                           (transaction_id, current_user.id))
+    except psycopg2.Error:
+        current_app.logger.exception('mark_posted failed')
+        return hx_toast(make_response(render_history_tbody()), GENERIC_ERROR, 'error')
+    return hx_toast(make_response(render_history_tbody()), 'Marked as posted')
 
 
 def _bulk_response(applied, verb):

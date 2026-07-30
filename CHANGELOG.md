@@ -81,6 +81,33 @@ this project uses the `0.x` versioning scheme described in
   the same budget local sessions draw on, which is why the trigger is
   issue-opened only and the run is capped by `--max-turns` and `timeout-minutes`.
 
+- **A transaction can be marked Pending**, for a charge whose real amount lands
+  later. A fuel pump authorises $1.00, so $1.00 is what gets entered, and the
+  true figure only arrives a day or two later when the charge posts; restaurant
+  tips and hotel holds behave the same way. Until now nothing marked those rows
+  as provisional, so they sank into History in date order and a placeholder
+  amount could sit in the ledger indefinitely, quietly wrong.
+
+  Tick the box when adding the transaction. The row then carries a **Pending**
+  badge and stays **pinned to the top of History** until you press **Mark
+  posted** — so it is in front of you every time you open the page, rather than
+  buried by whatever you have spent since.
+
+  **A pending row counts normally in every figure.** The dashboard, budgets,
+  insights, forecasts and your account balance all treat it as a real
+  transaction, because the money genuinely left the account — a placeholder
+  amount being briefly wrong is better than spend that silently does not count
+  at all. It is a display flag, not an exclusion like "exclude from analytics".
+
+  Correcting the amount does **not** clear the flag on its own; that is
+  deliberate, so a corrected-but-not-yet-confirmed row does not quietly stop
+  being flagged. Clearing it is always your call.
+
+  Two details worth knowing: the balance column shows a dash for a pending row
+  (a running balance printed out of date order reads as wrong, and the balance
+  after a provisional amount is not a number worth showing), and the CSV export
+  keeps plain date order rather than leading with pending rows.
+
 ### Changed
 
 - The `Dockerfile` is now multi-stage: `base` → `dev` (adds the test

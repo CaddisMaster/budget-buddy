@@ -7,10 +7,18 @@
     {{ t.description }}
     {% if t.is_transfer %}<span class="transfer-badge">⇄ Transfer</span>{% endif %}
     {% if t.is_adjustment %}<span class="recurring-badge">Adjustment</span>{% endif %}
+    {% if t.is_pending %}<span class="pending-badge">Pending</span>{% endif %}
   </td>
   <td class="c-cat">{{ t.category_name or 'Uncategorised' }}</td>
   <td class="c-acct">{{ t.account_name or 'No account' }}</td>
+  {# A pending row is pinned out of date order, so a running balance in this cell
+     would break the column's top-to-bottom sequence and read as wrong. The
+     balance after a provisional amount isn't a number worth showing anyway. #}
+  {% if t.is_pending %}
+  <td class="c-bal" style="color:var(--text-muted)">—</td>
+  {% else %}
   <td class="c-bal {% if t.running_balance >= 0 %}income{% else %}expense{% endif %}">${{ t.running_balance|money }}</td>
+  {% endif %}
   <td class="row-actions">
     {% if t.is_transfer %}
     <button type="button" class="btn btn-sm"
@@ -21,6 +29,13 @@
       hx-target="#txn-rows" hx-swap="outerHTML"
       hx-confirm="Delete this transfer (both legs)?">Delete</button>
     {% else %}
+    {% if t.is_pending %}
+    {# Targets the whole tbody, not this row: un-pinning reorders every row. #}
+    <button type="button" class="btn btn-sm"
+      hx-post="{{ url_for('transactions.mark_posted', transaction_id=t.id) }}?{{ filter_qs }}"
+      hx-target="#txn-rows" hx-swap="outerHTML"
+      title="The real amount has landed — clear the pending flag">Mark posted</button>
+    {% endif %}
     <button type="button" class="btn btn-sm"
       hx-get="{{ url_for('transactions.edit_transaction', transaction_id=t.id) }}?{{ filter_qs }}"
       hx-target="#txn-{{ t.id }}" hx-swap="outerHTML">Edit</button>

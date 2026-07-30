@@ -44,5 +44,14 @@
         Still counts toward your account balance, but is left out of the analytics charts
         so first-time setup or fix-up entries don't distort your trends.
     </p>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin-top:1rem;font-weight:normal">
+        <input type="checkbox" name="is_pending" value="true" style="width:auto">
+        Amount not final yet (pending)
+    </label>
+    <p style="font-size:12px;color:var(--text-muted);margin-top:0.25rem">
+        For a charge whose real amount lands later — a fuel pump that authorises $1.00,
+        a tip, a hotel hold. It stays pinned to the top of your History until you mark it
+        posted, and it counts in every figure in the meantime.
+    </p>
     <button type="submit" class="btn btn-primary" style="margin-top:1rem">Add transaction</button>
 </form>

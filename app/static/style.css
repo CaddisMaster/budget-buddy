@@ -265,6 +265,23 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
   margin-left: 6px;
 }
 
+/* Pending (#86) — a provisional amount awaiting the real one. Louder than the
+   Adjustment badge (which reuses .recurring-badge) because this one is an action
+   marker: the row is pinned to the top of History until it is cleared. Outlined
+   rather than filled, since there is no --warning-soft and both --warning and
+   --bg already carry their own dark-mode values. */
+.pending-badge {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  border: 1px solid var(--warning);
+  color: var(--warning);
+  font-weight: 600;
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
 tr.transfer td { background: var(--accent-soft); }
 
 /* Inline-edit (HTMX) */
