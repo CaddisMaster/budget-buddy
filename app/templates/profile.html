@@ -52,6 +52,38 @@
 </div>
 {% endif %}
 
+{% if feedback_enabled %}
+<h2>Report a problem or suggest a feature</h2>
+<div class="card" style="max-width:480px">
+    {# #64 — the warning is the ONLY control on what gets published. It is
+       deliberately plain, above the fields, and not collapsible. Do not soften
+       it, and do not move it below the button. #}
+    <p style="font-size:14px;margin-bottom:1rem">
+        <strong>What you write here is published publicly on GitHub</strong>, where
+        anyone can read it. Please don't include account numbers, balances, or
+        anything else you wouldn't post in public.
+    </p>
+    <p style="color:var(--text-muted);font-size:14px;margin-bottom:1rem">
+        Nothing else is attached — only the words you type below are sent.
+    </p>
+    <form method="post" action="{{ url_for('feedback.submit') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>This is a</label>
+        <select name="kind">
+            <option value="bug">Bug — something is broken</option>
+            <option value="enhancement">Suggestion — something could be better</option>
+        </select>
+        <label style="margin-top:1rem">Title</label>
+        <input type="text" name="title" maxlength="200" required
+               placeholder="Short summary">
+        <label style="margin-top:1rem">What happened?</label>
+        <textarea name="description" rows="5" maxlength="5000" required
+                  placeholder="What you did, what you expected, and what happened instead."></textarea>
+        <button type="submit" class="btn btn-primary" style="margin-top:1.5rem">Send report</button>
+    </form>
+</div>
+{% endif %}
+
 <div style="margin-top:1.5rem">
     <a href="{{ url_for('auth.change_password') }}" class="btn">Change password</a>
 </div>

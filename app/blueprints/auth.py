@@ -5,6 +5,7 @@ from flask_login import current_user, login_required, login_user, logout_user
 
 from app import bcrypt, limiter
 from app.db import db_cursor
+from app.github import feedback_enabled
 from app.mailer import mail_enabled
 from app.models import User
 from app.pusher import public_key as push_public_key
@@ -88,7 +89,8 @@ def profile():
                            mail_enabled=mail_enabled(),
                            push_enabled=push_enabled(),
                            push_public_key=push_public_key(),
-                           push_device_count=push_device_count)
+                           push_device_count=push_device_count,
+                           feedback_enabled=feedback_enabled())
 
 
 @bp.route('/profile/settings', methods=['POST'])
