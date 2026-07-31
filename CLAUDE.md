@@ -107,9 +107,18 @@ landing/             # Static landing page at seandesmet.com
   mode swaps with no JS; **dark has its own steps** (three light values fail 3:1 on the dark
   card). ⚠️ **The slot ORDER is load-bearing** — adjacent slots are the pairs a reader
   compares, and reordering breaks CVD validation (verified: red beside magenta, violet beside
-  blue both fail). A category's slot is its **creation order** (`main.py`'s `category_slots`,
-  built `ORDER BY id`, narrowed to the categories actually on the chart so the page carries no
-  extra names). Never colour by position in the rendered array — that shifts with every filter
+  blue both fail)
+- **A drawn slice's slot comes from `main.assign_series_slots()`** (#111), computed
+  server-side **per view** and carried on each payload row as `slot`. Creation order is the
+  PREFERENCE (earliest-created wins a contested slot); anything displaced takes the lowest
+  free one, so **no two slices on screen ever share a hue**. ⚠️ There is deliberately NO
+  shared name→slot map any more — the expense and income views are assigned independently
+  because their union can exceed the palette while neither view alone does
+- ⚠️ **This reverses #83's "colour is a pure function of the category, never of the set
+  drawn".** That rule is incompatible with "no duplicates" above 8 categories; `% 8` wrapping
+  shipped the exact collision #83 existed to prevent (prod, `0.3.0`). It is only safe to
+  reverse **because the #108 fold caps the chart at 6 real slices against 8 hues**, so
+  probing for a free slot always succeeds. Do not restore `% PALETTE.length` colouring
 - **The doughnut folds to top-6 + "Other"** (#108/#110) via pure `main.fold_chart_tail()`, in the
   **payload builder, NOT the SQL rollup** — every other surface needs complete per-category
   figures, and the card total comes from `cash_flow` so the fold can't move it. Applied to BOTH
@@ -117,8 +126,9 @@ landing/             # Static landing page at seandesmet.com
   `is_other` FLAG, never its label** — a user may own a real category *named* "Other", and
   label-matching would grey out the real one and steal its slot. Its `--series-other` token is
   achromatic and deliberately **not** `--series-9`: the stylesheet test counts `--series-<digit>`
-  to catch duplicate hex, so don't loosen that regex to `[\w-]+`. ⚠️ The fold does **NOT** fix the
-  past-8 creation-order wrap (#111) — that claim in #108 was wrong; folding only lowers the odds
+  to catch duplicate hex, so don't loosen that regex to `[\w-]+`. ⚠️ The fold does not fix the past-8 wrap
+  on its own (#108 wrongly claimed it did) — but it is the precondition that made the real fix
+  possible, see the slot gotcha above
 - **Amount validation:** every form amount goes through `helpers.parse_positive_amount()` — `float('nan')` passes a plain `<= 0` check and Postgres stores NaN in numeric, poisoning every SUM(). Never hand-roll `float(x); if x <= 0`
 - **Param validation:** same rule for query/form params — `?month` → `parse_month_param()`, `?page` → `parse_page_param()`, posted FK ids → `parse_int_param()`. A raw string into a psycopg2 `%s` against an int column raises (= 500)
 - **Write-side FK ownership:** when a form posts a `category_id`/`account_id`, validate it belongs to the user *before* the INSERT/UPDATE — `validate_category_account()` in transactions.py, folded into the route's validation-error path. Used by transaction new/edit, schedule create/edit, bulk edit, cleanup apply
@@ -137,10 +147,39 @@ landing/             # Static landing page at seandesmet.com
 
 ## Current Status
 
+### Shipped: `0.3.1` (2026-07-31) — the colour-collision fix
+
+**Prod runs `ghcr.io/caddismaster/budget-buddy:0.3.1`.** A patch on `0.3.0`, cut hours
+later: the doughnut was **still drawing two slices the same colour in production**
+("Monthly Bills" and "Food & Dining", both orange).
+
+⚠️ **This was a shipped defect that had been identified, filed as #111, judged low-risk and
+released anyway.** The judgement was wrong on evidence already in hand — the issue itself
+recorded that the dev slot map "already reaches 10", and a real account has more categories
+than the seeded one. **The collision was the expected outcome above eight categories, not a
+rare edge case.** If a known defect's trigger condition is "the user has more than N of
+something", check what N is on the real account before calling it unlikely.
+
+`assign_series_slots()` (`main.py`, pure, applied per view after the fold) gives every drawn
+row a slot no other drawn row is using. Creation order remains the **preference**, so a
+category keeps its familiar hue and only a genuine collider moves.
+
+⚠️ **This deliberately REVERSES #83's rule that "colour must be a pure function of the
+category, never of the set drawn."** That rule cannot coexist with "no duplicates": a fixed
+per-category assignment cannot keep an arbitrary 6-subset distinct from 8 hues once the user
+has more than 8 categories. What makes reversing it safe is the **#108 fold** — at most 6
+real slices against 8 hues guarantees a free slot, which was NOT true when #83 rejected
+probing. The fold changed the arithmetic that justified the original rule.
+Cost, accepted: a category that collides in one month's top six but not another's can differ
+in colour between those two views. Only an actual collision triggers it.
+
+The shared `CATEGORY_SLOTS` map is **gone** — each row carries its own `slot`, because the
+expense and income views are assigned independently (their union can exceed the palette
+while neither view alone does). Tests 717 → 723.
+
 ### Shipped: `0.3.0` (2026-07-31)
 
-**Prod runs `ghcr.io/caddismaster/budget-buddy:0.3.0`** — released, deployed and verified
-2026-07-31. `main` is level with the release; **nothing is merged-but-undeployed.**
+Released and deployed 2026-07-31; **superseded hours later by `0.3.1`** (above). `main` is level with the release; **nothing is merged-but-undeployed.**
 
 The bundle was four blocks that had accumulated since `0.2.0` — the triaged backlog
 (#104–107), the doughnut fold (#110), automated issue triage (#85–99) and the dev tooling
@@ -360,14 +399,9 @@ Do not re-open the question. **Not built** — scope is unchanged from the issue
 (`app/github.py` seam, Droplet-only `GITHUB_TOKEN`, rate-limited `POST /feedback`,
 `from-app` label).
 
-**#111** (new, 2026-07-30) — a category past the **eighth created** still wraps onto an
-earlier one's colour. ⚠️ **#108 claimed the fold fixed this; it does not, and #110 did not
-fix it either.** A slot is *creation order*, not rank, so the wrap is independent of how
-many segments are drawn — folding only lowers the odds of both landing on screen. Already
-reachable: the seeded dev account's slot map reaches 10. The two obvious fixes are both
-ruled out — more hues (#83's palette is at its validated limit) and probing for a free slot
-among the drawn set (set-membership-dependent colouring, which three tests now forbid).
-Design against: **colour must be a pure function of the category, never of the set drawn.**
+✅ **#111 is CLOSED** (fixed in `0.3.1`) — a category past the eighth created used to wrap
+onto an earlier one's colour. See the slot gotcha above; the fix reverses #83's
+set-independence rule, deliberately.
 
 Parked with triggers: **#36** budget-report-v2-reads-history (~Dec 2026, when the 6-mo window
 sits fully inside logged history); **#8** Python 3.14 evaluation (unblocked by #7 now that CI
@@ -453,7 +487,7 @@ install cost ~1.5s and total per-invocation overhead ~2.9s, cut to ~0.8s by #70.
 predicted to "roughly halve" the run; it actually cut it by ~12×, because the suite is
 IO/DB-bound rather than CPU-bound and parallelises far better than a CPU-bound suite would.
 
-**717 tests in `tests/`.** Cross-cutting patterns: **no real API calls anywhere** — every
+**723 tests in `tests/`** (5 of them skip on the last day of a month — `test_forecast.py`'s date guards). Cross-cutting patterns: **no real API calls anywhere** — every
 `ai.py::_call_*_model` seam (and `mailer.py::_call_resend`) is monkeypatched with canned
 `SimpleNamespace` responses; every feature file asserts **user isolation**; route tests assert
 anon → 302. What each file covers:
@@ -472,7 +506,7 @@ anon → 302. What each file covers:
 - `test_money_agent.py` — the agent loop via the mocked seam (grounding guard, nudge recovery, turn cap), `_normalize_findings`, `recent_transactions` dispatch, `run_money_agent` week-key upsert + isolation, `/agent/run` route, digest integration (cached run reused; agent failure → email still sends)
 - `test_credit_limits.py` — pure `credit_utilization`/`_parse_credit_limit` (tier boundaries, over-limit, Decimal), edit error-path echo regression, /accounts bar rendering, ask enrichment, facts + isolation
 - `test_budget_history.py` — `record_budget_change` at set/clear/review-apply, no-ops skipped, NULL = cleared, isolation
-- `test_dashboard_merge.py` — /analytics redirect, Ask box on /, day-of-week chart, YoY gating, **the tojson regression** (a `</script>` category name arrives escaped); plus #83's colour slots (a new category does not repaint, a month filter does not repaint, per-user) and a **stylesheet** assertion that `--series-1..8` are eight distinct hexes in BOTH mode blocks (the palette is CSS, so no request renders it). Also #108's fold: pure `fold_chart_tail` (short list untouched, tail arithmetic, ranks by total not input order, **only the synthetic row flagged** — a real category named "Other" keeps its hue), route-level (never >7 segments, **total conserved against `SUM(amount)`**, no premature fold, income view folds too, a survivor keeps its colour across months), and `--series-other` being present, unused by any category, and actually neutral in both modes. ⚠️ The slot test seeds **distinct descending amounts** — tied totals leave "which six survive" to SQL tie-breaking, which flakes
+- `test_dashboard_merge.py` — /analytics redirect, Ask box on /, day-of-week chart, YoY gating, **the tojson regression** (a `</script>` category name arrives escaped); plus #83's colour slots (a new category does not repaint, a month filter does not repaint, per-user) and a **stylesheet** assertion that `--series-1..8` are eight distinct hexes in BOTH mode blocks (the palette is CSS, so no request renders it). Also #108's fold: pure `fold_chart_tail` (short list untouched, tail arithmetic, ranks by total not input order, **only the synthetic row flagged** — a real category named "Other" keeps its hue), route-level (never >7 segments, **total conserved against `SUM(amount)`**, no premature fold, income view folds too, a survivor keeps its colour across months), and `--series-other` being present, unused by any category, and actually neutral in both modes. ⚠️ The slot test seeds **distinct descending amounts** — tied totals leave "which six survive" to SQL tie-breaking, which flakes. Plus #111's distinct-colour set: pure `assign_series_slots` (preferred slot when free, collision broken, never repeats across the drawn set, folded row untouched) and the **production regression** — nine categories where the 1st and 9th created are BOTH in the top six, which is the shape that shipped broken in `0.3.0`
 - `test_budget_report.py` — pure grid derivation (grades, streaks, ±10% trend, ordering) + DB loader window (seed dates derived from `_report_months()`, never `timedelta` — no month-boundary flake) + route smoke
 - `test_occurrences.py` — pure walkers (`_advance_past` stale catch-up, `upcoming_occurrences` start-exclusive/end-INCLUSIVE, weekly multi-occurrence)
 - `test_checkin.py` — check-in: one adjustment closes the gap, match = stamp only, **the trust property** (balance moves, month facts unchanged), cross-user 404s
