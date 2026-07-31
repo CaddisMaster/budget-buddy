@@ -8,6 +8,14 @@ than depending on the environment — CI has no keys, and neither does local dev
 The load-bearing test in here is test_materialize_runs_even_when_push_unconfigured:
 the daily job carries BOTH responsibilities, and gating the whole thing on push
 config would mean a missing third-party key silently stops the ledger updating.
+
+⚠️ Every endpoint that reaches the database is built with EP(), which folds in
+TEST_PREFIX. push_subscriptions.endpoint is GLOBALLY UNIQUE — deliberately, it is
+the push service's identity for one browser install — so a bare literal is ONE row
+that every xdist worker fights over, and _add_subscription's ON CONFLICT moves it
+to whichever worker inserted last. That silently reassigns another worker's device
+mid-test. Never write a raw endpoint string here; the failure looks like a flake in
+a file you did not touch.
 """
 import json
 import threading
@@ -24,6 +32,7 @@ from app.blueprints.reminders import (
 )
 from app.db import get_db_connection
 from tests.conftest import (
+    TEST_PREFIX,
     count_transactions_like,
     create_account,
     create_schedule,
@@ -32,6 +41,17 @@ from tests.conftest import (
 
 TODAY = date.today()
 TOMORROW = TODAY + timedelta(days=1)
+
+
+def EP(name):
+    """A push endpoint unique to this xdist worker. See the module docstring —
+    the column is globally UNIQUE, so a shared literal is a shared row."""
+    return f"https://push.example/{TEST_PREFIX}{name}"
+
+
+# A module-level singleton rather than an EP() call in the signature below, which
+# ruff rejects as a mutable-default hazard (B008).
+DEFAULT_ENDPOINT = EP("abc")
 
 
 # --- helpers ----------------------------------------------------------------
@@ -61,7 +81,7 @@ def _capture(monkeypatch, fail_with=None):
     return sent
 
 
-def _add_subscription(user_id, endpoint="https://push.example/abc"):
+def _add_subscription(user_id, endpoint=DEFAULT_ENDPOINT):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
@@ -119,7 +139,7 @@ def test_push_needs_both_keys(monkeypatch):
 def test_send_push_without_keys_raises(monkeypatch):
     _disable_push(monkeypatch)
     with pytest.raises(pusher.PushError):
-        pusher.send_push({"endpoint": "https://push.example/x"}, {"title": "t"})
+        pusher.send_push({"endpoint": EP("x")}, {"title": "t"})
 
 
 # --- subscribe / unsubscribe routes -----------------------------------------
@@ -132,7 +152,7 @@ def test_subscribe_requires_login(anon_client):
 def test_subscribe_stores_the_device(client_a, users, monkeypatch):
     _enable_push(monkeypatch)
     resp = client_a.post("/push/subscribe", json={
-        "endpoint": "https://push.example/dev-1",
+        "endpoint": EP("dev-1"),
         "keys": {"p256dh": "key-1", "auth": "auth-1"}})
     assert resp.status_code == 200 and resp.get_json()["ok"] is True
     assert _subscription_count(users["a"]["id"]) == 1
@@ -140,7 +160,7 @@ def test_subscribe_stores_the_device(client_a, users, monkeypatch):
 
 def test_resubscribing_the_same_device_upserts(client_a, users, monkeypatch):
     _enable_push(monkeypatch)
-    body = {"endpoint": "https://push.example/dev-1",
+    body = {"endpoint": EP("dev-1"),
             "keys": {"p256dh": "key-1", "auth": "auth-1"}}
     client_a.post("/push/subscribe", json=body)
     client_a.post("/push/subscribe", json=body)
@@ -151,7 +171,7 @@ def test_resubscribing_the_same_device_upserts(client_a, users, monkeypatch):
 def test_subscribe_rejects_incomplete_payload(client_a, users, monkeypatch):
     _enable_push(monkeypatch)
     resp = client_a.post("/push/subscribe", json={
-        "endpoint": "https://push.example/dev-1", "keys": {"p256dh": "key-1"}})
+        "endpoint": EP("dev-1"), "keys": {"p256dh": "key-1"}})
     assert resp.status_code == 400
     assert _subscription_count(users["a"]["id"]) == 0
 
@@ -168,7 +188,7 @@ def test_subscribe_rejects_non_https_endpoint(client_a, users, monkeypatch):
 def test_subscribe_refuses_when_push_unconfigured(client_a, users, monkeypatch):
     _disable_push(monkeypatch)
     resp = client_a.post("/push/subscribe", json={
-        "endpoint": "https://push.example/dev-1",
+        "endpoint": EP("dev-1"),
         "keys": {"p256dh": "key-1", "auth": "auth-1"}})
     assert resp.status_code == 503
     # Nothing stored that would never be sent to.
@@ -177,9 +197,9 @@ def test_subscribe_refuses_when_push_unconfigured(client_a, users, monkeypatch):
 
 def test_unsubscribe_cannot_remove_another_users_device(client_b, users, monkeypatch):
     _enable_push(monkeypatch)
-    _add_subscription(users["a"]["id"], "https://push.example/a-device")
+    _add_subscription(users["a"]["id"], EP("a-device"))
     resp = client_b.post("/push/unsubscribe",
-                         json={"endpoint": "https://push.example/a-device"})
+                         json={"endpoint": EP("a-device")})
     assert resp.status_code == 200
     # B's request succeeds but touches nothing of A's.
     assert _subscription_count(users["a"]["id"]) == 1
@@ -244,7 +264,7 @@ def test_reminder_is_sent_for_a_bill_due_tomorrow(users, monkeypatch):
     a = users["a"]["id"]
     acct = create_account(a, "rem-acct")
     create_schedule(a, acct, 42.5, "monthly", TOMORROW, transaction_type="expense")
-    _add_subscription(a, "https://push.example/a-1")
+    _add_subscription(a, EP("a-1"))
 
     assert send_due_reminders(today=TODAY) == 1
     assert len(sent) == 1
@@ -258,7 +278,7 @@ def test_reminder_is_not_sent_twice_for_the_same_occurrence(users, monkeypatch):
     a = users["a"]["id"]
     acct = create_account(a, "rem-acct")
     create_schedule(a, acct, 42.5, "monthly", TOMORROW)
-    _add_subscription(a, "https://push.example/a-1")
+    _add_subscription(a, EP("a-1"))
 
     send_due_reminders(today=TODAY)
     send_due_reminders(today=TODAY)     # the job runs again the same day
@@ -272,12 +292,12 @@ def test_reminder_goes_to_every_device(users, monkeypatch):
     a = users["a"]["id"]
     acct = create_account(a, "rem-acct")
     create_schedule(a, acct, 42.5, "monthly", TOMORROW)
-    _add_subscription(a, "https://push.example/phone")
-    _add_subscription(a, "https://push.example/laptop")
+    _add_subscription(a, EP("phone"))
+    _add_subscription(a, EP("laptop"))
 
     assert send_due_reminders(today=TODAY) == 2
-    assert {s["endpoint"] for s in sent} == {"https://push.example/phone",
-                                             "https://push.example/laptop"}
+    assert {s["endpoint"] for s in sent} == {EP("phone"),
+                                             EP("laptop")}
 
 
 def test_dead_subscription_is_deleted_not_retried(users, monkeypatch):
@@ -286,7 +306,7 @@ def test_dead_subscription_is_deleted_not_retried(users, monkeypatch):
     a = users["a"]["id"]
     acct = create_account(a, "rem-acct")
     create_schedule(a, acct, 42.5, "monthly", TOMORROW)
-    _add_subscription(a, "https://push.example/dead")
+    _add_subscription(a, EP("dead"))
 
     send_due_reminders(today=TODAY)
     assert _subscription_count(a) == 0
@@ -300,7 +320,7 @@ def test_transient_failure_keeps_the_subscription(users, monkeypatch):
     a = users["a"]["id"]
     acct = create_account(a, "rem-acct")
     create_schedule(a, acct, 42.5, "monthly", TOMORROW)
-    _add_subscription(a, "https://push.example/flaky")
+    _add_subscription(a, EP("flaky"))
 
     send_due_reminders(today=TODAY)
     assert _subscription_count(a) == 1
@@ -312,12 +332,12 @@ def test_reminders_are_per_user(users, monkeypatch):
     a, b = users["a"]["id"], users["b"]["id"]
     acct_a = create_account(a, "rem-a")
     create_schedule(a, acct_a, 111, "monthly", TOMORROW)
-    _add_subscription(a, "https://push.example/a-only")
-    _add_subscription(b, "https://push.example/b-only")
+    _add_subscription(a, EP("a-only"))
+    _add_subscription(b, EP("b-only"))
 
     send_due_reminders(today=TODAY)
     endpoints = {s["endpoint"] for s in sent}
-    assert endpoints == {"https://push.example/a-only"}   # B never hears about A's bill
+    assert endpoints == {EP("a-only")}   # B never hears about A's bill
 
 
 def test_no_reminders_when_push_unconfigured(users, monkeypatch):
@@ -326,7 +346,7 @@ def test_no_reminders_when_push_unconfigured(users, monkeypatch):
     a = users["a"]["id"]
     acct = create_account(a, "rem-acct")
     create_schedule(a, acct, 42.5, "monthly", TOMORROW)
-    _add_subscription(a, "https://push.example/a-1")
+    _add_subscription(a, EP("a-1"))
 
     assert send_due_reminders(today=TODAY) == 0
     assert sent == []
