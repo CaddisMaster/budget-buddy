@@ -13,9 +13,10 @@ A personal finance tracking web app built with Flask, PostgreSQL, and Docker. De
 
 ```
 app/
-  __init__.py        # Flask app + extensions (Login, Bcrypt, Limiter, CSRF); registers the 18 blueprints; cookie flags + @after_request security headers (Secure/HSTS gated on COOKIE_SECURE); starts the APScheduler on ENABLE_DIGEST_SCHEDULER=1 ALONE and registers each job with its OWN gate (weekly digest ← mail_enabled(); daily tasks ← always — see the scheduler gotcha; safe only under single-worker gunicorn); |money template filter (thousands-sep, emits the NUMBER only — display templates ONLY: AI fact-builders / chart |tojson payloads / form input values stay raw, a comma'd value fails parse_positive_amount); css_v + brand_svg Jinja globals (both computed once at startup: the style.css content hash, and icons/icon.svg inlined |safe in base.html so sidebar mark + favicon share one source)
+  __init__.py        # Flask app + extensions (Login, Bcrypt, Limiter, CSRF); registers the 19 blueprints; cookie flags + @after_request security headers (Secure/HSTS gated on COOKIE_SECURE); starts the APScheduler on ENABLE_DIGEST_SCHEDULER=1 ALONE and registers each job with its OWN gate (weekly digest ← mail_enabled(); daily tasks ← always — see the scheduler gotcha; safe only under single-worker gunicorn); |money template filter (thousands-sep, emits the NUMBER only — display templates ONLY: AI fact-builders / chart |tojson payloads / form input values stay raw, a comma'd value fails parse_positive_amount); css_v + brand_svg Jinja globals (both computed once at startup: the style.css content hash, and icons/icon.svg inlined |safe in base.html so sidebar mark + favicon share one source)
   pusher.py          # outbound Web Push seam (#33, the mailer.py twin). push_enabled() gate, public_key(), send_push(), PushError + PushGone (404/410 = the subscription is DEAD, caller deletes it; anything else is transient and retried tomorrow), single _call_webpush() network seam tests stub. NEVER touches the DB
   mailer.py          # outbound email seam (Resend). mail_enabled() gate (twin of ai_enabled()), send_email(), MailError, single _call_resend() network seam tests stub. NOT named email.py (would shadow stdlib)
+  github.py          # outbound GitHub issue seam (#64, the mailer.py/pusher.py triplet's fourth). feedback_enabled() gate (env FEEDBACK_GITHUB_TOKEN — deliberately NOT named GITHUB_TOKEN, which is a magic name in Actions), create_issue(), GitHubError, single _call_github() network seam tests stub. Uses stdlib urllib, NOT requests (requests is undeclared — only transitively present via pywebpush). NEVER touches the DB
   db.py              # get_db_connection() + db_cursor() context manager (commit/rollback/close); db_cursor yields a NamedTupleCursor — rows read row.field (positional still works), SELECT columns must be uniquely named (alias with AS)
   helpers.py         # is_htmx(), hx_toast(), recent_months(), ai_enabled(); parse_positive_amount() (THE shared amount validator, rejects NaN/inf — every amount form routes through it) + parse_signed_amount() (same guard, allows negative/zero — bank balances); most_recent_sunday() (the weekly period key shared by the digest idempotency guard AND the agent's run key — lives here because digests.py imports agent.py); param parsers: parse_month_param() (every ?month read), parse_page_param() (every ?page read), parse_int_param() (every posted FK id); GENERIC_ERROR (the one user-facing message for unexpected write failures — raw exception text goes to current_app.logger.exception, never the browser)
   ai.py              # ALL model calls. parse_transaction_text() (NL quick-add), generate_insight(), generate_forecast(), answer_question() (Haiku multi-turn TOOL-USE loop), classify_transactions() (Sonnet batch), propose_budgets() (the model DOES propose amounts — pure _normalize_budget_proposals() re-resolves categories + SNAPS amounts into a facts-derived range), generate_digest(), coach, investigate_finances() (the Money agent's AUTONOMOUS loop — Sonnet, AGENT_MAX_TURNS=12, ends ONLY via the strict submit_findings tool intercepted locally; one nudge for a text-only turn then ParseError; grounding guard: submit with zero successful data-tool calls → ParseError; pure _normalize_findings() caps at 3 + drops unevidenced). Each feature has its OWN isolated _call_*_model() network seam so tests stub independently; pure _normalize()/_match_id() re-resolve ownership reading rows by ATTRIBUTE (.id/.name — the quick-add account feeder dual-names account_id AS id / account_name AS name). ai.py NEVER touches the DB or sees a user id — tool dispatch is a callback the blueprint supplies
@@ -32,6 +33,7 @@ app/
     transfers.py     # account transfers (linked income/expense pair) + recurring transfers (transfer_schedules CRUD + run_due_transfers() materializing a paired transfer per due date)
     goals.py         # goals (save + payoff) + compute_goal_projection(..., apr=None) — payoff goals feed the linked card's apr (GOAL_SELECT carries a.apr AS account_apr; _goal_view reads rows by ATTRIBUTE): est_monthly_interest always in the dict (None unless apr + debt), pace date = bounded 600-month simulation (pace ≤ interest → None + Behind), required_per_month amortized; Goal Coach (compute_goal_coach_facts() + load_goal_coach() + POST /goals/coach/generate, cached in goal_coach); GET /goals gates the card on ai_enabled() + in-progress goals
     push.py          # POST /push/subscribe|unsubscribe (#33) — one row per DEVICE, endpoint is the identity (globally UNIQUE, so re-subscribing upserts); validates the posted JSON, scopes every write to current_user. Profile UI gated on push_enabled()
+    feedback.py      # POST /feedback (#64) — in-app bug/feature reports filed as GitHub issues via github.py. ⚠️ The repo is PUBLIC and the body carries ONLY what the user typed: no username, no account names, no balances, no request context (settled 2026-07-30). Do NOT 'improve triage' by attaching context — that is the declined feature, not an oversight. Kind resolved against a fixed allowlist (a form value must never become a label); 5/hour rate limit; form on Profile, gated on feedback_enabled()
     reminders.py     # the DAILY job (#33). run_daily_tasks() = materialize_all_users() THEN send_due_reminders(); `flask run-daily` CLI. Materialization is UNGATED (see the scheduler gotcha); reminders gate on push_enabled(), enumerate tomorrow via main.upcoming_occurrences (so #32's end_date is honoured), and claim each occurrence in reminder_log with ON CONFLICT DO NOTHING BEFORE sending — a failed send is deliberately NOT retried (a duplicate notification is worse than a missed one)
     schedules.py     # recurring income/expense schedules (Scheduled tab); run_due_schedules() + compute_initial_semimonthly_due()
     insights.py      # monthly AI digest card on the dashboard; compute_month_facts() (deterministic figures) + POST /insights/generate (narrate via ai.py, cache in insights table)
@@ -146,6 +148,50 @@ landing/             # Static landing page at seandesmet.com
 - **AI-card collapse:** the four AI narration cards are `<details>` with `data-ai-key` + `data-generated` (the cache row's `created_at.isoformat()`; `initAiCollapse` in base.html + localStorage `bb-ai-seen:<key>` drive read-state). Generate routes must get the timestamp via `RETURNING created_at` — a route-local `datetime.today()` makes every regenerate read as new twice. Server renders CLOSED except empty-state (Generate must work without JS) and `just_generated` fragments. The What's-new strip says "weekly money check", NOT "Money agent" — a dashboard test asserts the agent CARD's absence by that exact string
 
 ## Current Status
+
+### On `main`, NOT yet deployed (2026-07-31)
+
+**Prod still runs `0.3.1`.** Two PRs merged after that release and are sitting on
+`main` unreleased. Tests **723 → 741**. No migration in either.
+
+- **PR #120 / #64 — in-app bug reports and feature suggestions.** A form on Profile
+  files an issue into this repository via the new `app/github.py` seam. ⚠️ **It does
+  nothing in production until a `FEEDBACK_GITHUB_TOKEN` is in the Droplet `.env`** —
+  until then `feedback_enabled()` is False and the UI is absent, which is the
+  designed state, not a fault. The `from-app` label already exists in the repo;
+  without it the API rejects the issue with a 422. Needs a **fine-grained PAT scoped
+  to this repo, `issues: write` only**.
+- **PR #121 / #8 — the image moved Python 3.11 → 3.14.** Local dev has been rebuilt
+  onto it (`docker compose up -d --build web`) and the suite is green there.
+
+⚠️ **#8's real gate was #7, and it worked exactly as designed.** The in-image suite
+step ran and reported `Python 3.14.6` / `741 passed, 5 skipped` — i.e. the tests
+executed on the runtime being *shipped*, not the one being replaced. When reviewing
+any future base-image bump, **check the step actually ran** rather than hitting the
+`ci.yml` "Shipped runtime unchanged" skip branch: a skipped step and a passing step
+look identical on the summary page.
+
+⚠️ **Three findings from the 3.14 work, so they are not re-derived:**
+
+- **`--only-binary=:all:` is stricter than reality.** It fails on `http-ece` (a
+  `pywebpush` dependency) — but **identically on 3.11**. It is pure-Python and has
+  never published a wheel; it builds from sdist with no compiler. So #8's acceptance
+  criterion "every dependency installs from a prebuilt wheel" has never literally
+  been true on either runtime. **Always run the same probe against the CURRENT
+  runtime before calling a result a regression.**
+- **A warning-count explosion can be one warning.** The suite emits **345 warnings on
+  3.14 against 7 on 3.11**, and every one is `flask_login/login_manager.py:488`
+  calling the deprecated `datetime.utcnow()`, fired once per login. Count **distinct
+  messages** before reacting. It is third-party; `utcnow()` is slated for removal, so
+  a future runtime bump could turn it into a real break in a pinned dependency.
+- **Dependabot's ignore state is NOT in `.github/dependabot.yml`** (there is no
+  `ignore` block). It lives inside Dependabot and is cleared by commenting
+  `@dependabot unignore python` on the original PR — done on **PR #2**.
+
+⚠️ **Two PRs that both add a `## [Unreleased]` entry WILL conflict in `CHANGELOG.md`.**
+#120 and #121 did; the second needed `git rebase origin/main` after the first
+squash-merged. Expect it whenever a session runs two PRs in parallel — it is not a
+sign either branch is wrong.
 
 ### Shipped: `0.3.1` (2026-07-31) — the colour-collision fix
 
@@ -384,29 +430,45 @@ CURRENT month, not the last complete one — the UI always sends them; only bite
 requests.
 
 **Roadmap** — the issue tracker is authoritative. **`0.2.0` and `0.3.0` are both CLOSED and
-shipped** (see above). The `0.4.0` roadmap is not grouped yet and nothing is claimed. The
-three open candidates are **#64** (settled, not built), **#111** (new, may be a
-close-as-wontfix) and **#8** (unblocked but risky) — all described below.
+shipped** (see above). The `0.4.0` roadmap is not grouped yet; **#64 and #8 are now BUILT and
+merged to `main`, awaiting a release** (see the not-yet-deployed block at the top).
 
-**#64** — let users report bugs/suggest features from inside the app, auto-filing GitHub
-issues. ✅ **The privacy fork that deferred it twice is SETTLED (Sean, 2026-07-30): warn
-plainly in the form + never auto-attach context**, filing into this public repo. Post only
-what the user typed — no account names, balances, transaction rows, **and no username**.
-The private-feedback-repo option was declined. Two consequences accepted knowingly and
-recorded on the issue: every report appears **self-filed with no way to follow up with the
-reporter**, and the free-text leak risk is unchanged since the warning is the only control.
-Do not re-open the question. **Not built** — scope is unchanged from the issue
-(`app/github.py` seam, Droplet-only `GITHUB_TOKEN`, rate-limited `POST /feedback`,
-`from-app` label).
+✅ **#64 is CLOSED** (PR #120, 2026-07-31) — in-app bug/feature reporting, built exactly to the
+privacy design settled on 2026-07-30. Do not re-open the privacy question. Two deviations from
+the issue's own wording were made deliberately and are worth keeping: the env var is
+**`FEEDBACK_GITHUB_TOKEN`**, not `GITHUB_TOKEN` (a magic name in Actions), and the HTTP call
+uses **stdlib `urllib`**, not `requests` (undeclared, only transitively present via
+`pywebpush`).
+
+✅ **#8 is CLOSED** (PR #121, 2026-07-31) — the image runs Python 3.14. See the findings in the
+not-yet-deployed block.
+
+✅ **#52 is CLOSED** (2026-07-31) as a one-off flake, per its own second acceptance scenario:
+**44 CI runs since the flake with `docker-build` green in every one**, and no Docker Hub pull
+failure of any kind. The observed error was a connection *timeout*, not a `429`, so
+authenticating to Docker Hub would not have addressed it. ⚠️ If it ever recurs, candidate fix
+**C** (pin buildx to the `docker` driver) still **does not work** — `type=gha` caching requires
+`docker-container`.
+
+**#115** — push a notification when a release is cut. **Not built**, but both design questions
+were settled on 2026-07-31 and recorded on the issue: **(1) one subscription, reworded copy** —
+release announcements reuse the existing per-device push subscription, and `profile.html`'s
+"Bill reminders" section is reworded to cover both purposes ⚠️ **in the same PR as the
+broadcast, never after it**, since shipping the broadcast against the current copy widens an
+existing consent silently; **(2) the summary text comes from the GitHub Release notes body**,
+truncated to fit the ~4KB push payload. ⚠️ That body is free text and `release.yml` builds its
+remote command by **string interpolation into an SSH heredoc** — it must travel as a properly
+passed env var or it is a command-injection surface. Still open: idempotency (a DB marker vs.
+accepting the workflow-re-run risk — this decides whether a migration is needed) and whether
+every subscriber is in scope.
 
 ✅ **#111 is CLOSED** (fixed in `0.3.1`) — a category past the eighth created used to wrap
 onto an earlier one's colour. See the slot gotcha above; the fix reverses #83's
 set-independence rule, deliberately.
 
 Parked with triggers: **#36** budget-report-v2-reads-history (~Dec 2026, when the 6-mo window
-sits fully inside logged history); **#8** Python 3.14 evaluation (unblocked by #7 now that CI
-tests the shipped runtime, but its own change — Dockerfile surface, can break the image);
-**#52** (see above). **#37** holds the unscheduled backlog: a tabbed AI panel, spending flags,
+sits fully inside logged history) — now the ONLY date-triggered item, since #8 and #52 both
+closed on 2026-07-31. **#37** holds the unscheduled backlog: a tabbed AI panel, spending flags,
 sinking funds, what-if simulator, tags. **Settled in `0.2.0`, do not re-open as a question:** the
 #33 design fork — whether the daily job also runs the due-runners server-side — was decided YES
 (Sean, 2026-07-28), against a recommendation to keep #33 read-only; the materialization now
@@ -487,11 +549,12 @@ install cost ~1.5s and total per-invocation overhead ~2.9s, cut to ~0.8s by #70.
 predicted to "roughly halve" the run; it actually cut it by ~12×, because the suite is
 IO/DB-bound rather than CPU-bound and parallelises far better than a CPU-bound suite would.
 
-**723 tests in `tests/`** (5 of them skip on the last day of a month — `test_forecast.py`'s date guards). Cross-cutting patterns: **no real API calls anywhere** — every
+**741 tests in `tests/`** (5 of them skip on the last day of a month — `test_forecast.py`'s date guards). Cross-cutting patterns: **no real API calls anywhere** — every
 `ai.py::_call_*_model` seam (and `mailer.py::_call_resend`) is monkeypatched with canned
 `SimpleNamespace` responses; every feature file asserts **user isolation**; route tests assert
 anon → 302. What each file covers:
 
+- `test_feedback.py` — #64 end to end via the mocked `github._call_github` seam: the gate (no token → no UI on /profile and the route creates nothing), happy path + label set (`bug`/`enhancement` **plus `from-app`**), an arbitrary posted kind never becoming a label, validation, the input caps, `GitHubError` → GENERIC_ERROR with **the API text, status code and repo name all absent from the response**, the seam unit tests, anon → 302, and the rate-limit registration (`limiter._marked_for_limiting`, the test_admin_backup.py convention — the limiter is disabled under test). ⚠️ **`test_body_carries_only_what_the_user_typed` is the load-bearing one**: it asserts the username and the seeded account/category/transaction names and amount are all absent. The privacy decision is invisible in the code's shape, so a later change attaching context would look like an improvement and break nothing else
 - `test_pending_transactions.py` — #86 end to end: create/badge (content-asserting — `HistoryRow` is positional), the page-scoped pin, several pending rows staying newest-first (the stable-sort property), pinning NOT overriding `?month`, the em-dash balance cell **anchored to the actual `<td>`** (a bare `"—"` also matches the edit selects' "— none —" and passes without the feature), **the walk-guard property** (posted rows' balance cells are character-identical whether a sibling is pending or posted — this fails if anyone moves the pin into SQL), page-1 top balance still equalling the full net, mark-posted (clears only, whole-tbody fragment, returns the row to date order), edit-preserves-the-flag, pending counting in month spending, a pending row still being an Auto-Categorize candidate (i.e. NOT behaving like `is_adjustment`), export + cleanup keeping pure date order, and the isolation/anon set
 - `test_seed_dev.py` — `scripts/seed_dev.py` (#69): determinism (same seed+day → identical rows), dates derived from `today` not hardcoded, **the fixture scaling property** (parametrized 2–36 months — a fixed opening debt pays the card off entirely on a long window and a fixed goal target gets overshot), analytics-exclusion coverage, schedule `next_due` always FUTURE, plus a DB round-trip: persistence counts, transfer-pair shape, login + populated dashboard, **loading `/` materializes nothing**, refuse/force/dry-run paths
 - `test_push_reminders.py` — #33 end to end via the mocked `pusher._call_webpush` seam: the `push_enabled()` gate, subscribe/unsubscribe routes (upsert on endpoint, payload validation, 503 when unconfigured, cross-user IDOR), the reminder window (honours #32's `end_date`), per-occurrence dedup, dead-subscription (404/410) cleanup vs a KEPT transient failure, per-user isolation, and the two materialization properties — a user who never logs in gets rows, and **materialization still runs with push unconfigured** (the gating trap). Plus the threaded daily-job-vs-page-load `FOR UPDATE` twin
@@ -681,9 +744,12 @@ A `sweeper` worker agent (Sonnet, tools: Read/Grep/Glob/Edit only) is defined in
 - **Env vars:** `ANTHROPIC_API_KEY` gates every AI surface via `ai_enabled()` (optional — app runs
   fine without it). `RESEND_API_KEY` gates email (`mail_enabled()`), `ENABLE_DIGEST_SCHEDULER=1`
   starts the digest scheduler — both **Droplet-only** (unset locally/CI so nothing auto-sends).
-  `COOKIE_SECURE=1` (Secure cookies + HSTS) — Droplet-only; must stay unset locally/tests. After
-  editing `.env`, `docker compose up -d --force-recreate web`. `.env` is gitignored + never baked
-  into the image.
+  `COOKIE_SECURE=1` (Secure cookies + HSTS) — Droplet-only; must stay unset locally/tests.
+  `FEEDBACK_GITHUB_TOKEN` gates in-app feedback (`feedback_enabled()`, #64) — Droplet-only, a
+  **fine-grained PAT scoped to this repo with `issues: write` and nothing else**, so a leak means
+  issue spam rather than code access. ⚠️ Deliberately NOT named `GITHUB_TOKEN` — that is a magic
+  name in GitHub Actions. After editing `.env`, `docker compose up -d --force-recreate web`.
+  `.env` is gitignored + never baked into the image.
 - **Schema changes:** `schema.sql` only runs on a *fresh* DB. For prod, apply the numbered `sql/`
   migration **by hand** — pg_dump first. **Order matters:** additive migrations (new
   columns/tables) go **BEFORE** `docker compose pull` (new code must never query a missing
