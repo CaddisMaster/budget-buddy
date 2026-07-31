@@ -137,6 +137,32 @@ landing/             # Static landing page at seandesmet.com
 
 ## Current Status
 
+### `0.3.0` is PREPPED but NOT CUT and NOT DEPLOYED (2026-07-30)
+
+⚠️ **Prod still runs `0.2.0`.** `0.3.0` exists only as prepped files on `main` — no tag,
+no Release, no deploy. Do not describe it as shipped anywhere until the release workflow
+has gone green.
+
+**#112 / PR #113** did the prep: the `.whatsnew` strip moved to `v0.3.0` (three blocks —
+Pending transactions, the two doughnut changes as one story, the CSV `Kind` column under
+Small things), and `CHANGELOG.md`'s `## [Unreleased]` rolled into `## [0.3.0]` with a
+fresh empty `Unreleased` and updated compare links. **The strip is the only version string
+in app code** — there is no version constant in Python.
+
+Bundle: four blocks merged since `0.2.0` — the triaged backlog (#104–107), the doughnut
+fold (#110), automated issue triage (#85–99), and the dev tooling pass (#73–81). Only the
+first two are user-facing, which is why the strip has three blocks and not ten.
+
+⚠️ **One additive migration ships with it** (`sql/33_pending_transactions.sql`) — additive
+goes BEFORE the image pull, which `release.yml` already handles. Not a manual step, but it
+is why this is not a pure image swap.
+
+**The ship date is `2026-07-31`** — the strip badge and the `## [0.3.0]` changelog heading
+both carry it and must stay in step. Correct both if the Release actually gets cut later.
+
+⚠️ **Still nobody has looked at the rendered doughnut in a browser** (see below). `0.3.0`
+ships that chart. One glance before cutting the Release.
+
 ### On `main`, NOT yet deployed — the doughnut fold (2026-07-30)
 
 **PR #110** closing **#108**: the category doughnut now draws the **top six
