@@ -243,33 +243,20 @@ const cssVar = (n) => _css.getPropertyValue(n).trim();
 // Eight validated categorical hues, read from CSS so dark mode swaps them
 // without a second array here. Order is load-bearing — see style.css.
 const PALETTE = Array.from({length: 8}, (_, i) => cssVar(`--series-${i + 1}`));
-// CATEGORY_SLOTS maps a category name to its creation-order index (built
-// server-side). Slot N always paints the Nth category the user created, so a
-// colour is stable across visits, across the expense/income toggle, and across
-// a month filter that changes which categories are on screen — and adding a
-// category never repaints an existing one.
+// Each drawn row carries its own palette slot, assigned SERVER-SIDE per view
+// (main.py's assign_series_slots). Creation order is the preference, so a
+// category keeps its familiar hue; a category that would have collided is moved
+// to the lowest free slot instead.
 //
-// This REPLACED hashing the name into the palette. Hashing looked stable but
-// collided: seven categories over seven slots issued only five distinct
-// colours, so two pairs of slices were byte-identical and the legend swatches
-// collided with them. Collisions started well BELOW the palette size (seven
-// names land in seven slots distinctly only ~0.6% of the time), which the old
-// comment here had backwards. Indexing removes them outright up to PALETTE
-// length; past that it wraps, so a 9th category shares slot 1's colour with
-// the 1st. A doughnut is already past its readable limit around six slices, so
-// the fix for that is fewer segments (fold the tail into "Other") rather than a
-// ninth hue — tracked separately, not worked around here.
-const CATEGORY_SLOTS = {{ category_slots | tojson }};
-function catColor(name) {
-    const slot = CATEGORY_SLOTS[name];
-    return PALETTE[(slot === undefined ? 0 : slot) % PALETTE.length];
-}
-// The folded-tail slice (#108) paints neutral grey off its is_other FLAG, never
-// off its label: a user may own a real category actually named "Other", and
-// matching on the name would both grey out that real category and pull the
-// wrong slot for the synthetic one.
+// ⚠️ This replaced `slot = creation_index % 8`, which WRAPPED — a user's 1st and
+// 9th categories painted the same hex, and with both drawn the chart showed two
+// identical slices (seen in production on 0.3.0). The fix is only safe because
+// the #108 fold caps the chart at 6 real slices against 8 hues, so a free slot
+// always exists. Do not reintroduce a shared name->slot map: the expense and
+// income views must be assigned independently, since their union can exceed the
+// palette while neither view alone does.
 const colorsFor = (data) => data.map(
-    d => d.is_other ? cssVar('--series-other') : catColor(d.category));
+    d => d.is_other ? cssVar('--series-other') : PALETTE[(d.slot ?? 0) % PALETTE.length]);
 Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
 Chart.defaults.font.size = 12;
 Chart.defaults.color = cssVar('--text-muted');

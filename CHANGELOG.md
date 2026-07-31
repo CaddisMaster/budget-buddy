@@ -8,6 +8,24 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Fixed
+
+- **Two slices of the category doughnut could still be the same colour.** Fixed
+  in `0.3.0` for up to eight categories, but the palette has eight hues and the
+  colour was picked by *creation order* wrapped around that — so a user's 1st
+  and 9th categories were handed the identical hue, and whenever both appeared
+  in the chart's top six, two slices and their legend swatches were
+  indistinguishable. Reported on production with **Monthly Bills** and **Food &
+  Dining** both drawn in the same orange.
+
+  Every slice now gets a colour no other slice on screen is using. Creation
+  order is still the preference, so a category keeps the colour you are used to
+  and only one that would have collided moves.
+
+  This is guaranteed rather than merely likely: the chart draws at most six
+  named categories plus "Other", against a palette of eight, so a free colour
+  always exists.
+
 ## [0.3.0] - 2026-07-31
 
 ### Added
