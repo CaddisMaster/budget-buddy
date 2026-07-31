@@ -13,12 +13,9 @@ worker's subscriptions and fail a file nobody touched.
 """
 import json
 
-import pytest
-
 import app.pusher as pusher
 from app.blueprints.announce import (
-    BODY_MAX_CHARS,
-    FALLBACK_BODY,
+    BODY,
     broadcast_release,
     build_release_notification,
 )
@@ -92,61 +89,45 @@ def _endpoints_sent(sent):
 # --- the pure builder -------------------------------------------------------
 
 def test_title_names_the_version():
-    note = build_release_notification("0.4.0", "Something changed.")
-    assert note["title"] == "Budget Buddy 0.4.0 is live"
+    note = build_release_notification("0.4.1")
+    assert note["title"] == "Budget Buddy 0.4.1 is live"
 
 
 def test_tap_target_is_the_dashboard():
     # Where the .whatsnew strip for this release renders.
-    assert build_release_notification("0.4.0", "x")["url"] == "/"
+    assert build_release_notification("0.4.1")["url"] == "/"
 
 
-def test_short_notes_pass_through_whole():
-    note = build_release_notification("0.4.0", "Bill reminders are faster now.")
-    assert note["body"] == "Bill reminders are faster now."
-    assert "…" not in note["body"]
+def test_body_is_the_fixed_line():
+    assert build_release_notification("0.4.1")["body"] == BODY
+    assert BODY == "Check out what's new in the app."
 
 
-def test_markdown_noise_is_stripped():
-    notes = "## What's new\n\n- Pending transactions\n- A readable chart\n"
-    body = build_release_notification("0.4.0", notes)["body"]
-    assert body == "What's new Pending transactions A readable chart"
+def test_only_the_version_varies_between_releases():
+    """#131 — the body is evergreen. Nothing is re-authored per release, so the
+    only difference between two releases' notifications is the version."""
+    a = build_release_notification("0.4.1")
+    b = build_release_notification("9.9.9")
+    assert a["body"] == b["body"]
+    assert a["url"] == b["url"]
+    assert a["title"] != b["title"]
 
 
-def test_blank_lines_and_runs_of_whitespace_collapse():
-    body = build_release_notification("0.4.0", "One\n\n\nTwo   \t three")["body"]
-    assert body == "One Two three"
+def test_the_builder_takes_no_release_text():
+    """⚠️ The load-bearing one. Release notes are free text and release.yml builds
+    its remote command by interpolation — carrying that text is what needed a
+    base64 hop and a truncator. Not accepting it at all is what deleted that
+    surface, so a second argument reappearing here is a real regression."""
+    import inspect
+
+    params = list(inspect.signature(build_release_notification).parameters)
+    assert params == ["version"]
 
 
-@pytest.mark.parametrize("notes", ["", "   ", "\n\n", None])
-def test_empty_notes_fall_back(notes):
-    assert build_release_notification("0.4.0", notes)["body"] == FALLBACK_BODY
-
-
-def test_long_notes_are_truncated_with_an_ellipsis():
-    body = build_release_notification("0.4.0", "word " * 200)["body"]
-    assert len(body) <= BODY_MAX_CHARS
-    assert body.endswith("…")
-
-
-def test_truncation_cuts_on_a_word_boundary():
-    notes = " ".join(f"word{i:03d}" for i in range(100))
-    body = build_release_notification("0.4.0", notes)["body"]
-    # No severed token: every word before the ellipsis is intact.
-    assert all(len(w) == 7 for w in body.rstrip("…").split())
-
-
-def test_a_single_enormous_word_still_truncates():
-    body = build_release_notification("0.4.0", "x" * 500)["body"]
-    assert len(body) <= BODY_MAX_CHARS
-    assert body.endswith("…")
-
-
-def test_payload_stays_far_under_the_push_ceiling():
-    # Web Push tops out around 4KB. A pathological changelog must not approach it.
-    notes = "## Heading\n\n" + ("- a long changelog bullet that runs on\n" * 500)
-    payload = json.dumps(build_release_notification("0.4.0", notes))
-    assert len(payload.encode("utf-8")) < 1024
+def test_payload_is_tiny():
+    # Web Push tops out around 4KB. A fixed line cannot approach it.
+    payload = json.dumps(build_release_notification("0.4.1"))
+    assert len(payload.encode("utf-8")) < 256
 
 
 # --- the broadcast ----------------------------------------------------------
@@ -156,7 +137,7 @@ def test_does_nothing_when_push_is_unconfigured(monkeypatch, users):
     sent = _capture(monkeypatch)
     _add_subscription(users["a"]["id"], ENDPOINT_A1)
 
-    assert broadcast_release("0.4.0", "notes") == 0
+    assert broadcast_release("0.4.1") == 0
     assert sent == []  # the seam is never reached
 
 
@@ -169,7 +150,7 @@ def test_reaches_every_users_devices(monkeypatch, users):
     _add_subscription(users["a"]["id"], ENDPOINT_A2)
     _add_subscription(users["b"]["id"], ENDPOINT_B1)
 
-    count = broadcast_release("0.4.0", "Pending transactions")
+    count = broadcast_release("0.4.1")
 
     # A parallel worker may own rows too, so assert on ours rather than a total.
     assert {ENDPOINT_A1, ENDPOINT_A2, ENDPOINT_B1} <= _endpoints_sent(sent)
@@ -182,14 +163,14 @@ def test_every_device_gets_the_same_release_payload(monkeypatch, users):
     _add_subscription(users["a"]["id"], ENDPOINT_A1)
     _add_subscription(users["b"]["id"], ENDPOINT_B1)
 
-    broadcast_release("0.4.0", "A readable chart")
+    broadcast_release("0.4.1")
 
     ours = [s["payload"] for s in sent
             if s["endpoint"] in (ENDPOINT_A1, ENDPOINT_B1)]
     assert len(ours) == 2
     assert ours[0] == ours[1]
-    assert ours[0]["title"] == "Budget Buddy 0.4.0 is live"
-    assert ours[0]["body"] == "A readable chart"
+    assert ours[0]["title"] == "Budget Buddy 0.4.1 is live"
+    assert ours[0]["body"] == BODY
 
 
 def test_a_dead_subscription_is_deleted(monkeypatch, users):
@@ -198,7 +179,7 @@ def test_a_dead_subscription_is_deleted(monkeypatch, users):
     _add_subscription(users["b"]["id"], ENDPOINT_B1)
     _capture(monkeypatch, fail_for={ENDPOINT_A1: pusher.PushGone("gone (410)")})
 
-    broadcast_release("0.4.0", "notes")
+    broadcast_release("0.4.1")
 
     assert not _endpoint_exists(ENDPOINT_A1)
     assert _endpoint_exists(ENDPOINT_B1)
@@ -210,7 +191,7 @@ def test_a_transient_failure_keeps_the_subscription(monkeypatch, users):
     _add_subscription(users["a"]["id"], ENDPOINT_A1)
     sent = _capture(monkeypatch, fail_for={ENDPOINT_A1: pusher.PushError("503")})
 
-    broadcast_release("0.4.0", "notes")
+    broadcast_release("0.4.1")
 
     assert ENDPOINT_A1 not in _endpoints_sent(sent)
     assert _endpoint_exists(ENDPOINT_A1)
@@ -224,7 +205,7 @@ def test_one_bad_device_does_not_abort_the_batch(monkeypatch, users):
     sent = _capture(monkeypatch,
                     fail_for={ENDPOINT_A1: pusher.PushError("boom")})
 
-    broadcast_release("0.4.0", "notes")
+    broadcast_release("0.4.1")
 
     assert {ENDPOINT_A2, ENDPOINT_B1} <= _endpoints_sent(sent)
     assert ENDPOINT_A1 not in _endpoints_sent(sent)
@@ -232,26 +213,35 @@ def test_one_bad_device_does_not_abort_the_batch(monkeypatch, users):
 
 # --- the CLI entry point ----------------------------------------------------
 
-def test_cli_reads_the_notes_from_the_environment(app, monkeypatch, users):
-    """The release workflow passes the body as an env var, never as an argument
-    — the notes are free text and the remote command is built by interpolation."""
+def test_cli_sends_the_fixed_body(app, monkeypatch, users):
+    """The version is the only thing the workflow passes in, and it comes from
+    the release tag rather than from anything a human typed."""
     _enable_push(monkeypatch)
     sent = _capture(monkeypatch)
     _add_subscription(users["a"]["id"], ENDPOINT_A1)
-    monkeypatch.setenv("RELEASE_NOTES", "Straight from the Release body")
 
     result = app.test_cli_runner().invoke(args=["announce-release",
-                                                "--version", "0.4.0"])
+                                                "--version", "0.4.1"])
 
     assert result.exit_code == 0, result.output
     ours = [s for s in sent if s["endpoint"] == ENDPOINT_A1]
-    assert ours[0]["payload"]["body"] == "Straight from the Release body"
+    assert ours[0]["payload"]["body"] == BODY
+    assert ours[0]["payload"]["title"] == "Budget Buddy 0.4.1 is live"
+
+
+def test_cli_rejects_release_text(app, monkeypatch):
+    """⚠️ --notes is gone deliberately (#131). If it ever comes back, the base64
+    guard in release.yml has to come back with it."""
+    _enable_push(monkeypatch)
+    result = app.test_cli_runner().invoke(
+        args=["announce-release", "--version", "0.4.1", "--notes", "anything"])
+    assert result.exit_code != 0
 
 
 def test_cli_says_so_when_push_is_unconfigured(app, monkeypatch):
     _disable_push(monkeypatch)
     result = app.test_cli_runner().invoke(args=["announce-release",
-                                                "--version", "0.4.0"])
+                                                "--version", "0.4.1"])
     assert result.exit_code == 0, result.output
     assert "not configured" in result.output
 

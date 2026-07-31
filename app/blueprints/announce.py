@@ -15,10 +15,16 @@ Idempotency is deliberately NOT tracked (Sean, 2026-07-31). `release: published`
 fires once by construction, so the only double-send risk is a human re-running
 the workflow, and the cost of that is one duplicate notification. reminder_log
 exists because the DAILY job can re-fire on a schedule; this one cannot.
-"""
-import os
-import re
 
+⚠️ The body is a FIXED line and does not summarise the release (#131, Sean,
+2026-07-31 — reversing #115's "the text comes from the Release notes body",
+before it ever deployed). The detail lives on the dashboard's What's-new strip,
+which is where the notification points. Do not reintroduce a notes argument: the
+release body is free text and release.yml builds its remote command by string
+interpolation, so carrying it required a base64 hop, a truncator and a 4KB
+ceiling to worry about. Sending nothing is what deletes that whole surface
+rather than guarding it.
+"""
 import click
 from flask import Blueprint
 from flask.cli import with_appcontext
@@ -28,51 +34,24 @@ from app.db import db_cursor
 
 bp = Blueprint('announce', __name__)
 
-# A lock-screen-sized body. The hard limit is Web Push's ~4KB payload ceiling,
-# but a notification is read at a glance on a locked phone, and release notes run
-# to paragraphs — so the useful cap is far below the technical one. Truncating
-# here is what guarantees we never approach 4KB at all.
-BODY_MAX_CHARS = 180
-
-FALLBACK_BODY = "Updated — see what's new on your dashboard."
-
-# Markdown noise to strip when flattening the notes to one line: heading hashes,
-# list bullets and blockquote markers at the start of a line. Emphasis markers
-# are left alone — they read as ordinary punctuation and stripping them would
-# mangle words that legitimately contain an underscore.
-_LINE_NOISE = re.compile(r'^\s*(?:#{1,6}\s*|[-*+]\s+|>\s?)', re.MULTILINE)
+# The same on every release. Short enough to read at a glance on a lock screen,
+# and evergreen — nothing here has to be re-authored per release.
+BODY = "Check out what's new in the app."
 
 
-def build_release_notification(version, notes):
+def build_release_notification(version):
     """The pure core: {title, body, url} for one release announcement.
 
-    `notes` is the GitHub Release body — free text a human wrote at release time,
-    markdown, and potentially long. It is flattened to a single line and cut on a
-    word boundary so the body reads as a sentence rather than a severed token.
+    Only the version varies. See the module docstring for why the release notes
+    deliberately do not reach this payload.
     """
-    flattened = _LINE_NOISE.sub('', notes or '')
-    flattened = ' '.join(flattened.split())
-    body = _truncate(flattened, BODY_MAX_CHARS) or FALLBACK_BODY
     return {
         'title': f'Budget Buddy {version} is live',
-        'body': body,
+        'body': BODY,
         # The dashboard, because that is where the .whatsnew strip for this exact
         # release renders — the tap lands on the release's own summary.
         'url': '/',
     }
-
-
-def _truncate(text, limit):
-    """Cut to `limit` characters on a word boundary, adding an ellipsis only when
-    something was actually removed."""
-    if len(text) <= limit:
-        return text
-    # -1 leaves room for the ellipsis itself.
-    clipped = text[:limit - 1]
-    spaced = clipped.rsplit(' ', 1)[0]
-    # A single word longer than the limit has no boundary to cut on; keep the
-    # hard cut rather than returning an empty string.
-    return (spaced or clipped).rstrip(' ,;:.') + '…'
 
 
 def _all_subscriptions(cursor):
@@ -83,7 +62,7 @@ def _all_subscriptions(cursor):
             for r in cursor.fetchall()]
 
 
-def broadcast_release(version, notes, *, logger=None):
+def broadcast_release(version, *, logger=None):
     """Push the release announcement to every subscribed device.
 
     Gated on pusher.push_enabled() ALONE — the reminders.py shape. Returns the
@@ -99,7 +78,7 @@ def broadcast_release(version, notes, *, logger=None):
     if not subs:
         return 0
 
-    payload = build_release_notification(version, notes)
+    payload = build_release_notification(version)
     sent = 0
     dead = []
     for sub in subs:
@@ -123,22 +102,17 @@ def broadcast_release(version, notes, *, logger=None):
 
 
 @click.command('announce-release')
-@click.option('--version', required=True, help='The released version, e.g. 0.4.0.')
-@click.option('--notes', default=None,
-              help='Release notes body. Defaults to the RELEASE_NOTES env var.')
+@click.option('--version', required=True, help='The released version, e.g. 0.4.1.')
 @with_appcontext
-def announce_release_command(version, notes):
+def announce_release_command(version):
     """`flask announce-release --version X` — notify every subscribed device.
 
-    The notes arrive through the environment rather than the command line: the
-    release workflow builds its remote command by string interpolation, and the
-    body is free text, so it must never become part of a shell fragment.
+    The version is the only input, and it comes from the workflow's own tag
+    rather than from anything a human typed at release time.
     """
     from app import app
 
-    if notes is None:
-        notes = os.getenv('RELEASE_NOTES', '')
-    sent = broadcast_release(version, notes, logger=app.logger)
+    sent = broadcast_release(version, logger=app.logger)
     if not pusher.push_enabled():
         click.echo('Push is not configured; announced nothing.')
         return
