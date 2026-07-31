@@ -8,6 +8,21 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Added
+
+- **Report a bug or suggest a feature from inside the app.** A form on the
+  Profile page files the report straight into the project's issue tracker, so a
+  problem can be reported in the reporter's own words rather than relayed
+  second-hand.
+
+  The form states plainly, above the fields, that **what you write is published
+  publicly on GitHub**. Nothing is attached automatically — not your username,
+  not an account name, not a balance, not a single transaction. Only the words
+  you type are sent.
+
+  The feature is invisible unless a GitHub token is configured, so it is off by
+  default and stays off in local development and CI.
+
 ## [0.3.1] - 2026-07-31
 
 ### Fixed

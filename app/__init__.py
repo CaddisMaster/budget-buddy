@@ -118,6 +118,7 @@ from app.blueprints import (
     budgets,
     categories,
     digests,
+    feedback,
     forecasts,
     goals,
     insights,
@@ -147,6 +148,7 @@ app.register_blueprint(digests.bp)
 app.register_blueprint(agent.bp)
 app.register_blueprint(push.bp)
 app.register_blueprint(reminders.bp)
+app.register_blueprint(feedback.bp)
 
 # `flask send-digests` / `flask run-daily` — run either scheduled job by hand.
 app.cli.add_command(digests.send_digests_command)
