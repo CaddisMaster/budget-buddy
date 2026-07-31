@@ -23,6 +23,17 @@ this project uses the `0.x` versioning scheme described in
   The feature is invisible unless a GitHub token is configured, so it is off by
   default and stays off in local development and CI.
 
+### Changed
+
+- **The application image now runs Python 3.14** (was 3.11). No behaviour
+  changes — this is the runtime the app is built and shipped on, and it moves
+  three minor versions in one step so that it happens deliberately and with
+  evidence rather than as a dependency bump waved through on a green tick.
+
+  Every pinned dependency installs from a prebuilt wheel for 3.14, the full test
+  suite passes inside the built image, and the app boots and serves with the
+  background scheduler running.
+
 ## [0.3.1] - 2026-07-31
 
 ### Fixed

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Run the pytest suite against the dev Postgres, on the same Python 3.11 as
+# Run the pytest suite against the dev Postgres, on the same Python 3.14 as
 # production. Nothing is installed on your machine.
 #
 # Usage:

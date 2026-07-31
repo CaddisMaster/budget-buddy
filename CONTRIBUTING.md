@@ -97,8 +97,8 @@ unresolved, with no autocomplete and no go-to-definition.
 Create a local virtual environment for the editor to read:
 
 ```bash
-brew install python@3.11          # the Mac's system 3.9 is too old — see below
-python3.11 -m venv .venv
+brew install python@3.14          # the Mac's system 3.9 is too old — see below
+python3.14 -m venv .venv
 .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 ```
 
@@ -109,7 +109,7 @@ configure and no editor settings are committed.
 in containers. It exists purely so the language server has real code to read,
 and it is gitignored and excluded from the image.
 
-It must be **3.11**, matching production. The Mac ships 3.9.6, which cannot
+It must be **3.14**, matching production. The Mac ships 3.9.6, which cannot
 evaluate the `str | None` annotations in `app/ai.py` — a 3.9 environment reports
 working code as broken.
 
