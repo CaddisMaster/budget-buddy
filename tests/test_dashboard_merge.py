@@ -15,6 +15,7 @@ import re
 from datetime import date
 from pathlib import Path
 
+from app.blueprints.main import fold_chart_tail
 from tests.conftest import create_category, create_transaction
 
 # --- the redirect -------------------------------------------------------------
@@ -204,20 +205,33 @@ def _slot_map(body):
     return json.loads(match.group(1))
 
 
+def _chart_rows(body, var="spendingData"):
+    """Pull a chart payload literal out of the rendered dashboard."""
+    match = re.search(rf"const {var} = (\[.*?\]);", body, re.S)
+    assert match, f"{var} missing from the dashboard"
+    return json.loads(match.group(1))
+
+
 def test_category_slots_are_distinct_per_category(client_a, users):
     # The whole bug: two categories must never share a slot. Seven of them is
-    # the count that was actually broken in production.
+    # the count that was actually broken in production. The doughnut now folds
+    # its tail (#108) so only six are drawn, but the invariant is unchanged for
+    # whatever IS drawn.
     a = users["a"]
     names = ["Shopping", "Monthly Bills", "Housing", "Food & Dining",
              "Entertainment", "Transportation", "Personal Care"]
-    for name in names:
+    # Distinct, descending amounts on purpose: with a fold in play, tied totals
+    # would leave "which six survive" to SQL tie-breaking, which flakes.
+    for rank, name in enumerate(names):
         cat_id = create_category(a["id"], name)
-        create_transaction(a["id"], a["account_id"], 10.00, date.today(),
-                           category_id=cat_id)
+        create_transaction(a["id"], a["account_id"], 700.00 - rank * 100,
+                           date.today(), category_id=cat_id)
 
     slots = _slot_map(client_a.get("/").data.decode())
-    assigned = [slots[n] for n in names]
-    assert len(set(assigned)) == len(names), f"colliding slots: {slots}"
+    drawn = [n for n in names if n in slots]
+    assert len(drawn) == 6, f"expected six drawn after the fold, got {drawn}"
+    assigned = [slots[n] for n in drawn]
+    assert len(set(assigned)) == len(drawn), f"colliding slots: {slots}"
     assert max(assigned) < 8, "slot past the palette wraps to a duplicate colour"
 
 
@@ -279,3 +293,162 @@ def test_series_palette_is_eight_distinct_hues_in_both_modes():
         hexes = re.findall(r"--series-\d:\s*(#[0-9a-fA-F]{6})", block)
         assert len(hexes) == 8, f"{mode}: expected 8 series slots, got {len(hexes)}"
         assert len({h.lower() for h in hexes}) == 8, f"{mode}: duplicate hex in {hexes}"
+
+
+# --- the folded tail (#108) ---------------------------------------------------
+#
+# A doughnut is past its readable limit around six slices, so the payload
+# builders keep the top six categories and roll the rest into one neutral
+# "Other". Folding is presentation ONLY — it happens after the SQL rollup, so
+# every other surface still sees complete per-category figures, and the card's
+# own total cannot move.
+
+def test_fold_leaves_a_short_list_untouched():
+    rows = [{"category": f"c{i}", "total": float(i)} for i in range(6)]
+    assert fold_chart_tail(rows) == rows
+    assert not any("is_other" in r for r in fold_chart_tail(rows))
+
+
+def test_fold_rolls_the_tail_into_one_flagged_entry():
+    rows = [{"category": f"c{i}", "total": float(10 - i)} for i in range(9)]
+    folded = fold_chart_tail(rows)
+
+    assert len(folded) == 7, "six real categories plus one Other"
+    other = folded[-1]
+    assert other["category"] == "Other"
+    assert other["is_other"] is True
+    assert other["folded"] == 3
+    # Gherkin: the combined segment equals the sum of what it replaced.
+    assert other["total"] == sum(r["total"] for r in rows[6:])
+    # ...and the whole is conserved, which is what keeps the card honest.
+    assert sum(r["total"] for r in folded) == sum(r["total"] for r in rows)
+
+
+def test_fold_ranks_by_total_not_input_order():
+    # The callers' SQL already sorts, but the helper must not depend on it.
+    rows = [{"category": "small", "total": 1.0}] + [
+        {"category": f"big{i}", "total": 100.0 + i} for i in range(6)]
+    folded = fold_chart_tail(rows)
+    assert [r["category"] for r in folded][-1] == "Other"
+    assert folded[-1]["total"] == 1.0
+    assert "small" not in [r["category"] for r in folded]
+
+
+def test_fold_marks_only_the_synthetic_row():
+    # A user may own a real category NAMED "Other" — it must stay a normal row
+    # with its own colour, which is why the template keys on the flag.
+    rows = [{"category": "Other", "total": 999.0}] + [
+        {"category": f"c{i}", "total": float(i)} for i in range(8)]
+    folded = fold_chart_tail(rows)
+    real = folded[0]
+    assert real["category"] == "Other" and "is_other" not in real
+
+
+def test_dashboard_doughnut_never_draws_more_than_seven_segments(client_a, users):
+    a = users["a"]
+    for rank in range(9):
+        cat_id = create_category(a["id"], f"Cat {rank}")
+        create_transaction(a["id"], a["account_id"], 900.00 - rank * 100,
+                           date.today(), category_id=cat_id)
+
+    rows = _chart_rows(client_a.get("/").data.decode())
+    assert len(rows) == 7, f"expected a folded chart, got {len(rows)} segments"
+    assert rows[-1]["category"] == "Other"
+    assert rows[-1]["is_other"] is True
+
+
+def test_dashboard_fold_preserves_the_card_total(client_a, users):
+    # Gherkin: the card's total is unchanged from before the fold. The fixture
+    # already seeds one 42.50 expense, so total against the DB, not a constant.
+    a = users["a"]
+    seeded = 42.50
+    for rank in range(9):
+        cat_id = create_category(a["id"], f"Cat {rank}")
+        amount = 900.00 - rank * 100
+        seeded += amount
+        create_transaction(a["id"], a["account_id"], amount, date.today(),
+                           category_id=cat_id)
+
+    rows = _chart_rows(client_a.get("/").data.decode())
+    assert round(sum(r["total"] for r in rows), 2) == round(seeded, 2)
+
+
+def test_dashboard_does_not_fold_a_short_category_list(client_a, users):
+    # Most users never hit the limit; they must not grow a stray "Other".
+    a = users["a"]
+    for rank in range(3):
+        cat_id = create_category(a["id"], f"Cat {rank}")
+        create_transaction(a["id"], a["account_id"], 300.00 - rank * 100,
+                           date.today(), category_id=cat_id)
+
+    rows = _chart_rows(client_a.get("/").data.decode())
+    assert not any(r.get("is_other") for r in rows)
+    assert "Other" not in [r["category"] for r in rows]
+
+
+def test_income_view_folds_too(client_a, users):
+    # The pill toggle's second payload shares the canvas, palette and slot map,
+    # so it needs the same fold.
+    a = users["a"]
+    for rank in range(8):
+        cat_id = create_category(a["id"], f"Income {rank}", kind="income")
+        create_transaction(a["id"], a["account_id"], 800.00 - rank * 100,
+                           date.today(), transaction_type="income",
+                           category_id=cat_id)
+
+    rows = _chart_rows(client_a.get("/").data.decode(), "incomeByCategoryData")
+    assert len(rows) == 7
+    assert rows[-1]["is_other"] is True
+    assert rows[-1]["folded"] == 2
+
+
+def test_folded_slice_is_coloured_off_the_flag_not_a_series_slot(client_a, users):
+    # If this ever regresses to matching the LABEL, a real category named
+    # "Other" gets greyed out and the synthetic one steals its slot.
+    a = users["a"]
+    for rank in range(9):
+        cat_id = create_category(a["id"], f"Cat {rank}")
+        create_transaction(a["id"], a["account_id"], 900.00 - rank * 100,
+                           date.today(), category_id=cat_id)
+
+    body = client_a.get("/").data.decode()
+    assert "d.is_other ? cssVar('--series-other')" in body
+    # The synthetic row must not carry a palette slot of its own.
+    assert "Other" not in _slot_map(body)
+
+
+def test_a_surviving_category_keeps_its_colour_across_months(client_a, users):
+    # Gherkin: a category among the largest six in two different months keeps
+    # the same colour. The fold changes WHICH categories are drawn, so this is
+    # the #83 stability property re-asserted against the new moving part.
+    a = users["a"]
+    kept = create_category(a["id"], "Kept Thing")
+    for month, amount in ((1, 500.00), (2, 400.00)):
+        create_transaction(a["id"], a["account_id"], amount,
+                           date(2026, month, 15), category_id=kept)
+    # Noise that is only present in February, reshuffling that month's set.
+    for rank in range(8):
+        noise = create_category(a["id"], f"Noise {rank}")
+        create_transaction(a["id"], a["account_id"], 100.00 - rank * 10,
+                           date(2026, 2, 15), category_id=noise)
+
+    january = _slot_map(client_a.get("/?month=2026-01").data.decode())
+    february = _slot_map(client_a.get("/?month=2026-02").data.decode())
+    assert january["Kept Thing"] == february["Kept Thing"]
+
+
+def test_folded_slice_has_a_neutral_hue_in_both_modes():
+    # Same reasoning as the palette test: CSS is never rendered by a request.
+    css = (Path(__file__).resolve().parents[1]
+           / "app" / "static" / "style.css").read_text()
+    light, dark = css.split("@media (prefers-color-scheme: dark)", 1)
+    for mode, block in (("light", light), ("dark", dark)):
+        match = re.search(r"--series-other:\s*(#[0-9a-fA-F]{6})", block)
+        assert match, f"{mode}: --series-other is not defined"
+        hue = match.group(1).lower()
+        series = {h.lower() for h in
+                  re.findall(r"--series-\d:\s*(#[0-9a-fA-F]{6})", block)}
+        assert hue not in series, f"{mode}: Other reuses a category hue"
+        # Achromatic on purpose — it must read as "not a category".
+        r, g, b = (int(hue[i:i + 2], 16) for i in (1, 3, 5))
+        assert max(r, g, b) - min(r, g, b) <= 24, f"{mode}: {hue} is not neutral"
