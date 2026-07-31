@@ -15,7 +15,7 @@ import re
 from datetime import date
 from pathlib import Path
 
-from app.blueprints.main import fold_chart_tail
+from app.blueprints.main import assign_series_slots, fold_chart_tail
 from tests.conftest import create_category, create_transaction
 
 # --- the redirect -------------------------------------------------------------
@@ -198,11 +198,14 @@ def test_chart_json_escapes_script_breakout(client_a, users):
 # server-built creation-order slot map, which cannot collide below palette size.
 # The palette itself lives in style.css as --series-1..8.
 
-def _slot_map(body):
-    """Pull the CATEGORY_SLOTS literal out of the rendered dashboard."""
-    match = re.search(r"const CATEGORY_SLOTS = (\{.*?\});", body)
-    assert match, "CATEGORY_SLOTS missing from the dashboard"
-    return json.loads(match.group(1))
+def _slot_map(body, var="spendingData"):
+    """category -> palette slot, read off the rendered chart payload (#111).
+
+    Replaced a shared CATEGORY_SLOTS literal: slots are now assigned per view,
+    so the expense and income charts legitimately differ and a single global map
+    can no longer express the truth."""
+    return {r["category"]: r["slot"] for r in _chart_rows(body, var)
+            if not r.get("is_other")}
 
 
 def _chart_rows(body, var="spendingData"):
@@ -452,3 +455,87 @@ def test_folded_slice_has_a_neutral_hue_in_both_modes():
         # Achromatic on purpose — it must read as "not a category".
         r, g, b = (int(hue[i:i + 2], 16) for i in (1, 3, 5))
         assert max(r, g, b) - min(r, g, b) <= 24, f"{mode}: {hue} is not neutral"
+
+
+# --- distinct colours for everything drawn (#111) -----------------------------
+#
+# Creation order alone WRAPPED at eight: slot was `creation_index % 8`, so a
+# user's 1st and 9th categories painted the same hex and, with both drawn, the
+# chart showed two identical slices. Hit in production on 0.3.0.
+#
+# ⚠️ The fix deliberately abandons #83's "colour never depends on the set drawn"
+# rule, because that rule cannot coexist with "no duplicates": a fixed
+# per-category assignment cannot keep an arbitrary 6-subset distinct with only 8
+# hues. Creation order remains the PREFERENCE, so the tests above (a new
+# category does not repaint, a month filter does not repaint) still hold in the
+# ordinary no-collision case — which is why they are unchanged.
+
+def test_assign_slots_keeps_preferred_slot_when_free():
+    rows = [{"category": c, "total": 1.0} for c in ("a", "b", "c")]
+    order = {"a": 0, "b": 3, "c": 7}
+    assert [r["slot"] for r in assign_series_slots(rows, order)] == [0, 3, 7]
+
+
+def test_assign_slots_breaks_a_wrap_collision():
+    # The production bug: index 1 and index 9 both prefer slot 1.
+    rows = [{"category": "first", "total": 9.0}, {"category": "ninth", "total": 8.0}]
+    order = {"first": 1, "ninth": 9}
+    slots = {r["category"]: r["slot"] for r in assign_series_slots(rows, order)}
+    assert slots["first"] == 1, "the earlier-created category keeps its hue"
+    assert slots["ninth"] != slots["first"], "the collision must be broken"
+
+
+def test_assign_slots_never_repeats_across_the_drawn_set():
+    # Six categories whose creation indices collide pairwise mod 8.
+    order = {f"c{i}": i for i in (0, 8, 1, 9, 2, 10)}
+    rows = [{"category": c, "total": 1.0} for c in order]
+    slots = [r["slot"] for r in assign_series_slots(rows, order)]
+    assert len(set(slots)) == len(slots), f"duplicate slots: {slots}"
+
+
+def test_assign_slots_leaves_the_folded_row_alone():
+    rows = [{"category": "a", "total": 5.0},
+            {"category": "Other", "total": 1.0, "is_other": True}]
+    out = assign_series_slots(rows, {"a": 0})
+    assert "slot" not in out[-1], "the Other row paints from its own token"
+    assert out[0]["slot"] == 0
+
+
+def test_dashboard_never_draws_two_slices_the_same_colour(client_a, users):
+    # The production regression, end to end: nine categories where the 1st and
+    # 9th created are BOTH in the top six, so both preferred slot 1.
+    a = users["a"]
+    amounts = [900, 800, 700, 600, 500, 400, 300, 200, 850]
+    for rank, amount in enumerate(amounts):
+        cat_id = create_category(a["id"], f"Cat {rank}")
+        create_transaction(a["id"], a["account_id"], float(amount), date.today(),
+                           category_id=cat_id)
+
+    rows = _chart_rows(client_a.get("/").data.decode())
+    drawn = [r for r in rows if not r.get("is_other")]
+    slots = [r["slot"] for r in drawn]
+    assert len(drawn) == 6
+    assert len(set(slots)) == len(slots), f"two slices share a colour: {slots}"
+    # Both halves of the colliding pair really are on screen.
+    names = {r["category"] for r in drawn}
+    assert {"Cat 0", "Cat 8"} <= names
+
+
+def test_expense_and_income_views_are_coloured_independently(client_a, users):
+    # The two views share one canvas but are never shown together, and their
+    # union can exceed the palette — so each is assigned on its own.
+    a = users["a"]
+    for rank in range(5):
+        cat_id = create_category(a["id"], f"Spend {rank}")
+        create_transaction(a["id"], a["account_id"], 500.0 - rank * 10,
+                           date.today(), category_id=cat_id)
+    for rank in range(5):
+        cat_id = create_category(a["id"], f"Earn {rank}", kind="income")
+        create_transaction(a["id"], a["account_id"], 900.0 - rank * 10,
+                           date.today(), transaction_type="income",
+                           category_id=cat_id)
+
+    body = client_a.get("/").data.decode()
+    for var in ("spendingData", "incomeByCategoryData"):
+        slots = list(_slot_map(body, var).values())
+        assert len(set(slots)) == len(slots), f"{var} repeats a colour: {slots}"

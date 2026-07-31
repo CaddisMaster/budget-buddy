@@ -70,12 +70,11 @@ def upcoming_occurrences(next_due, frequency, anchor_day, second_day,
 # complete per-category figures. The card's own total is derived from cash_flow,
 # not from this list, so folding cannot move it.
 #
-# ⚠️ This does NOT fix the palette wrap, contrary to what #108 assumed. A slot is
-# CREATION order, not rank, so a user whose 1st- and 9th-created categories are
-# both top-6 spenders still gets two identical slices. Folding lowers the odds;
-# only set-membership-dependent colouring would remove it, and that is precisely
-# what #83 rejected and what test_dashboard_merge.py now forbids. Tracked
-# separately — do not "fix" it here.
+# ⚠️ The fold does NOT by itself fix the palette wrap, contrary to what #108
+# assumed — but it is what makes the real fix possible. Capping the chart at 6
+# real slices against 8 hues guarantees a free hue exists, which is the
+# precondition assign_series_slots() below relies on (#111). Before the fold,
+# probing for a free slot could simply fail.
 def fold_chart_tail(rows, limit=6, label='Other'):
     """Top `limit` rows by total; the remainder summed into one entry. Pure.
 
@@ -97,6 +96,58 @@ def fold_chart_tail(rows, limit=6, label='Other'):
         'is_other': True,
         'folded': len(tail),
     }]
+
+
+# Palette-slot assignment (#111). Creation order alone WRAPPED: slot was
+# `creation_index % 8`, so a user's 1st and 9th categories painted the same hex,
+# and if both were drawn the chart showed two identical slices — the exact bug
+# #83 set out to kill, resurfacing at a different input size. Seen in production
+# on 0.3.0 with "Monthly Bills" and "Food & Dining".
+#
+# ⚠️ The rule this REPLACES — "colour must be a pure function of the category,
+# never of the set drawn" (#83) — is mathematically incompatible with "no two
+# drawn slices share a colour". A fixed per-category assignment cannot keep an
+# arbitrary 6-subset distinct unless there are as many hues as categories, and
+# #83's own validation caps the palette at 8. One of the two had to give.
+#
+# What makes giving it up safe NOW is the #108 fold: at most 6 real slices are
+# drawn from 8 hues, so a free hue ALWAYS exists and probing always succeeds.
+# #83 rejected probing when 10+ slices could be drawn and it would have failed
+# anyway. The fold changed that arithmetic.
+#
+# Creation order is still the PREFERENCE, so a category keeps its familiar hue
+# and only a genuinely colliding one moves.
+def assign_series_slots(rows, category_order, palette_size=8):
+    """Give every drawn row a DISTINCT palette slot. Pure.
+
+    Preference is creation order (`category_order`), earliest-created wins a
+    contested slot, and anything displaced takes the lowest free one. Rows
+    flagged is_other are left alone — the folded slice paints from its own
+    achromatic token, not from the palette.
+
+    Only the drawn set is considered, so the expense and income views are
+    assigned INDEPENDENTLY: they share one canvas but are never on screen
+    together, and their union can exceed the palette."""
+    real = [r for r in rows if not r.get('is_other')]
+    ordered = sorted(real, key=lambda r: category_order.get(r['category'], 0))
+    used, chosen = set(), {}
+    for r in ordered:                       # pass 1 — preferred slot, if free
+        pref = category_order.get(r['category'], 0) % palette_size
+        if pref not in used:
+            used.add(pref)
+            chosen[r['category']] = pref
+    for r in ordered:                       # pass 2 — displaced take lowest free
+        name = r['category']
+        if name in chosen:
+            continue
+        free = next((c for c in range(palette_size) if c not in used), None)
+        if free is None:                    # >palette_size drawn: unreachable
+            chosen[name] = category_order.get(name, 0) % palette_size
+        else:
+            used.add(free)
+            chosen[name] = free
+    return [r if r.get('is_other') else {**r, 'slot': chosen[r['category']]}
+            for r in rows]
 
 
 @bp.route('/sw.js')
@@ -368,18 +419,13 @@ def index():
     account_data = [{'account': r[0], 'balance': float(r[1])} for r in account_balances]
     budget_chart_data = [{'category': r[0], 'budget': float(r[1]), 'actual': float(r[2])} for r in budget_data]
     day_of_week_data = [{'day': r[1].strip(), 'total': float(r[2])} for r in spending_by_day]
-    # Narrowed to the categories the doughnut can actually paint (both pill
-    # views, post-fold), so the page doesn't carry the user's whole category
-    # list. The slot VALUES stay global creation order, which is what keeps a
-    # colour stable when a filter changes the set — and equally when the FOLD
-    # changes it. Restricting the keys doesn't touch that.
-    #
-    # The synthetic "Other" row has no entry here unless the user happens to own
-    # a real category by that name, and even then the template ignores it: the
-    # folded slice is coloured off its is_other flag, not off a slot.
-    category_slots = {d['category']: category_order[d['category']]
-                      for d in spending_data + income_by_category_data
-                      if d['category'] in category_order}
+    # Each drawn row carries its OWN palette slot (#111), assigned per view so
+    # the two are guaranteed internally distinct. This replaced a shared
+    # name→slot map, which could not express "these two views colour the same
+    # category differently" and wrapped past eight categories.
+    spending_data = assign_series_slots(spending_data, category_order)
+    income_by_category_data = assign_series_slots(income_by_category_data,
+                                                  category_order)
 
     has_transactions = bool(cash_flow) or bool(spending)
 
@@ -416,7 +462,6 @@ def index():
         account_data=account_data,
         budget_chart_data=budget_chart_data,
         day_of_week_data=day_of_week_data,
-        category_slots=category_slots,
         months=months,
         selected_month=selected_month,
         has_transactions=has_transactions,
