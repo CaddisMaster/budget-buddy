@@ -279,11 +279,16 @@ migrations are applied by hand rather than by editing `schema.sql` alone.
 
 ### Environment variables
 
-The server's `.env` sets everything in `.env.example` plus the two
-production-only switches:
+The server's `.env` sets everything in `.env.example` plus the production-only
+values below. ⚠️ **`.env.example` is not deployed to the Droplet** — it lives only
+in the repository, so this list is the operative one for the server.
 
 - `COOKIE_SECURE=1` — Secure cookies and HSTS
 - `ENABLE_DIGEST_SCHEDULER=1` — starts the weekly digest scheduler
+- `FEEDBACK_GITHUB_TOKEN` — enables in-app bug reports and feature suggestions
+  (#64). A **fine-grained PAT scoped to this one repository, with `issues: write`
+  and nothing else** — so a leak means issue spam, not code access. Deliberately
+  *not* named `GITHUB_TOKEN`, which is a magic name in GitHub Actions.
 
 > **`ENABLE_DIGEST_SCHEDULER=1` is only safe under single-worker Gunicorn.** The
 > image runs `--workers 1 --threads 4`. With multiple *workers*, APScheduler
@@ -362,6 +367,53 @@ and the full test suite passes connected as the role.
 ---
 
 ## 6. Deploying
+
+### Before cutting the Release — check for new environment variables
+
+⚠️ **A missing environment variable is the one deploy failure that produces no
+signal at all.** Nothing in `release.yml` writes or validates `.env` — its only
+reference to the file is `source ./.env`, to read database credentials for the
+pre-deploy dump. A feature gated on an unset variable does not error, does not
+fail `/healthz`, and logs nothing; it is simply absent. **That is identical to the
+feature working as designed**, which is what makes it easy to miss for weeks.
+
+So, before publishing the Release:
+
+```bash
+# Releases are cut on GitHub, so their tags are NOT in your clone until you ask.
+# Without this the next command dies with "fatal: bad revision".
+git fetch --tags
+
+# What variables did this release introduce?
+git diff v<last-version>..HEAD -- .env.example
+```
+
+If it names anything new, set it on the Droplet **before** approving the deploy:
+
+```bash
+# on the Droplet, as deploy
+cd /opt/budget-buddy
+vi .env                                   # add the variable
+docker compose up -d --force-recreate web
+```
+
+⚠️ **Order matters.** The deploy job's `up -d` will *not* pick up an `.env` edit
+made after it runs — the container is already up with the old environment. Either
+set the variable before approving, or force-recreate afterwards.
+
+Then confirm the gate actually flipped, rather than assuming:
+
+```bash
+docker compose exec web python -c \
+  "from app.github import feedback_enabled; print(feedback_enabled())"
+```
+
+Applies to every optional-feature gate — `ANTHROPIC_API_KEY`, `RESEND_API_KEY`,
+the VAPID keys, `FEEDBACK_GITHUB_TOKEN`. Those earlier ones were only set reliably
+because the feature *was* the point of that release; the risk appears when a gated
+feature ships bundled with unrelated work.
+
+### The deploy itself
 
 **The normal path is not manual.** Publishing a GitHub Release runs
 `.github/workflows/release.yml`, which builds the image, pushes it to ghcr,

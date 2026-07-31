@@ -749,7 +749,10 @@ A `sweeper` worker agent (Sonnet, tools: Read/Grep/Glob/Edit only) is defined in
   **fine-grained PAT scoped to this repo with `issues: write` and nothing else**, so a leak means
   issue spam rather than code access. ⚠️ Deliberately NOT named `GITHUB_TOKEN` — that is a magic
   name in GitHub Actions. After editing `.env`, `docker compose up -d --force-recreate web`.
-  `.env` is gitignored + never baked into the image.
+  `.env` is gitignored + never baked into the image. ⚠️ **A missing env var is the one deploy
+  failure with NO signal** — nothing in `release.yml` writes or validates `.env`, and a gated
+  feature whose variable is unset is indistinguishable from that feature working as designed.
+  `RUNBOOK.md` §6 carries the pre-release check (`git diff v<last>..HEAD -- .env.example`).
 - **Schema changes:** `schema.sql` only runs on a *fresh* DB. For prod, apply the numbered `sql/`
   migration **by hand** — pg_dump first. **Order matters:** additive migrations (new
   columns/tables) go **BEFORE** `docker compose pull` (new code must never query a missing
