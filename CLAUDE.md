@@ -137,35 +137,47 @@ landing/             # Static landing page at seandesmet.com
 
 ## Current Status
 
-### `0.3.0` is PREPPED but NOT CUT and NOT DEPLOYED (2026-07-30)
+### Shipped: `0.3.0` (2026-07-31)
 
-⚠️ **Prod still runs `0.2.0`.** `0.3.0` exists only as prepped files on `main` — no tag,
-no Release, no deploy. Do not describe it as shipped anywhere until the release workflow
-has gone green.
+**Prod runs `ghcr.io/caddismaster/budget-buddy:0.3.0`** — released, deployed and verified
+2026-07-31. `main` is level with the release; **nothing is merged-but-undeployed.**
 
-**#112 / PR #113** did the prep: the `.whatsnew` strip moved to `v0.3.0` (three blocks —
-Pending transactions, the two doughnut changes as one story, the CSV `Kind` column under
-Small things), and `CHANGELOG.md`'s `## [Unreleased]` rolled into `## [0.3.0]` with a
-fresh empty `Unreleased` and updated compare links. **The strip is the only version string
-in app code** — there is no version constant in Python.
+The bundle was four blocks that had accumulated since `0.2.0` — the triaged backlog
+(#104–107), the doughnut fold (#110), automated issue triage (#85–99) and the dev tooling
+pass (#73–81). Only the first two are user-facing, which is why the What's-new strip
+carries three blocks and not ten. Release prep was **#112 / PR #113**; **the `.whatsnew`
+strip is the only version string in app code** — there is no version constant in Python,
+so a release touches exactly two files plus the notes.
 
-Bundle: four blocks merged since `0.2.0` — the triaged backlog (#104–107), the doughnut
-fold (#110), automated issue triage (#85–99), and the dev tooling pass (#73–81). Only the
-first two are user-facing, which is why the strip has three blocks and not ten.
+**One additive migration** (`sql/33_pending_transactions.sql`) applied automatically before
+the image pull, which is the correct order for an additive change.
 
-⚠️ **One additive migration ships with it** (`sql/33_pending_transactions.sql`) — additive
-goes BEFORE the image pull, which `release.yml` already handles. Not a manual step, but it
-is why this is not a pure image swap.
+Deploy verified independently of the workflow, the same way `0.2.0` was: `/healthz` returns
+`{"database":"ok","status":"ok"}` over valid TLS, and — the check that actually proves the
+new **image** is live rather than merely that the app is up — **prod's `css_v` equals the
+md5 of `style.css` on `main`** (`24978b6a`), with `--series-other` present in both mode
+blocks of the served stylesheet. `css_v` is computed at startup from the file contents, so
+it cannot match unless the running container holds this commit's CSS. Worth reusing.
 
-**The ship date is `2026-07-31`** — the strip badge and the `## [0.3.0]` changelog heading
-both carry it and must stay in step. Correct both if the Release actually gets cut later.
+⚠️ **Process notes from this release, worth not repeating:**
 
-### On `main`, NOT yet deployed — the doughnut fold (2026-07-30)
+- **A PR merged out from under an in-flight session.** PR #113 was merged while a follow-up
+  commit was being pushed to its branch; the commit landed on the branch but never reached
+  `main`, and the symptom — PR head frozen at the older SHA while the branch ref moved on —
+  reads exactly like GitHub lag. It is not. **`gh pr view --json state` distinguishes them
+  in one call**; ten minutes went into waiting for a sync that was never coming. The fix is
+  a fresh branch off `main` and a new PR (#116).
+- The squash-merge of #110 also meant a stacked branch had to be **rebased** onto `main`
+  (`git rebase --onto origin/main <old-base>`), not merely retargeted — retargeting alone
+  left the squashed commits showing as unmerged and the PR diff carrying six files.
+- **CI only triggers on PRs targeting `main`** (`ci.yml`: `pull_request: branches: [main]`),
+  so a stacked PR shows "no checks reported" and looks broken when it is merely unrunnable.
+
+### Shipped in `0.3.0` — the doughnut fold (2026-07-30)
 
 **PR #110** closing **#108**: the category doughnut now draws the **top six
 categories + one neutral "Other"** — seven segments max, both pill-toggle views.
-Tests **706 → 717**. One `### Changed` changelog entry. No migration. Prod still
-runs `0.2.0`.
+Tests **706 → 717**. One `### Changed` changelog entry. No migration.
 
 - `fold_chart_tail()` (`main.py`, pure, alongside the occurrence walkers) runs in
   the **payload builder, never the SQL rollup** — budgets/insights/forecasts/CSV
@@ -191,12 +203,12 @@ be re-filed. Also verified without a browser: token names byte-identical between
 and served stylesheet, and the fold checked against the real dev dashboard end to end
 (7 segments, payload sum matching `SUM(amount)` exactly).
 
-### On `main`, NOT yet deployed — the triaged backlog, built (2026-07-29)
+### Shipped in `0.3.0` — the triaged backlog (2026-07-29)
 
 Four PRs closing three issues: **#104** (#83 doughnut colours), **#105** (#87 CSV
 `Kind` column), **#106** (the `is_pending` migration, standing alone), **#107**
 (#86 Pending transactions). Tests **668 → 706**. Two `### Fixed` changelog
-entries and one `### Added`. Prod still runs `0.2.0`.
+entries and one `### Added`.
 
 **One additive migration, `sql/33_pending_transactions.sql`** — applies BEFORE
 the image pull, which `release.yml` already does automatically.
@@ -226,7 +238,7 @@ criterion is **not fully met and cannot be by any palette**. Do not "fix" it by
 adding a ninth hue. ✅ **Addressed in #110** (2026-07-30) by folding to top-6 +
 "Other" — see the block above.
 
-### On `main`, NOT yet deployed — automated issue triage (2026-07-29)
+### Shipped in `0.3.0` — automated issue triage (2026-07-29)
 
 Six PRs (#85, #89, #92, #95, #97, #99) closing #84, #88, #91, #94, #96, #98.
 **No app code changed** — every one touched `.github/workflows/claude-triage.yml`
@@ -239,10 +251,10 @@ issues produced two comments nobody read (~$1 of subscription budget), while all
 three genuinely useful runs were dispatched deliberately. A dispatch ignores the
 label on purpose — hand-written issues are the ones most worth a second read.
 
-### On `main`, NOT yet deployed — developer tooling pass (2026-07-28)
+### Shipped in `0.3.0` — developer tooling pass (2026-07-28)
 
 Five PRs closing seven issues, **all tooling, zero user-facing change**. Sitting under
-`## [Unreleased]` in `CHANGELOG.md`; prod still runs `0.2.0`.
+`## [Unreleased]` in `CHANGELOG.md` at the time; shipped in `0.3.0`.
 
 - **#69 / PR #73** — `scripts/seed_dev.py`, a synthetic 6-month dev dataset from one command.
 - **#70 / PR #74** — `Dockerfile` gained a `dev` stage; `test.sh` execs into the running
@@ -262,8 +274,8 @@ demo data is gone deliberately. Reseed with
 
 ### Shipped: `0.2.0` (2026-07-28)
 
-**Prod runs `ghcr.io/caddismaster/budget-buddy:0.2.0`** — released, deployed and verified
-2026-07-28. The first FEATURE release under the rebuilt envelope (`0.1.0` was a baseline
+⚠️ **Historical — superseded by `0.3.0` (see above).** Released, deployed and verified
+2026-07-28; prod no longer runs this tag. The first FEATURE release under the rebuilt envelope (`0.1.0` was a baseline
 snapshot), and the first end-to-end exercise of issue → PR → Release → approval gate →
 automated deploy carrying real behaviour.
 
@@ -277,8 +289,6 @@ pre-deploy dump is timestamped BEFORE them, the `db` container was NOT recreated
 web's 23s — `pull web` held), `/healthz` 200 over TLS, and `sw.js` serves `bb-static-v3` with
 the push handlers. **Push delivery confirmed on the actual phone** — the one claim no test can
 make.
-
-`main` is currently level with the release; nothing is merged-but-undeployed.
 
 Open and deliberately NOT being worked: **#52**, transient Docker Hub pull failures in CI —
 record-and-watch. The one observed error was a *timeout*, not a `429`, so the obvious fix
@@ -334,8 +344,10 @@ Smoke aside carried over: POSTing `/insights/generate` without the form's year/m
 CURRENT month, not the last complete one — the UI always sends them; only bites hand-rolled
 requests.
 
-**Roadmap** — the issue tracker is authoritative. **The `0.2.0` milestone is CLOSED and
-shipped** (see above). The `0.3.0` roadmap is not grouped yet and nothing is claimed.
+**Roadmap** — the issue tracker is authoritative. **`0.2.0` and `0.3.0` are both CLOSED and
+shipped** (see above). The `0.4.0` roadmap is not grouped yet and nothing is claimed. The
+three open candidates are **#64** (settled, not built), **#111** (new, may be a
+close-as-wontfix) and **#8** (unblocked but risky) — all described below.
 
 **#64** — let users report bugs/suggest features from inside the app, auto-filing GitHub
 issues. ✅ **The privacy fork that deferred it twice is SETTLED (Sean, 2026-07-30): warn
