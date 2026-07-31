@@ -113,6 +113,7 @@ from app.blueprints import (
     admin,
     agent,
     analytics,
+    announce,
     ask,
     auth,
     budgets,
@@ -149,10 +150,14 @@ app.register_blueprint(agent.bp)
 app.register_blueprint(push.bp)
 app.register_blueprint(reminders.bp)
 app.register_blueprint(feedback.bp)
+app.register_blueprint(announce.bp)
 
 # `flask send-digests` / `flask run-daily` — run either scheduled job by hand.
+# `flask announce-release` is NOT scheduled: the release workflow runs it once,
+# inside the image it just deployed.
 app.cli.add_command(digests.send_digests_command)
 app.cli.add_command(reminders.run_daily_command)
+app.cli.add_command(announce.announce_release_command)
 
 # In-process scheduler. ENABLE_DIGEST_SCHEDULER is the master switch, so it runs
 # ONLY in prod (never under pytest, and locally only if deliberately enabled).

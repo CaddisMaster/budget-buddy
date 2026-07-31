@@ -10,6 +10,17 @@ this project uses the `0.x` versioning scheme described in
 
 ### Added
 
+- **A notification when Budget Buddy is updated.** When a new version goes
+  live, every device that has notifications turned on gets a short note saying
+  so, with a one-line summary of what changed. Tapping it opens the dashboard,
+  where the fuller "what's new" summary for that release is waiting.
+
+  This uses the notification switch you already have — the one on the Profile
+  page — rather than adding a second one to manage. That section now says so
+  plainly: it covers bill reminders **and** update notices, and it is the same
+  single switch for both. Nothing changes for anyone who has notifications
+  turned off.
+
 - **Report a bug or suggest a feature from inside the app.** A form on the
   Profile page files the report straight into the project's issue tracker, so a
   problem can be reported in the reporter's own words rather than relayed
