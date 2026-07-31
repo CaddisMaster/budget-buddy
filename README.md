@@ -66,7 +66,7 @@ only through a fixed set of read-only, user-scoped, parameter-validated tools.
 
 | Layer | Technology |
 |---|---|
-| Backend | Python 3.11, Flask, Gunicorn |
+| Backend | Python 3.14, Flask, Gunicorn |
 | Database | PostgreSQL 16 |
 | Frontend | Jinja2, HTMX, Chart.js, hand-written CSS |
 | AI | Anthropic Claude API |

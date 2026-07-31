@@ -5,7 +5,7 @@
 # workflow, and a bare `docker build .`. If `dev` ever becomes the last stage,
 # every one of them silently starts shipping pytest and the dev dependencies to
 # production. Add new stages ABOVE prod, never below it.
-FROM python:3.11-slim AS base
+FROM python:3.14-slim AS base
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

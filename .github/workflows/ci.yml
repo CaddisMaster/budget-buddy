@@ -154,7 +154,7 @@ jobs:
       - uses: actions/setup-python@v7
         if: needs.changes.result != 'success' || needs.changes.outputs.app == 'true'
         with:
-          python-version: "3.11"
+          python-version: "3.14"
           cache: pip
 
       - name: Install dependencies
@@ -223,7 +223,7 @@ jobs:
       - uses: actions/setup-python@v7
         if: needs.changes.result != 'success' || needs.changes.outputs.sql == 'true'
         with:
-          python-version: "3.11"
+          python-version: "3.14"
           cache: pip
 
       - name: Install psycopg2
@@ -378,6 +378,10 @@ jobs:
       # fully green with all 579 tests having executed on the runtime being
       # replaced. So when the shipped runtime itself changes, run the suite
       # inside the built image as well.
+      #
+      # That exact bump was then made deliberately (#8), and this step is what
+      # produced the evidence for it — which is why #8 was blocked on this step
+      # existing (#7) rather than being waved through on a green tick.
       #
       # Gated because it roughly doubles the test path. A Dockerfile or
       # requirements change is rare; ordinary application PRs keep the fast
