@@ -8,6 +8,24 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-31
+
+Carries everything in `0.4.0`, which was tagged but **never deployed** — it was
+withdrawn at the approval gate, before reaching the server, so no version of it
+ever reached anyone.
+
+### Changed
+
+- **The update notification now says the same thing every time** — "Check out
+  what's new in the app." — instead of trying to summarise the release in the
+  notification itself. A lock-screen notification is glanced at, not read, and
+  the detail is already waiting on the dashboard where the notification leads.
+
+  Beyond the wording, this removes the machinery that summarising required: the
+  release notes no longer travel from the build system to the server at all, so
+  the text that a human types when publishing a release can no longer influence
+  anything that runs there.
+
 ## [0.4.0] - 2026-07-31
 
 ### Added
@@ -487,7 +505,8 @@ lineage, most recent first:
 - **v9.0** — conversational transaction entry (first AI feature)
 - **v1–v8** — core CRUD and deployment, UI overhaul, multi-user authentication, blueprints and pytest, ownership guards, transfers and goals, smart budgets, HTMX inline CRUD and CI
 
-[Unreleased]: https://github.com/CaddisMaster/budget-buddy/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/CaddisMaster/budget-buddy/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/CaddisMaster/budget-buddy/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/CaddisMaster/budget-buddy/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.2.0...v0.3.0

@@ -243,28 +243,23 @@ jobs:
           HOST: ${{ secrets.DROPLET_HOST }}
           USER_NAME: ${{ vars.DROPLET_USER }}
           VERSION: ${{ needs.build-push.outputs.version }}
-          # ⚠️ Read as an env var, NEVER inlined into `run:`. This is free text a
-          # human typed into the Release form; `${{ }}` substitution happens
-          # before the shell sees the script, so an inline reference would let a
-          # backtick or $(...) in a release note execute on this runner.
-          RELEASE_BODY: ${{ github.event.release.body }}
         run: |
-          # ⚠️ The remote command below is built by string interpolation into an
-          # ssh argument, so the notes must not travel as shell text. base64's
-          # alphabet (A-Za-z0-9+/=) contains no shell metacharacters, so the
-          # ENCODED form is safe to interpolate; it is decoded on the far side
-          # into a quoted variable and handed to the container as an env var.
-          NOTES_B64="$(printf '%s' "$RELEASE_BODY" | base64 -w0)"
-
+          # The notification body is a fixed line inside the image (#131), so the
+          # ONLY thing crossing this boundary is the version — a tag this
+          # workflow derived itself, not free text a human typed. That is what
+          # removes the injection surface entirely rather than guarding it: an
+          # earlier revision carried the Release notes and needed a base64 hop to
+          # keep quotes and $(...) out of the remote shell. Do not reintroduce a
+          # human-authored string here without bringing that guard back.
+          #
           # A failed announcement must never fail the release — the deploy has
           # already succeeded and been verified. Warn and move on.
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
               "${USER_NAME}@${HOST}" \
               "set -e
                cd /opt/budget-buddy
-               NOTES=\"\$(printf '%s' '${NOTES_B64}' | base64 -d)\"
                TAG='${VERSION}' docker compose run --rm --no-deps -T \\
-                 -e DB_HOST=db -e RELEASE_NOTES=\"\$NOTES\" \\
+                 -e DB_HOST=db \\
                  web flask announce-release --version '${VERSION}'" \
             || echo "::warning::Release deployed, but the push announcement failed."
 
