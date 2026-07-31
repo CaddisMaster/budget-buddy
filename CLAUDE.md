@@ -157,8 +157,8 @@ first two are user-facing, which is why the strip has three blocks and not ten.
 goes BEFORE the image pull, which `release.yml` already handles. Not a manual step, but it
 is why this is not a pure image swap.
 
-⚠️ **The badge date `2026-07-30` is a placeholder** — correct it to the actual ship date if
-the Release is cut on a different day.
+**The ship date is `2026-07-31`** — the strip badge and the `## [0.3.0]` changelog heading
+both carry it and must stay in step. Correct both if the Release actually gets cut later.
 
 ⚠️ **Still nobody has looked at the rendered doughnut in a browser** (see below). `0.3.0`
 ships that chart. One glance before cutting the Release.

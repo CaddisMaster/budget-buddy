@@ -8,7 +8,7 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-07-30
+## [0.3.0] - 2026-07-31
 
 ### Added
 
