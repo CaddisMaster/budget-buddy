@@ -13,7 +13,7 @@ A personal finance tracking web app built with Flask, PostgreSQL, and Docker. De
 
 ```
 app/
-  __init__.py        # Flask app + extensions (Login, Bcrypt, Limiter, CSRF); registers the 19 blueprints; cookie flags + @after_request security headers (Secure/HSTS gated on COOKIE_SECURE); starts the APScheduler on ENABLE_DIGEST_SCHEDULER=1 ALONE and registers each job with its OWN gate (weekly digest ← mail_enabled(); daily tasks ← always — see the scheduler gotcha; safe only under single-worker gunicorn); |money template filter (thousands-sep, emits the NUMBER only — display templates ONLY: AI fact-builders / chart |tojson payloads / form input values stay raw, a comma'd value fails parse_positive_amount); css_v + brand_svg Jinja globals (both computed once at startup: the style.css content hash, and icons/icon.svg inlined |safe in base.html so sidebar mark + favicon share one source)
+  __init__.py        # Flask app + extensions (Login, Bcrypt, Limiter, CSRF); registers the 20 blueprints; cookie flags + @after_request security headers (Secure/HSTS gated on COOKIE_SECURE); starts the APScheduler on ENABLE_DIGEST_SCHEDULER=1 ALONE and registers each job with its OWN gate (weekly digest ← mail_enabled(); daily tasks ← always — see the scheduler gotcha; safe only under single-worker gunicorn); |money template filter (thousands-sep, emits the NUMBER only — display templates ONLY: AI fact-builders / chart |tojson payloads / form input values stay raw, a comma'd value fails parse_positive_amount); css_v + brand_svg Jinja globals (both computed once at startup: the style.css content hash, and icons/icon.svg inlined |safe in base.html so sidebar mark + favicon share one source)
   pusher.py          # outbound Web Push seam (#33, the mailer.py twin). push_enabled() gate, public_key(), send_push(), PushError + PushGone (404/410 = the subscription is DEAD, caller deletes it; anything else is transient and retried tomorrow), single _call_webpush() network seam tests stub. NEVER touches the DB
   mailer.py          # outbound email seam (Resend). mail_enabled() gate (twin of ai_enabled()), send_email(), MailError, single _call_resend() network seam tests stub. NOT named email.py (would shadow stdlib)
   github.py          # outbound GitHub issue seam (#64, the mailer.py/pusher.py triplet's fourth). feedback_enabled() gate (env FEEDBACK_GITHUB_TOKEN — deliberately NOT named GITHUB_TOKEN, which is a magic name in Actions), create_issue(), GitHubError, single _call_github() network seam tests stub. Uses stdlib urllib, NOT requests (requests is undeclared — only transitively present via pywebpush). NEVER touches the DB
@@ -34,6 +34,7 @@ app/
     goals.py         # goals (save + payoff) + compute_goal_projection(..., apr=None) — payoff goals feed the linked card's apr (GOAL_SELECT carries a.apr AS account_apr; _goal_view reads rows by ATTRIBUTE): est_monthly_interest always in the dict (None unless apr + debt), pace date = bounded 600-month simulation (pace ≤ interest → None + Behind), required_per_month amortized; Goal Coach (compute_goal_coach_facts() + load_goal_coach() + POST /goals/coach/generate, cached in goal_coach); GET /goals gates the card on ai_enabled() + in-progress goals
     push.py          # POST /push/subscribe|unsubscribe (#33) — one row per DEVICE, endpoint is the identity (globally UNIQUE, so re-subscribing upserts); validates the posted JSON, scopes every write to current_user. Profile UI gated on push_enabled()
     feedback.py      # POST /feedback (#64) — in-app bug/feature reports filed as GitHub issues via github.py. ⚠️ The repo is PUBLIC and the body carries ONLY what the user typed: no username, no account names, no balances, no request context (settled 2026-07-30). Do NOT 'improve triage' by attaching context — that is the declined feature, not an oversight. Kind resolved against a fixed allowlist (a form value must never become a label); 5/hour rate limit; form on Profile, gated on feedback_enabled()
+    announce.py      # the release broadcast (#115). broadcast_release(version) pushes to EVERY row of push_subscriptions — the ONE push path deliberately NOT scoped to a user, which is why it can't live in pusher.py (no DB there), same reason reminders.py exists. Gated on push_enabled() ALONE; per-device try/except; PushGone deletes the row, a transient PushError KEEPS it. `flask announce-release --version X` CLI, run by release.yml AFTER the /healthz verify and skipped for a pre-release. ⚠️ build_release_notification(version) takes NO notes argument (#131) — the body is a FIXED line, see the gotcha. No idempotency marker: `release: published` fires once by construction (a workflow re-run is the only double-send risk, accepted)
     reminders.py     # the DAILY job (#33). run_daily_tasks() = materialize_all_users() THEN send_due_reminders(); `flask run-daily` CLI. Materialization is UNGATED (see the scheduler gotcha); reminders gate on push_enabled(), enumerate tomorrow via main.upcoming_occurrences (so #32's end_date is honoured), and claim each occurrence in reminder_log with ON CONFLICT DO NOTHING BEFORE sending — a failed send is deliberately NOT retried (a duplicate notification is worse than a missed one)
     schedules.py     # recurring income/expense schedules (Scheduled tab); run_due_schedules() + compute_initial_semimonthly_due()
     insights.py      # monthly AI digest card on the dashboard; compute_month_facts() (deterministic figures) + POST /insights/generate (narrate via ai.py, cache in insights table)
@@ -135,6 +136,25 @@ landing/             # Static landing page at seandesmet.com
 - **Param validation:** same rule for query/form params — `?month` → `parse_month_param()`, `?page` → `parse_page_param()`, posted FK ids → `parse_int_param()`. A raw string into a psycopg2 `%s` against an int column raises (= 500)
 - **Write-side FK ownership:** when a form posts a `category_id`/`account_id`, validate it belongs to the user *before* the INSERT/UPDATE — `validate_category_account()` in transactions.py, folded into the route's validation-error path. Used by transaction new/edit, schedule create/edit, bulk edit, cleanup apply
 - **Error messages:** unexpected write failures show `helpers.GENERIC_ERROR` and log the real exception via `current_app.logger.exception()` — never flash/toast `str(e)` (psycopg2 text leaks constraint names/SQL). The two FK-delete sites keep their friendly "Cannot delete — in use" branch
+- ⚠️ **The release notification body is a FIXED line** — `announce.BODY`, "Check out
+  what's new in the app." — and `build_release_notification()` takes **only a version**
+  (#131, reversing #115's settled "the text comes from the Release notes body", before
+  it ever deployed). This is not merely wording: carrying human-authored text is what
+  required a markdown flattener, a word-boundary truncator, an empty-notes fallback, a
+  4KB payload ceiling to reason about, **and a base64 hop in `release.yml`** — the
+  release body is free text and the deploy step builds its remote command by string
+  interpolation, so a backtick or `$(...)` in a release note would execute on the
+  Droplet. With nothing to carry, that surface is **deleted rather than guarded**; the
+  only thing interpolated now is the version, a tag the workflow derived itself.
+  `test_the_builder_takes_no_release_text` asserts the signature so reintroducing the
+  argument is loud. **If you ever add human-authored text back, the base64 guard must
+  come back with it.**
+- ⚠️ **One push switch covers TWO things, and `profile.html` is the consent record.**
+  The same per-device subscription sends bill reminders *and* release notifications, so
+  the Profile copy names both. A third kind of notification must be added to that
+  paragraph **in the same change that starts sending it** — shipping the send first
+  widens an existing consent silently.
+  `test_profile_copy_names_both_kinds_of_notification` is the net (Jinja fails silent).
 - **Cache-bust is automatic:** the stylesheet `?v=` is `css_v` (startup md5 of style.css) — nobody bumps a number. base.html AND login.html (which doesn't extend base) both read it. ⚠️ **Local dev consequence:** the source is now bind-mounted, and `css_v` is computed ONCE at import — so editing `style.css` changes nothing until `docker compose restart web` (~2s). Python and template edits ARE live. A CSS change that "does nothing" is this, not a broken mount
 - **Local dev runs bind-mounted with live reload** (`docker-compose.override.yml`, local-only — the Droplet has no override, so production gets none of it): `.:/app` over the image's `COPY`, gunicorn `--reload`, and `TEMPLATES_AUTO_RELOAD=1`. **Both reload mechanisms are needed** — `--reload` watches Python modules only, so without the env var (read in `app/__init__.py`) an edited template reaches the container and is silently ignored, which looks exactly like the mount failing. Anonymous volumes mask `/app/.venv`, `/app/.ruff_cache` and `/app/.pytest_cache`: a bind mount ignores `.dockerignore`, and `.venv` holds macOS-native wheels that are wrong for Linux
 - **`.venv/` is EDITOR-ONLY** — it exists so the language server can resolve `flask`/`psycopg2`/`pytest`; nothing is ever run from it and the app and tests stay in containers. VS Code auto-discovers it in the workspace root, so **no `.vscode/` config is committed** and none is needed. It must be **Python 3.14** (Homebrew): the Mac's system 3.9 cannot evaluate `app/ai.py`'s `str | None` annotations and reports working code as broken. Gitignored (both `venv/` and `.venv/`) and in `.dockerignore`
@@ -149,20 +169,48 @@ landing/             # Static landing page at seandesmet.com
 
 ## Current Status
 
-### On `main`, NOT yet deployed (2026-07-31)
+### Shipped: `0.4.1` (2026-07-31) — feedback, release notifications, Python 3.14
 
-**Prod still runs `0.3.1`.** Two PRs merged after that release and are sitting on
-`main` unreleased. Tests **723 → 741**. No migration in either.
+**Prod runs `ghcr.io/caddismaster/budget-buddy:0.4.1`.** `main` is level with the
+release; nothing is merged-but-undeployed. Tests **723 → 757**. No migration.
 
-- **PR #120 / #64 — in-app bug reports and feature suggestions.** A form on Profile
-  files an issue into this repository via the new `app/github.py` seam. ⚠️ **It does
-  nothing in production until a `FEEDBACK_GITHUB_TOKEN` is in the Droplet `.env`** —
-  until then `feedback_enabled()` is False and the UI is absent, which is the
-  designed state, not a fault. The `from-app` label already exists in the repo;
-  without it the API rejects the issue with a 422. Needs a **fine-grained PAT scoped
-  to this repo, `issues: write` only**.
-- **PR #121 / #8 — the image moved Python 3.11 → 3.14.** Local dev has been rebuilt
-  onto it (`docker compose up -d --build web`) and the suite is green there.
+- **PR #120 / #64 — in-app bug reports and feature suggestions**, via the
+  `app/github.py` seam. ✅ **`FEEDBACK_GITHUB_TOKEN` is now set on the Droplet** and
+  verified end to end: the first report submitted through the form filed **#133**
+  with `enhancement` + `from-app`. Until that token existed the UI was simply absent,
+  which is the designed state and indistinguishable from breakage — see the env-var
+  gotcha below.
+- **PR #126 / #115 — a push notification when a release is cut** (`app/blueprints/announce.py`).
+- **PR #132 / #131 — the notification body is a FIXED line**, reversing #115's
+  "text comes from the Release notes" before it ever deployed. See below.
+- **PR #121 / #8 — the image moved Python 3.11 → 3.14.**
+- **PR #129 / #128 — xdist endpoint isolation** (test-only). See the testing gotcha.
+
+⚠️ **`v0.4.0` was tagged and WITHDRAWN, never deployed.** It reached the approval gate
+and was cancelled there — the deploy job never started, so the Droplet never received
+it and no notification was sent (verified: container uptime unchanged, no new
+pre-deploy dump). The tag and Release still exist, retitled "withdrawn, superseded by
+v0.4.1"; cut tags are never rewritten. `0.4.1` carries the identical bundle plus #132.
+**Do not treat `0.4.0` as a shipped version.**
+
+⚠️ **`github.event.release.body` is FROZEN at trigger time.** Editing a Release's notes
+does not change an in-flight run, and re-running replays the original payload (editing
+fires `edited`, not `published`). Combined with the announce logic living inside the
+already-built image, **there is no way to change a release's notification after
+publishing** — it takes a new version. This is what forced the 0.4.0 withdrawal.
+
+⚠️ **Cancelling a release run is safe ONLY at the approval gate.** `release.yml`'s
+warning against cancelling in flight is about the deploy job; while the run is
+*waiting*, nothing has touched the host. Confirm with container uptime + the absence of
+a new `backups/pre-deploy-*` dump (the deploy takes one FIRST).
+
+⚠️ **`css_v` could not verify this deploy** — the trick used for `0.2.0`/`0.3.x`
+compares prod's `css_v` to the md5 of `style.css` on `main`, and `0.4.1` changed no CSS,
+so it matched the previous release and proved nothing. What discriminates: the running
+image tag (`docker compose ps --format "{{.Image}}"` → `:0.4.1`, not `:latest`), and
+**importing a module that did not exist in the previous image**
+(`from app.github import feedback_enabled` → True). The latter is the strongest — it is
+a fact about the running code, not metadata.
 
 ⚠️ **#8's real gate was #7, and it worked exactly as designed.** The in-image suite
 step ran and reported `Python 3.14.6` / `741 passed, 5 skipped` — i.e. the tests
@@ -429,9 +477,10 @@ Smoke aside carried over: POSTing `/insights/generate` without the form's year/m
 CURRENT month, not the last complete one — the UI always sends them; only bites hand-rolled
 requests.
 
-**Roadmap** — the issue tracker is authoritative. **`0.2.0` and `0.3.0` are both CLOSED and
-shipped** (see above). The `0.4.0` roadmap is not grouped yet; **#64 and #8 are now BUILT and
-merged to `main`, awaiting a release** (see the not-yet-deployed block at the top).
+**Roadmap** — the issue tracker is authoritative. **`0.2.0`, `0.3.0` and `0.4.1` are all CLOSED
+and shipped** (see above). **The tracker is down to ONE open issue: #36**, which is date-parked
+until ~Dec 2026 — so the next session starts from a genuinely empty backlog, plus whatever
+arrives through the in-app feedback form.
 
 ✅ **#64 is CLOSED** (PR #120, 2026-07-31) — in-app bug/feature reporting, built exactly to the
 privacy design settled on 2026-07-30. Do not re-open the privacy question. Two deviations from
@@ -450,17 +499,27 @@ authenticating to Docker Hub would not have addressed it. ⚠️ If it ever recu
 **C** (pin buildx to the `docker` driver) still **does not work** — `type=gha` caching requires
 `docker-container`.
 
-**#115** — push a notification when a release is cut. **Not built**, but both design questions
-were settled on 2026-07-31 and recorded on the issue: **(1) one subscription, reworded copy** —
-release announcements reuse the existing per-device push subscription, and `profile.html`'s
-"Bill reminders" section is reworded to cover both purposes ⚠️ **in the same PR as the
-broadcast, never after it**, since shipping the broadcast against the current copy widens an
-existing consent silently; **(2) the summary text comes from the GitHub Release notes body**,
-truncated to fit the ~4KB push payload. ⚠️ That body is free text and `release.yml` builds its
-remote command by **string interpolation into an SSH heredoc** — it must travel as a properly
-passed env var or it is a command-injection surface. Still open: idempotency (a DB marker vs.
-accepting the workflow-re-run risk — this decides whether a migration is needed) and whether
-every subscriber is in scope.
+✅ **#115 is CLOSED** (PR #126, shipped in `0.4.1`) — a push notification when a release is cut,
+**confirmed delivered to the actual phone**, which is the one claim no test can make. Its three
+resolved forks: **(1) one subscription, reworded copy** — shipped in the same PR as the broadcast,
+per the consent gotcha above; **(2) every subscriber**, matching `send_due_reminders`;
+**(3) NO idempotency marker** (Sean) — `release: published` fires once by construction, so a
+workflow re-run is the only double-send risk and one duplicate notification is the accepted cost.
+That decision is what kept it to one PR with no migration.
+
+⚠️ **#115's "the summary text comes from the Release notes body" was REVERSED by #131** (PR #132,
+same day, before it ever deployed) — the body is now a fixed line. Do not restore it from the
+issue's history; see the fixed-body gotcha for why the reversal *deletes* the injection surface
+rather than guarding it.
+
+**#133** — the first issue filed through the in-app form. The notification reads
+`Budget Buddy 0.4.1 is live / from Budget Buddy / Check out what's new in the app.` and the
+middle line is duplicated. ⚠️ That line is **Chrome's own attribution, sourced from
+`manifest.json`'s `name`** — nothing in `announce.py`/`sw.js` emits it and it cannot be removed
+from the payload side. The tractable fix is to drop the app name from **our** title
+(`Version 0.4.1 is live`), plus the requested `.` → `!`. Open question recorded on the issue:
+the title is also what a **desktop** browser shows, where that reads less clearly — check there
+before committing. This does **not** reopen #131.
 
 ✅ **#111 is CLOSED** (fixed in `0.3.1`) — a category past the eighth created used to wrap
 onto an earlier one's colour. See the slot gotcha above; the fix reverses #83's
@@ -468,8 +527,11 @@ set-independence rule, deliberately.
 
 Parked with triggers: **#36** budget-report-v2-reads-history (~Dec 2026, when the 6-mo window
 sits fully inside logged history) — now the ONLY date-triggered item, since #8 and #52 both
-closed on 2026-07-31. **#37** holds the unscheduled backlog: a tabbed AI panel, spending flags,
-sinking funds, what-if simulator, tags. **Settled in `0.2.0`, do not re-open as a question:** the
+closed on 2026-07-31. ⚠️ **#37 (the unscheduled-backlog holding pen) was CLOSED 2026-07-31** as
+not-planned — it held four undesigned ideas (a tabbed AI panel, spending flags, sinking funds,
+what-if simulator, tags) and its own body already required each to get its own issue with Gherkin
+criteria before any code. The ideas and the standing rejection of *net worth over time* remain
+readable in the closed issue; **do not re-open it as a bucket.** **Settled in `0.2.0`, do not re-open as a question:** the
 #33 design fork — whether the daily job also runs the due-runners server-side — was decided YES
 (Sean, 2026-07-28), against a recommendation to keep #33 read-only; the materialization now
 happens daily for every user. Off the list: net worth over time (redundant with the
@@ -510,6 +572,24 @@ so and were fixed in #71 (`test_admin_backup.py`'s log assertion, `test_seed_dev
 `SEED_USER`); a third literal in `test_hardening.py` is a deliberately-nonexistent username and
 is fine.
 
+**⚠️ The prefix rule is WIDER than usernames: it covers any GLOBALLY UNIQUE column** (#128,
+2026-07-31). `TEST_PREFIX` protects rows scoped by `user_id`; it does nothing for a column whose
+uniqueness spans every worker by definition. `push_subscriptions.endpoint` is the one such column
+today, and `test_push_reminders.py` hardcoded endpoints for months — two workers then addressed
+ONE row and the helper's `ON CONFLICT (endpoint) DO UPDATE SET user_id` silently reassigned a
+device mid-test. Every endpoint that reaches the DB now goes through `EP()`; `test_release_announce.py`
+builds its own from `TEST_PREFIX` for the same reason. ⚠️ A **broadcast** test compounds this — it
+SELECTs every row globally, so assert on **your own endpoints, never a total count**, and make a
+failing seam fail **selectively by endpoint** (an unconditional `PushGone` stub deletes a parallel
+worker's subscriptions).
+
+**⚠️ Adding tests can expose another file's latent race** by changing xdist's work distribution —
+#126's 22 new tests turned #128 red, in a file that PR never touched. Before assuming you broke it
+(or that it is "just flaky"): `git diff --stat main~1 main -- <file>` and `grep -c TEST_PREFIX <file>`.
+A file that writes shared state and references the prefix **zero** times is latently broken whether
+or not it fails today. Verify a fix with **five consecutive full runs** — a one-in-three race passes
+a single re-run often enough to look fixed.
+
 **⚠️ The `Dockerfile` is multi-stage and `prod` MUST STAY LAST.** `base` → `dev` (adds
 `requirements-dev.txt`) → `prod` (empty, `base` under a name). A build with no `--target` gets
 the FINAL stage, and three things build with no target: CI's `docker-build` job, the release
@@ -549,11 +629,12 @@ install cost ~1.5s and total per-invocation overhead ~2.9s, cut to ~0.8s by #70.
 predicted to "roughly halve" the run; it actually cut it by ~12×, because the suite is
 IO/DB-bound rather than CPU-bound and parallelises far better than a CPU-bound suite would.
 
-**741 tests in `tests/`** (5 of them skip on the last day of a month — `test_forecast.py`'s date guards). Cross-cutting patterns: **no real API calls anywhere** — every
+**757 tests in `tests/`** (5 of them skip on the last day of a month — `test_forecast.py`'s date guards). Cross-cutting patterns: **no real API calls anywhere** — every
 `ai.py::_call_*_model` seam (and `mailer.py::_call_resend`) is monkeypatched with canned
 `SimpleNamespace` responses; every feature file asserts **user isolation**; route tests assert
 anon → 302. What each file covers:
 
+- `test_release_announce.py` — #115/#131 via the mocked `pusher._call_webpush` seam: the fixed body, that **only the version varies** between two releases, and — the load-bearing one — that `build_release_notification` **takes exactly one parameter** (`inspect.signature`), so reintroducing release text is a visible regression rather than a quiet reopening of the injection surface; the CLI rejecting `--notes`; the `push_enabled()` gate; **reaching every user's devices** (the not-user-scoped property); `PushGone` deleting vs a transient `PushError` keeping; one bad device not aborting the batch; and the Profile consent copy. ⚠️ Assertions are written against **this worker's own endpoints**, never a global count — see the xdist gotcha above
 - `test_feedback.py` — #64 end to end via the mocked `github._call_github` seam: the gate (no token → no UI on /profile and the route creates nothing), happy path + label set (`bug`/`enhancement` **plus `from-app`**), an arbitrary posted kind never becoming a label, validation, the input caps, `GitHubError` → GENERIC_ERROR with **the API text, status code and repo name all absent from the response**, the seam unit tests, anon → 302, and the rate-limit registration (`limiter._marked_for_limiting`, the test_admin_backup.py convention — the limiter is disabled under test). ⚠️ **`test_body_carries_only_what_the_user_typed` is the load-bearing one**: it asserts the username and the seeded account/category/transaction names and amount are all absent. The privacy decision is invisible in the code's shape, so a later change attaching context would look like an improvement and break nothing else
 - `test_pending_transactions.py` — #86 end to end: create/badge (content-asserting — `HistoryRow` is positional), the page-scoped pin, several pending rows staying newest-first (the stable-sort property), pinning NOT overriding `?month`, the em-dash balance cell **anchored to the actual `<td>`** (a bare `"—"` also matches the edit selects' "— none —" and passes without the feature), **the walk-guard property** (posted rows' balance cells are character-identical whether a sibling is pending or posted — this fails if anyone moves the pin into SQL), page-1 top balance still equalling the full net, mark-posted (clears only, whole-tbody fragment, returns the row to date order), edit-preserves-the-flag, pending counting in month spending, a pending row still being an Auto-Categorize candidate (i.e. NOT behaving like `is_adjustment`), export + cleanup keeping pure date order, and the isolation/anon set
 - `test_seed_dev.py` — `scripts/seed_dev.py` (#69): determinism (same seed+day → identical rows), dates derived from `today` not hardcoded, **the fixture scaling property** (parametrized 2–36 months — a fixed opening debt pays the card off entirely on a long window and a fixed goal target gets overshot), analytics-exclusion coverage, schedule `next_due` always FUTURE, plus a DB round-trip: persistence counts, transfer-pair shape, login + populated dashboard, **loading `/` materializes nothing**, refuse/force/dry-run paths
@@ -753,6 +834,18 @@ A `sweeper` worker agent (Sonnet, tools: Read/Grep/Glob/Edit only) is defined in
   failure with NO signal** — nothing in `release.yml` writes or validates `.env`, and a gated
   feature whose variable is unset is indistinguishable from that feature working as designed.
   `RUNBOOK.md` §6 carries the pre-release check (`git diff v<last>..HEAD -- .env.example`).
+  ✅ **That check earned its keep on its first outing** (2026-07-31, cutting `0.4.1`): it surfaced
+  `FEEDBACK_GITHUB_TOKEN` as the one new variable since `v0.3.1`, which would otherwise have
+  deployed #64 completely invisible. Run it **before** cutting the release.
+  ⚠️ **Verify a secret landed by LENGTH, not presence.** `grep -c` reports a placeholder as
+  happily as a real token — a literal `github_pat_YOURTOKEN` from copy-pasted instructions once
+  reached the Droplet `.env` and would have rendered a form that accepts input and fails on every
+  submission (worse than absent, since `feedback_enabled()` only tests non-empty). Confirm inside
+  the container: `docker compose exec -T web sh -c 'printf "len=%s\n" ${#FEEDBACK_GITHUB_TOKEN}'`
+  — a fine-grained PAT is ~93 chars. ⚠️ Note also that a **read** call against this PUBLIC repo
+  returns 200 whatever the token's permissions are, so `GET /repos` proves only that the token is
+  *valid*; `issues: write` is unprovable without writing, and was finally confirmed by the first
+  real form submission (#133).
 - **Schema changes:** `schema.sql` only runs on a *fresh* DB. For prod, apply the numbered `sql/`
   migration **by hand** — pg_dump first. **Order matters:** additive migrations (new
   columns/tables) go **BEFORE** `docker compose pull` (new code must never query a missing
