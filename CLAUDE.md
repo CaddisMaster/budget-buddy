@@ -160,9 +160,6 @@ is why this is not a pure image swap.
 **The ship date is `2026-07-31`** — the strip badge and the `## [0.3.0]` changelog heading
 both carry it and must stay in step. Correct both if the Release actually gets cut later.
 
-⚠️ **Still nobody has looked at the rendered doughnut in a browser** (see below). `0.3.0`
-ships that chart. One glance before cutting the Release.
-
 ### On `main`, NOT yet deployed — the doughnut fold (2026-07-30)
 
 **PR #110** closing **#108**: the category doughnut now draws the **top six
@@ -188,11 +185,11 @@ runs `0.2.0`.
   `10.00` each, so once six of seven are drawn, "which six" fell to SQL
   tie-breaking. It now seeds distinct descending amounts.
 
-⚠️ **Still nobody has looked at the rendered doughnut** — no browser in this session
-either. The token names ARE now confirmed byte-identical between template and served
-stylesheet (which closes the transparent-slice mode), and the fold is verified against
-the real dev dashboard end-to-end (7 segments, payload sum matching `SUM(amount)`
-exactly). But the chart itself in light and dark is still unseen. Worth one glance.
+✅ **The rendered chart has been checked in a browser (Sean, 2026-07-31)** — the
+long-running "nobody has actually looked at it" caveat from #83 is CLOSED, and should not
+be re-filed. Also verified without a browser: token names byte-identical between template
+and served stylesheet, and the fold checked against the real dev dashboard end to end
+(7 segments, payload sum matching `SUM(amount)` exactly).
 
 ### On `main`, NOT yet deployed — the triaged backlog, built (2026-07-29)
 
