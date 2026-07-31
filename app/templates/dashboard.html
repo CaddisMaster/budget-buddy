@@ -16,9 +16,9 @@
    test red. Say "weekly money check", as the v10.15.0 strip did. (This comment
    deliberately avoids the literal too — a Jinja comment never renders, but it
    would still show up in a grep and read as a violation.) #}
-<div class="card whatsnew" id="whatsnew" data-version="v0.3.0" hidden>
+<div class="card whatsnew" id="whatsnew" data-version="v0.4.0" hidden>
   <div class="whatsnew-head">
-    <strong>What's new in v0.3.0</strong>
+    <strong>What's new in v0.4.0</strong>
     <span class="recurring-badge">2026-07-31</span>
     <span class="whatsnew-actions">
       <button type="button" class="btn btn-sm" id="whatsnew-toggle">Details</button>
@@ -27,40 +27,31 @@
   </div>
   <div class="whatsnew-body" hidden>
     <div class="whatsnew-block">
-      <strong>Mark a charge that hasn't settled yet</strong>
+      <strong>Tell me when something's wrong</strong>
       <ul class="whatsnew-list">
-        <li><strong>Tick "Pending" when you add it:</strong> a fuel pump authorises $1.00
-            and the real amount turns up a day or two later. Tips and hotel holds do the
-            same thing. Now you can say so instead of leaving a placeholder in the ledger.</li>
-        <li><strong>It stays in front of you:</strong> a pending transaction is pinned to
-            the top of History with a badge until you press "Mark posted", rather than
-            sinking out of sight under everything you've spent since.</li>
-        <li><strong>It still counts everywhere:</strong> your dashboard, budgets and
-            balance all include it, because the money really did leave the account. Fixing
-            the amount later doesn't un-flag it — clearing it is always your call.</li>
+        <li><strong>There's a form on your Profile page:</strong> report a bug or suggest a
+            feature in your own words, right when you notice it, instead of trying to
+            remember it later.</li>
+        <li><strong>It goes straight onto the to-do list:</strong> what you write is filed
+            as an issue in the project's public tracker, so nothing gets lost between
+            noticing it and fixing it.</li>
+        <li><strong>Only your words are sent:</strong> the form says plainly, above the
+            box, that what you type is published publicly. Nothing is attached
+            automatically — not your username, not an account name, not a balance, not a
+            single transaction.</li>
       </ul>
     </div>
     <div class="whatsnew-block">
-      <strong>The spending chart is easier to read</strong>
+      <strong>Know when Budget Buddy has been updated</strong>
       <ul class="whatsnew-list">
-        <li><strong>Six categories, plus "Other":</strong> the doughnut used to draw a
-            slice for every category you have. Past about six, the slices stop being
-            tellable apart — so the smaller ones are now grouped into a single grey
-            "Other". Hover it to see how many it stands for.</li>
-        <li><strong>Your totals haven't changed:</strong> "Other" is exactly the sum of
-            what it replaces, and every other screen — budgets, insights, the CSV export —
-            still shows each category separately.</li>
-        <li><strong>No more twin colours:</strong> two categories could previously be given
-            the identical colour, which made the legend useless for telling them apart.
-            Each one now keeps its own, and it stays put when you filter by month.</li>
-      </ul>
-    </div>
-    <div class="whatsnew-block">
-      <strong>Small things</strong>
-      <ul class="whatsnew-list">
-        <li><strong>The CSV export says what each row is:</strong> a new Kind column marks
-            transfers and balance adjustments, so a spreadsheet total no longer
-            double-counts money you only moved between your own accounts.</li>
+        <li><strong>A short note when a new version goes live:</strong> with a one-line
+            summary of what changed. Tapping it opens this page, where the full list is
+            waiting for you.</li>
+        <li><strong>It uses the switch you already have:</strong> the same one on your
+            Profile page that sends bill reminders — there isn't a second thing to
+            manage, and that section now says it covers both.</li>
+        <li><strong>Nothing changes if you'd rather not:</strong> if you don't have
+            notifications turned on, this does nothing at all.</li>
       </ul>
     </div>
     {# Next feature block:
