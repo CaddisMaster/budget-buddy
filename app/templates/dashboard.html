@@ -16,10 +16,10 @@
    test red. Say "weekly money check", as the v10.15.0 strip did. (This comment
    deliberately avoids the literal too — a Jinja comment never renders, but it
    would still show up in a grep and read as a violation.) #}
-<div class="card whatsnew" id="whatsnew" data-version="v0.2.0" hidden>
+<div class="card whatsnew" id="whatsnew" data-version="v0.3.0" hidden>
   <div class="whatsnew-head">
-    <strong>What's new in v0.2.0</strong>
-    <span class="recurring-badge">2026-07-28</span>
+    <strong>What's new in v0.3.0</strong>
+    <span class="recurring-badge">2026-07-30</span>
     <span class="whatsnew-actions">
       <button type="button" class="btn btn-sm" id="whatsnew-toggle">Details</button>
       <button type="button" class="btn btn-sm" id="whatsnew-dismiss" aria-label="Dismiss">✕</button>
@@ -27,39 +27,40 @@
   </div>
   <div class="whatsnew-body" hidden>
     <div class="whatsnew-block">
-      <strong>Get a heads-up before a bill is due</strong>
+      <strong>Mark a charge that hasn't settled yet</strong>
       <ul class="whatsnew-list">
-        <li><strong>A reminder the evening before:</strong> Budget Buddy can now send your
-            phone a notification the night before a scheduled bill or transfer is due —
-            while there's still time to move money.</li>
-        <li><strong>Turn it on per device:</strong> head to Profile and tap "Turn on for
-            this device". Your phone and your laptop are separate, so switch on only the
-            one you actually want buzzing. On iPhone, add Budget Buddy to your home screen
-            first — that's an Apple requirement, not ours.</li>
-        <li><strong>Your scheduled items now post on time either way:</strong> bills and
-            paychecks land on their due date whether or not you open the app, so your
-            balances, forecast and weekly email are right when you do.</li>
+        <li><strong>Tick "Pending" when you add it:</strong> a fuel pump authorises $1.00
+            and the real amount turns up a day or two later. Tips and hotel holds do the
+            same thing. Now you can say so instead of leaving a placeholder in the ledger.</li>
+        <li><strong>It stays in front of you:</strong> a pending transaction is pinned to
+            the top of History with a badge until you press "Mark posted", rather than
+            sinking out of sight under everything you've spent since.</li>
+        <li><strong>It still counts everywhere:</strong> your dashboard, budgets and
+            balance all include it, because the money really did leave the account. Fixing
+            the amount later doesn't un-flag it — clearing it is always your call.</li>
       </ul>
     </div>
     <div class="whatsnew-block">
-      <strong>Schedules that know when to stop</strong>
+      <strong>The spending chart is easier to read</strong>
       <ul class="whatsnew-list">
-        <li><strong>Set an end date:</strong> a loan with a final payment, or a membership
-            you're cancelling in December — give the schedule an end date and it stops on
-            its own. Leave it blank and nothing changes.</li>
-        <li><strong>No more phantom bills:</strong> once a schedule ends it stops posting,
-            and it disappears from your forecast, your weekly email and Ask — so nothing
-            keeps predicting a bill you'll never be charged.</li>
-        <li><strong>Finished, not just gone:</strong> a schedule that has run its course is
-            labelled Finished with its end date, so you can tell it apart from one you
-            turned off yourself.</li>
+        <li><strong>Six categories, plus "Other":</strong> the doughnut used to draw a
+            slice for every category you have. Past about six, the slices stop being
+            tellable apart — so the smaller ones are now grouped into a single grey
+            "Other". Hover it to see how many it stands for.</li>
+        <li><strong>Your totals haven't changed:</strong> "Other" is exactly the sum of
+            what it replaces, and every other screen — budgets, insights, the CSV export —
+            still shows each category separately.</li>
+        <li><strong>No more twin colours:</strong> two categories could previously be given
+            the identical colour, which made the legend useless for telling them apart.
+            Each one now keeps its own, and it stays put when you filter by month.</li>
       </ul>
     </div>
     <div class="whatsnew-block">
       <strong>Small things</strong>
       <ul class="whatsnew-list">
-        <li><strong>Logging out asks first:</strong> it sits right next to the rest of the
-            menu, and a mis-tap on your phone meant typing your password back in.</li>
+        <li><strong>The CSV export says what each row is:</strong> a new Kind column marks
+            transfers and balance adjustments, so a spreadsheet total no longer
+            double-counts money you only moved between your own accounts.</li>
       </ul>
     </div>
     {# Next feature block:
