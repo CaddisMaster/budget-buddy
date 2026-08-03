@@ -10,6 +10,17 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **Auto-Categorize and the weekly money check run on a newer model.** These are
+  the two places the app asks for judgement rather than a summary — which
+  category a transaction belongs in, and whether a week's spending is worth
+  mentioning — so they run on a more capable model than the rest. That model has
+  been superseded, and both now use its replacement.
+
+  The newer model reasons before it answers, which takes room it did not need
+  before, so both were given more of it. Without that, a long answer would have
+  been cut off mid-sentence and quietly discarded — the app would have shown you
+  nothing rather than something wrong, but shown you nothing all the same.
+
 - **The update notification no longer says "Budget Buddy" twice.** On a phone
   with the app installed, the notification carried the name in its own heading
   *and* again on the line underneath — so it read "Budget Buddy 0.4.1 is live /
