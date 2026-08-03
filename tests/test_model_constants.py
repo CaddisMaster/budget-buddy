@@ -22,7 +22,6 @@ import pytest
 import app.ai as ai
 from app.ai import AGENT_MODEL, ASK_MODEL, CATEGORIZE_MODEL, MODEL
 
-
 # --- the constants ---------------------------------------------------------
 
 def test_both_sonnet_beats_name_the_current_model():
