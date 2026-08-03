@@ -8,6 +8,25 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Added
+
+- **The Settings page now says which optional features are actually switched on.**
+  Several features — the AI cards, the weekly digest email, push notifications and
+  in-app bug reports — only appear once their credentials are set on the server.
+  That is deliberate, but it means a feature that was never configured looks
+  exactly like a feature that is broken: in both cases there is simply nothing
+  there. Until now the only way to tell them apart was to log into the server.
+
+  An admin-only table on Settings answers it directly, one line per feature. It
+  also distinguishes a third case that used to be invisible: a credential that is
+  present but too short to be real — a half-finished copy-paste. That one is worse
+  than a missing credential, because the feature appears, accepts what you type,
+  and then fails every time.
+
+  **No credential is ever shown** — not the value, not the first few characters,
+  not a masked version. Each line says only whether the feature is on, off, or
+  misconfigured.
+
 ### Changed
 
 - **Auto-Categorize and the weekly money check run on a newer model.** These are

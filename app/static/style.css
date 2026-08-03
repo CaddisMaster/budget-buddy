@@ -290,6 +290,24 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
   white-space: nowrap;
 }
 
+/* Integration status (#139) — one word per integration on /settings. Outlined
+   like .pending-badge for the same reason: --warning and --danger have no soft
+   companion that works in both mode blocks. Three states, not two: "not
+   configured" is a legitimate off state and stays muted, while "set but does
+   not look valid" is an actual fault and is the one that must catch the eye. */
+.integration-state {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  border: 1px solid currentColor;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.integration-state.is-configured { color: var(--success); }
+.integration-state.is-implausible { color: var(--danger); }
+.integration-state.is-unset { color: var(--text-muted); }
+
 tr.transfer td { background: var(--accent-soft); }
 
 /* Inline-edit (HTMX) */
