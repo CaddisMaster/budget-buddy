@@ -211,7 +211,7 @@ landing/             # Static landing page at seandesmet.com
 
 ### On `main`, NOT yet deployed
 
-**Prod runs `0.4.1`; `main` is six commits ahead of it.** Three user-facing changes are
+**Prod runs `0.4.1`; `main` is nine commits ahead of it — six carrying code, three of them CLAUDE.md updates.** Three user-facing changes are
 merged and waiting for a release, plus three dependency bumps:
 
 - **PR #135 / #133 — the release notification stops saying "Budget Buddy" twice.**
