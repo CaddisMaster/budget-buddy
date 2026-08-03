@@ -209,40 +209,51 @@ landing/             # Static landing page at seandesmet.com
 
 ## Current Status
 
-### On `main`, NOT yet deployed
+### Nothing is merged-but-undeployed
 
-**Prod runs `0.4.1`; `main` is ahead of it** (`git log v0.4.1..HEAD` for the exact set — a written-down count self-invalidates, since recording it is itself a commit). Three user-facing changes are
-merged and waiting for a release, plus three dependency bumps:
+**Prod runs `0.5.0` and `main` is level with it.** Verified 2026-08-03 — see the release
+block below.
 
+### Shipped: `0.5.0` (2026-08-03) — smarter categorization, and Settings tells you what's on
+
+**Prod runs `ghcr.io/caddismaster/budget-buddy:0.5.0`.** Tests **763 → 783**.
+**No migration and no new env var**, so the deploy was a straight image pull with no
+manual SQL step in either order.
+
+- **PR #143 / #139 — an admin-only integration-status table on `/settings`.** The one
+  `### Added` in the bundle, which is why this was `0.5.0` and not `0.4.2`. See the
+  integration-status gotcha. ✅ **First prod outing reports all five configured**, which
+  also confirms the `FEEDBACK_GITHUB_TOKEN` set for `0.4.1` is still plausible-length.
+- **PR #142 / #140 — the two Sonnet beats moved to `claude-sonnet-5`.** See the Sonnet 5
+  gotcha for why it was not a string swap. ✅ **Live-verified before merge**, the only
+  gate that counts: a real Auto-Categorize scan returned 50 parsed suggestions for 50
+  rows, and a real agent run terminated through `submit_findings` on turn 2 of 12 using
+  four data tools, peak usage 4053 in / 423 out. No truncation on either.
 - **PR #135 / #133 — the release notification stops saying "Budget Buddy" twice.**
-  Title `Budget Buddy X is live` → `Version X is live`, body `.` → `!`. See the
-  notification-title gotcha. Tests **762 → 763**. No migration.
-  ⚠️ **Structurally unverifiable before it ships** — the notification only fires on
-  `release: published` and the announce logic lives inside the built image, so there is
-  no local or staging way to see it. The next release is the first sighting.
-
-- **PR #142 / #140 — the two Sonnet beats moved to `claude-sonnet-5`.** Tests
-  **763 → 770**. No migration. See the Sonnet 5 gotcha below for why it was not a
-  string swap. ✅ **Live-verified before merge**, which is the only gate that counts
-  here: a real Auto-Categorize scan returned 50 parsed suggestions for 50 rows, and a
-  real agent run terminated through `submit_findings` on turn 2 of 12 using four data
-  tools, peak usage 4053 in / 423 out. No truncation on either.
-
-- **PR #143 / #139 — an admin-only integration-status table on `/settings`.** Tests
-  **770 → 783**. No migration, no new env var. See the integration-status gotcha.
-
+  ✅ **CONFIRMED ON A REAL DEVICE** (Sean, 2026-08-03) — the long-standing "structurally
+  unverifiable until it ships" caveat is CLOSED and should not be re-raised. The
+  notification fired as part of this deploy and read correctly.
 - **PRs #138 / #137 / #136 — Dependabot's weekly Monday run.** `anthropic`
-  0.120.0 → 0.120.2 and `resend` 2.34.0 → 2.35.0; `docker/login-action` 3 → 4
-  (`release.yml`, first exercised on the next actual release); `actions/checkout`
-  4 → 7 in `claude-triage.yml`, which was the last file still on v4 — every other
-  workflow was already on v7. ⚠️ **Nothing in CI executes `claude-triage.yml`**, so
-  its green tick proves nothing about triage; the next issue opened naturally is the
-  free verification. Risk is low rather than unknown: it is a bare `actions/checkout`
-  with no inputs on `ubuntu-latest`, the exact combination already proven eight times
-  in `ci.yml`.
+  0.120.0 → 0.120.2 and `resend` 2.34.0 → 2.35.0; `docker/login-action` 3 → 4 (exercised
+  by this very deploy); `actions/checkout` 4 → 7 in `claude-triage.yml`, the last file
+  still on v4. ⚠️ **Nothing in CI executes `claude-triage.yml`**, so that green tick still
+  proves nothing about triage — the next issue opened naturally is the free verification.
+  Risk is low rather than unknown: a bare `actions/checkout` with no inputs on
+  `ubuntu-latest`, already proven eight times in `ci.yml`.
 
-Both issues filed on 2026-08-03 were **built the same day** (PRs #142 and #143 above),
-so the backlog is empty again apart from the date-parked #36.
+✅ **Deploy verified independently of the workflow**, and this time the `css_v` trick
+actually discriminated: prod moved `24978b6a` → **`44ef4f4a`**, matching the md5 of
+`style.css` on `main`. ⚠️ **That check only works when the release CHANGED the CSS** — it
+proved nothing for `0.4.1`, which touched none. Check `git diff <lastTag>..HEAD -- app/static/style.css`
+before relying on it. Also confirmed: the running image is tagged `:0.5.0` (not `:latest`),
+the `db` container was **not** recreated (started 2026-07-31 against web's 2026-08-03, so
+`pull web` held), the pre-deploy dump is timestamped *before* web restarted, and
+`from app.blueprints.admin import integration_status` imports in the running container — a
+module that did not exist in the previous image. `flask announce-release` reported
+**"Announced 0.5.0 to 3 device(s)."**
+
+Both issues filed on 2026-08-03 were **built and shipped the same day** (PRs #142 and
+#143), so the backlog is empty again apart from the date-parked #36.
 
 Three candidates were checked and **deliberately NOT filed** — recorded so they are not
 re-proposed: Flask-Login's 345 deprecation warnings (**0.6.3 is the latest release**, so
@@ -254,9 +265,8 @@ v10.x era, not since `0.3.0`, so the six-complete-month window genuinely closes 
 
 ### Shipped: `0.4.1` (2026-07-31) — feedback, release notifications, Python 3.14
 
-**Prod runs `ghcr.io/caddismaster/budget-buddy:0.4.1`.** Tests **723 → 757**. No
-migration. ⚠️ `main` was level with this release until 2026-08-03 — **PR #135 is now
-merged and undeployed**; see the not-yet-deployed block above.
+⚠️ **Historical — superseded by `0.5.0` (above).** Prod no longer runs this tag.
+Tests **723 → 757**. No migration.
 
 - **PR #120 / #64 — in-app bug reports and feature suggestions**, via the
   `app/github.py` seam. ✅ **`FEEDBACK_GITHUB_TOKEN` is now set on the Droplet** and
@@ -562,19 +572,19 @@ CURRENT month, not the last complete one — the UI always sends them; only bite
 requests.
 
 **Roadmap** — the issue tracker is authoritative. **`0.2.0`, `0.3.0` and `0.4.1` are all CLOSED
-and shipped** (see above). **ONE issue open (2026-08-03, end of day): #36 alone**, and it is
-date-parked until ~Dec 2026 — so the workable backlog is empty. #139 and #140 were filed and
-built the same day (PRs #143 and #142); all five open PRs, including three Dependabot bumps,
-were merged. The morning session refilled the backlog by **reading for evidence rather than
+and shipped** (see above). **`0.5.0` is CLOSED and shipped too.** **ONE issue open (2026-08-03, end of day):
+#36 alone**, and it is date-parked until ~Dec 2026 — so the workable backlog is empty. #139
+and #140 were filed, built AND shipped the same day (PRs #143 and #142); all five open PRs,
+including three Dependabot bumps, were merged and released as `0.5.0`. The morning session refilled the backlog by **reading for evidence rather than
 brainstorming** — every candidate had to point at something already written down or already
 gone wrong, which is also why three others were rejected outright and recorded as rejected.
 
-✅ **#140 is CLOSED** (PR #142, 2026-08-03, **merged but NOT deployed**) — the two Sonnet
+✅ **#140 is CLOSED** (PR #142, shipped in `0.5.0`) — the two Sonnet
 beats run on `claude-sonnet-5`. Its cost premise did **not** survive contact: intro pricing
 is not reliably cheaper once adaptive thinking (billed as output) and a ~30% tokenizer are
 in play, so the move stands on capability. Do not re-file it as a cost win.
 
-✅ **#139 is CLOSED** (PR #143, 2026-08-03, **merged but NOT deployed**) — the integration
+✅ **#139 is CLOSED** (PR #143, shipped in `0.5.0`) — the integration
 panel. ⚠️ Its Gherkin named `/admin/settings`; the real route is **`/settings`**. The
 behaviour was right, the path was wrong — a reminder to check a filed path against
 `url_for`/the blueprint rather than trusting the issue.
@@ -586,8 +596,8 @@ the issue's own wording were made deliberately and are worth keeping: the env va
 uses **stdlib `urllib`**, not `requests` (undeclared, only transitively present via
 `pywebpush`).
 
-✅ **#8 is CLOSED** (PR #121, 2026-07-31) — the image runs Python 3.14. See the findings in the
-not-yet-deployed block.
+✅ **#8 is CLOSED** (PR #121, shipped in `0.4.1`) — the image runs Python 3.14. See the three
+findings recorded in the `0.4.1` block.
 
 ✅ **#52 is CLOSED** (2026-07-31) as a one-off flake, per its own second acceptance scenario:
 **44 CI runs since the flake with `docker-build` green in every one**, and no Docker Hub pull
@@ -609,12 +619,12 @@ same day, before it ever deployed) — the body is now a fixed line. Do not rest
 issue's history; see the fixed-body gotcha for why the reversal *deletes* the injection surface
 rather than guarding it.
 
-✅ **#133 is CLOSED** (PR #135, 2026-08-03, **merged but NOT deployed**) — the first issue
+✅ **#133 is CLOSED** (PR #135, shipped in `0.5.0`) — the first issue
 filed through the in-app form, and it was about a line the app does not emit. Fixed by
 dropping the app name from **our** title plus the requested `.` → `!`; see the
 notification-title gotcha above for the full reasoning and the accepted desktop cost.
-⚠️ **It cannot be verified until the next release actually ships** — the notification
-only fires on `release: published` and the announce code lives inside the built image.
+✅ **Verified on a real device when `0.5.0` shipped** (Sean, 2026-08-03) — the
+"cannot be verified until the next release" caveat is DISCHARGED; do not re-raise it.
 This did **not** reopen #131.
 
 ✅ **#111 is CLOSED** (fixed in `0.3.1`) — a category past the eighth created used to wrap
