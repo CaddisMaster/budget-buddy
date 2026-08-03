@@ -8,6 +8,8 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-03
+
 ### Added
 
 - **The Settings page now says which optional features are actually switched on.**
