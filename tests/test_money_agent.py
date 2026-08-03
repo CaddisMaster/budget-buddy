@@ -37,6 +37,12 @@ HX = {"HX-Request": "true"}
 TODAY = date.today()
 WEEK = most_recent_sunday(TODAY)
 
+# ⚠️ Shares one worker with every other file that drives a global sweep (#157).
+# The digest-integration tests here call send_weekly_digests(), which selects
+# recipients with no user filter and stamps users.last_digest_sent_on for
+# everyone it processes — including other workers' users.
+pytestmark = pytest.mark.xdist_group("scheduler_sweep")
+
 
 # --- fake model blocks/responses (shape the SDK returns) --------------------
 

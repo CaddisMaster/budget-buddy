@@ -12,14 +12,37 @@
 #
 # Any extra arguments are passed straight through to pytest.
 #
-# Runs in PARALLEL by default (`-n auto`, one worker per CPU), which takes the
-# full suite from ~204s to ~17s. That is safe only because tests/conftest.py
-# derives its TEST_PREFIX from the xdist worker id so every worker owns its own
-# database rows — read the note there before changing how test users are named.
+# Runs in PARALLEL by default, which takes the full suite from ~204s to well
+# under a minute. That is safe only because tests/conftest.py derives its
+# TEST_PREFIX from the xdist worker id so every worker owns its own database
+# rows — read the note there before changing how test users are named.
 #
-# Pass your own `-n` (including `-n0` for serial) and it is respected instead.
-# Reach for `-n0` when you need pdb, or when interleaved parallel output is
-# making a failure hard to read.
+# ⚠️ The default is a BOUNDED 10 workers, deliberately not `-n auto`. On a Mac,
+# `auto` means one worker per core (15 here) — all of them inside the Docker VM,
+# each hammering Postgres and the VirtioFS-mounted source tree. The host's
+# VirtualMachineService then reports the aggregate as ~1000% CPU, the fans spin
+# up, and the machine is unpleasant to use while the suite runs. That is fine
+# once; it is not fine when a verification protocol asks for five consecutive
+# runs (see #128/#157), which is how this was found.
+#
+# The trade, all figures MEASURED on the 806-test suite rather than estimated:
+#
+#     -n auto (15)   ~21s   every core pinned, fans audible
+#     -n 10          ~29s   five cores left for the rest of the machine
+#     -n 4           ~67s
+#
+# 10 is the chosen point: it gives up ~8 seconds and keeps the machine usable.
+# Wall-clock was never the binding constraint — the old ~204s serial time was.
+# If you want the 21s back for one run, pass `-n auto` explicitly.
+#
+# ⚠️ CI is deliberately NOT affected: ci.yml invokes `pytest -q -n auto`
+# directly and never goes through this script. Ephemeral runners have no
+# interactive user to disturb, so full parallelism is right there and bounded
+# parallelism is right here.
+#
+# Pass your own `-n` (including `-n0` for serial, or `-n auto` if you want the
+# machine to yourself) and it is respected instead. Reach for `-n0` when you
+# need pdb, or when interleaved parallel output is making a failure hard to read.
 #
 # Two paths, and the script says which one it took:
 #
@@ -42,12 +65,13 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# Default to one worker per CPU, unless the caller specified their own -n.
-# Matched as a prefix so `-n0`, `-n 4` and `-nauto` are all recognised.
+# Default to a BOUNDED worker count, unless the caller specified their own -n.
+# See the header for why this is 10 and not `auto`. Matched as a prefix so `-n0`,
+# `-n 4` and `-nauto` are all recognised.
 #
 # Built as a plain string rather than an array: macOS still ships bash 3.2,
 # where expanding an EMPTY array under `set -u` is an "unbound variable" error.
-PARALLEL="-n auto"
+PARALLEL="-n 10"
 for arg in "$@"; do
   case "$arg" in
     -n*|--numprocesses*) PARALLEL="" ; break ;;

@@ -13,6 +13,8 @@ worker's subscriptions and fail a file nobody touched.
 """
 import json
 
+import pytest
+
 import app.pusher as pusher
 from app.blueprints.announce import (
     BODY,
@@ -21,6 +23,12 @@ from app.blueprints.announce import (
 )
 from app.db import get_db_connection
 from tests.conftest import TEST_PREFIX
+
+# ⚠️ Shares one worker with every other file that drives a global sweep (#157).
+# broadcast_release() is THE deliberately not-user-scoped push path — it writes
+# to every row of push_subscriptions by design — so it reaches other workers'
+# devices, and a PushGone from this file's seam would delete their rows.
+pytestmark = pytest.mark.xdist_group("scheduler_sweep")
 
 ENDPOINT_A1 = f"https://push.example/{TEST_PREFIX}a1"
 ENDPOINT_A2 = f"https://push.example/{TEST_PREFIX}a2"
