@@ -35,6 +35,21 @@ from tests.conftest import (
 
 TODAY = date.today()
 
+# ⚠️ Shares one worker with every other file that drives a global sweep (#157).
+# send_weekly_digests() selects its recipients with NO user filter — correct, it
+# is the Sunday job for everybody — so two workers running it concurrently mail
+# each other's users through the wrong mocked seam AND stamp each other's
+# users.last_digest_sent_on, which is the idempotency marker. The symptom is an
+# opted-OUT user appearing in sent_to, or a failed send looking as though it was
+# stamped.
+#
+# Doubly necessary here because the addresses below are literals rather than
+# TEST_PREFIX-derived: 'a@test.dev' is the same string in every worker, so the
+# assertions cannot tell their own recipient from a neighbour's. Grouping means
+# only one worker ever creates them. If these tests are ever ungrouped, the
+# emails must be prefixed first.
+pytestmark = pytest.mark.xdist_group("scheduler_sweep")
+
 
 # --- opt-in helpers (no conftest helper for the new users columns) ----------
 
