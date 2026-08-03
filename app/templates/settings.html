@@ -62,6 +62,57 @@
         {% endif %}
     </p>
 </div>
+
+{# #151 — when each scheduled job last FINISHED. The line above says the
+   scheduler was switched on; this says the work actually happened, which since
+   #33 is a different question — the daily job materializes the ledger for every
+   user, so a dead thread means transactions silently stop appearing.
+   Timestamps are absolute, not "2 days ago": this is a diagnostic surface and a
+   relative label is harder to reason about. See app/jobs.py. #}
+<h2>Scheduled jobs</h2>
+<div class="card">
+    <p style="font-size:14px;color:var(--text-muted);margin-bottom:1rem">
+        When each background job last finished. A job that has not run is only a
+        problem if it was scheduled to — a job that is switched off on this server
+        says so rather than reporting as overdue.
+    </p>
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr><th>Job</th><th>What it does</th><th>Last finished</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+                {% for job in job_runs %}
+                <tr>
+                    <td>{{ job.name }}</td>
+                    <td style="color:var(--text-muted)">{{ job.description }}</td>
+                    <td>
+                        {% if job.last_run_at %}
+                            {{ job.last_run_at.strftime('%Y-%m-%d %H:%M') }}
+                            {% if job.summary %}
+                            <br><span style="font-size:12px;color:var(--text-muted)">{{ job.summary }}</span>
+                            {% endif %}
+                        {% else %}
+                            <span style="color:var(--text-muted)">Never</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if job.state == 'ok' %}
+                            <span class="integration-state is-configured">On schedule</span>
+                        {% elif job.state == 'stale' %}
+                            <span class="integration-state is-implausible">Overdue</span>
+                        {% elif job.state == 'never' %}
+                            <span class="integration-state is-implausible">Has never run</span>
+                        {% else %}
+                            <span class="integration-state is-unset">Not scheduled here</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
 {% endif %}
 
 {% endblock %}

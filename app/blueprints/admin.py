@@ -9,6 +9,8 @@ from flask_login import current_user, login_required
 from app import bcrypt, limiter
 from app.db import db_cursor
 from app.helpers import GENERIC_ERROR, hx_toast
+from app.jobs import load_job_runs, summarize_job_runs
+from app.mailer import mail_enabled
 
 bp = Blueprint('admin', __name__)
 
@@ -206,9 +208,17 @@ def settings():
     if not current_user.is_admin:
         flash('Access denied')
         return redirect(url_for('main.index'))
+    # #151 — when each scheduled job last FINISHED, which since #33 is a
+    # different question from whether the scheduler is switched on above.
+    with db_cursor() as cursor:
+        runs = load_job_runs(cursor)
     return render_template('settings.html',
                            integrations=integration_status(),
-                           scheduler_on=scheduler_enabled())
+                           scheduler_on=scheduler_enabled(),
+                           job_runs=summarize_job_runs(
+                               runs,
+                               scheduler_on=scheduler_enabled(),
+                               digest_registered=mail_enabled()))
 
 
 @bp.route('/admin/users')

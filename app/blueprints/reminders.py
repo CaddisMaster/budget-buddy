@@ -230,11 +230,15 @@ def run_daily_tasks(*, today=None):
     that is already up to date. Returns (users_materialized, reminders_sent).
     """
     from app import app  # local import to avoid an import cycle at module load
+    from app.jobs import DAILY, record_job_run
     today = today or date.today()
     users = materialize_all_users(logger=app.logger)
     sent = send_due_reminders(today=today, logger=app.logger)
-    app.logger.info('Daily tasks: materialized %s user(s), sent %s reminder(s)',
-                    users, sent)
+    summary = f'materialized {users} user(s), sent {sent} reminder(s)'
+    app.logger.info('Daily tasks: %s', summary)
+    # #151 — recorded AFTER the work, so /settings reports a job that finished
+    # rather than one that started. Never raises; see app/jobs.py.
+    record_job_run(DAILY, summary)
     return users, sent
 
 

@@ -8,6 +8,25 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Added
+
+- **Settings now says when each background job last actually ran.** Some work
+  happens on a schedule rather than when you click something — most importantly,
+  creating the transactions for your recurring bills and paychecks, which happens
+  once a day for everyone whether or not anybody opens the app.
+
+  Until now Settings could only tell you that the scheduler was switched on. That
+  is not the same thing as it having done anything, and the difference matters:
+  if it ever stopped, every page would still load, the app would still report
+  itself healthy, and your recurring transactions would simply stop appearing —
+  which looks exactly like a week where nothing happened to be due. You would
+  most likely notice via a balance that looked wrong, weeks later.
+
+  There is now a line per job saying when it last finished and what it did. A job
+  that has not run recently enough is marked overdue. A job that is switched off
+  on this server says so plainly instead of reporting as a fault — being off is a
+  legitimate state, and a panel that cried wolf about it would be worth ignoring.
+
 ## [0.5.0] - 2026-08-03
 
 ### Added
