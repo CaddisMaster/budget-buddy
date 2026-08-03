@@ -16,49 +16,43 @@
    test red. Say "weekly money check", as the v10.15.0 strip did. (This comment
    deliberately avoids the literal too — a Jinja comment never renders, but it
    would still show up in a grep and read as a violation.) #}
-<div class="card whatsnew" id="whatsnew" data-version="v0.4.1" hidden>
+<div class="card whatsnew" id="whatsnew" data-version="v0.5.0" hidden>
   <div class="whatsnew-head">
-    <strong>What's new in v0.4.1</strong>
-    <span class="recurring-badge">2026-07-31</span>
+    <strong>What's new in v0.5.0</strong>
+    <span class="recurring-badge">2026-08-03</span>
     <span class="whatsnew-actions">
       <button type="button" class="btn btn-sm" id="whatsnew-toggle">Details</button>
-      <button type="button" class="btn btn-sm" id="whatsnew-dismiss" aria-label="Dismiss">✕</button>
+      <button type="button" class="btn btn-sm" id="whatsnew-dismiss" aria-label="Dismiss">&#10005;</button>
     </span>
   </div>
   <div class="whatsnew-body" hidden>
     <div class="whatsnew-block">
-      <strong>Tell me when something's wrong</strong>
+      <strong>Better guesses when sorting your spending</strong>
       <ul class="whatsnew-list">
-        <li><strong>There's a form on your Profile page:</strong> report a bug or suggest a
-            feature in your own words, right when you notice it, instead of trying to
-            remember it later.</li>
-        <li><strong>It goes straight onto the to-do list:</strong> what you write is filed
-            as an issue in the project's public tracker, so nothing gets lost between
-            noticing it and fixing it.</li>
-        <li><strong>Only your words are sent:</strong> the form says plainly, above the
-            box, that what you type is published publicly. Nothing is attached
-            automatically — not your username, not an account name, not a balance, not a
-            single transaction.</li>
+        <li><strong>Auto-Categorize thinks harder before it suggests:</strong> the two
+            places Budget Buddy makes a judgement call &mdash; guessing which category a
+            transaction belongs in, and writing your weekly money check &mdash; now run on
+            a newer, more capable model.</li>
+        <li><strong>Nothing about how you use it changes:</strong> suggestions still arrive
+            as a list you confirm or ignore. Nothing is ever filed on your behalf.</li>
+        <li><strong>It has more room to answer:</strong> the newer model reasons before it
+            replies, so it was given the space to do that &mdash; without it, a long answer
+            could be cut off and quietly dropped.</li>
       </ul>
     </div>
     <div class="whatsnew-block">
-      <strong>Know when Budget Buddy has been updated</strong>
+      <strong>Settings now says which features are switched on</strong>
       <ul class="whatsnew-list">
-        <li><strong>A short note when a new version goes live:</strong> tap it and you
-            land right here, where this list is waiting for you.</li>
-        <li><strong>It uses the switch you already have:</strong> the same one on your
-            Profile page that sends bill reminders — there isn't a second thing to
-            manage, and that section now says it covers both.</li>
-        <li><strong>Nothing changes if you'd rather not:</strong> if you don't have
-            notifications turned on, this does nothing at all.</li>
+        <li><strong>For admins, on the Settings page:</strong> a short table listing each
+            optional feature &mdash; the AI cards, the weekly email, notifications, and the
+            report-a-problem form &mdash; and whether it is actually turned on.</li>
+        <li><strong>It tells apart "off" from "broken":</strong> a feature that was never
+            set up looks exactly like one that is failing, because both simply show
+            nothing. The table now distinguishes them.</li>
+        <li><strong>No secrets are shown:</strong> each line says only whether something is
+            on, off, or misconfigured &mdash; never the value, not even part of it.</li>
       </ul>
     </div>
-    {# Next feature block:
-    <div class="whatsnew-block">
-      <strong>Next feature title</strong>
-      <ul class="whatsnew-list"><li>…</li></ul>
-    </div>
-    #}
   </div>
 </div>
 <script>
