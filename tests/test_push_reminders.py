@@ -16,6 +16,19 @@ that every xdist worker fights over, and _add_subscription's ON CONFLICT moves i
 to whichever worker inserted last. That silently reassigns another worker's device
 mid-test. Never write a raw endpoint string here; the failure looks like a flake in
 a file you did not touch.
+
+⚠️ **That is necessary but not sufficient (#157).** Isolating the ROWS does not
+isolate the RESULT: send_due_reminders() is a global sweep over every user, so a
+call from this worker drives other workers' subscriptions through this process's
+stub too. Two rules follow, both enforced in _capture():
+
+  * Assert on `sent` (worker-scoped) — never on send_due_reminders()'s RETURN
+    VALUE, which counts every worker's notifications. The one exception is the
+    push-unconfigured test, where the gate short-circuits before the sweep and
+    the env var it reads is per-process.
+  * A failing stub must fail SELECTIVELY by endpoint. An unconditional PushGone
+    deletes parallel workers' subscriptions, turning this file's setup into
+    another file's missing row.
 """
 import json
 import threading
@@ -42,6 +55,15 @@ from tests.conftest import (
 TODAY = date.today()
 TOMORROW = TODAY + timedelta(days=1)
 
+# ⚠️ Every test in this file shares one worker (#157). send_due_reminders() is a
+# global sweep and claims occurrences in reminder_log as it goes, so two workers
+# running it concurrently steal each other's claims — the owning worker then
+# sends nothing and its assertions fail. Grouping serializes the sweep against
+# the only other file that triggers one (tests/test_job_runs.py, via
+# run_daily_tasks) while leaving the rest of the suite fully parallel.
+# Requires `--dist loadgroup`, set in pytest.ini.
+pytestmark = pytest.mark.xdist_group("scheduler_sweep")
+
 
 def EP(name):
     """A push endpoint unique to this xdist worker. See the module docstring —
@@ -67,14 +89,42 @@ def _disable_push(monkeypatch):
 
 
 def _capture(monkeypatch, fail_with=None):
-    """Stub the network seam; return the list it records sends into."""
+    """Stub the network seam; return the list it records THIS WORKER's sends into.
+
+    ⚠️ Both halves are scoped to this worker's endpoints on purpose (#157), and
+    the reason is not obvious: `send_due_reminders()` is a GLOBAL sweep. It reads
+    `SELECT DISTINCT user_id FROM push_subscriptions` with no user filter — which
+    is correct, it is the daily job for everybody — so calling it from one xdist
+    worker drives every OTHER worker's subscriptions through this process's stub
+    as well.
+
+    Two things follow, and #128 fixed neither because it was about the rows
+    rather than what the stub does with them:
+
+      * RECORDING. An unfiltered `sent` list contains other workers' endpoints,
+        so `len(sent) == 1` and set-equality assertions fail whenever a parallel
+        worker happens to have a bill due. That is the intermittent failure this
+        helper's filter removes.
+
+      * FAILING. `fail_with` used to raise for EVERY endpoint. A `PushGone` stub
+        therefore deleted parallel workers' subscriptions mid-test — the exact
+        hazard CLAUDE.md warns about — turning one test's setup into another
+        test's missing row. Raising only for our own endpoints keeps the failure
+        selective.
+
+    Other workers' sends are answered with a success and dropped on the floor:
+    they are not this test's business, and swallowing them keeps their `sent`
+    lists honest too.
+    """
     sent = []
 
     def fake(subscription_info, data, private_key, subject):
+        endpoint = subscription_info["endpoint"]
+        if TEST_PREFIX not in endpoint:
+            return {"status_code": 201}     # another worker's device — not ours
         if fail_with is not None:
             raise fail_with
-        sent.append({"endpoint": subscription_info["endpoint"],
-                     "payload": json.loads(data)})
+        sent.append({"endpoint": endpoint, "payload": json.loads(data)})
         return {"status_code": 201}
 
     monkeypatch.setattr(pusher, "_call_webpush", fake)
@@ -266,7 +316,10 @@ def test_reminder_is_sent_for_a_bill_due_tomorrow(users, monkeypatch):
     create_schedule(a, acct, 42.5, "monthly", TOMORROW, transaction_type="expense")
     _add_subscription(a, EP("a-1"))
 
-    assert send_due_reminders(today=TODAY) == 1
+    # ⚠️ The return value is a GLOBAL count — send_due_reminders sweeps every
+    # user — so it cannot be asserted exactly under xdist. The claim moves onto
+    # `sent`, which _capture scopes to this worker. See #157.
+    send_due_reminders(today=TODAY)
     assert len(sent) == 1
     assert "42.50" in sent[0]["payload"]["title"]
     assert "tomorrow" in sent[0]["payload"]["body"].lower()
@@ -295,7 +348,10 @@ def test_reminder_goes_to_every_device(users, monkeypatch):
     _add_subscription(a, EP("phone"))
     _add_subscription(a, EP("laptop"))
 
-    assert send_due_reminders(today=TODAY) == 2
+    # Global return value again (#157) — the "both devices" claim lives on the
+    # worker-scoped set, which is the stronger assertion anyway: it names WHICH
+    # endpoints were reached, not merely how many.
+    send_due_reminders(today=TODAY)
     assert {s["endpoint"] for s in sent} == {EP("phone"),
                                              EP("laptop")}
 
@@ -337,6 +393,10 @@ def test_reminders_are_per_user(users, monkeypatch):
 
     send_due_reminders(today=TODAY)
     endpoints = {s["endpoint"] for s in sent}
+    # Both endpoints here belong to this worker, so the set equality is a real
+    # claim about isolation between users A and B — which is what it was always
+    # meant to test. Before #157 it was also silently asserting that no PARALLEL
+    # worker had a bill due, which is why it was the one that went red.
     assert endpoints == {EP("a-only")}   # B never hears about A's bill
 
 
@@ -348,6 +408,9 @@ def test_no_reminders_when_push_unconfigured(users, monkeypatch):
     create_schedule(a, acct, 42.5, "monthly", TOMORROW)
     _add_subscription(a, EP("a-1"))
 
+    # This return value IS safe to assert exactly, unlike the two above: the
+    # push_enabled() gate short-circuits to 0 before the sweep, and it reads env
+    # vars, which are per-PROCESS — so _disable_push affects this worker only.
     assert send_due_reminders(today=TODAY) == 0
     assert sent == []
     assert _reminder_count(a) == 0      # nothing claimed either

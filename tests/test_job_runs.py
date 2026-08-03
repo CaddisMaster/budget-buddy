@@ -50,6 +50,13 @@ from app.jobs import (
 )
 from tests.conftest import TEST_PREFIX
 
+# ⚠️ Shares a worker with tests/test_push_reminders.py (#157). Two tests here call
+# run_daily_tasks(), which runs send_due_reminders() — a global sweep that claims
+# occurrences in reminder_log for EVERY user, including other workers'. Left
+# ungrouped, this file steals those claims and turns the push tests red.
+# Requires `--dist loadgroup`, set in pytest.ini.
+pytestmark = pytest.mark.xdist_group("scheduler_sweep")
+
 NOW = datetime(2026, 8, 3, 18, 0, 0)
 
 # The row shape load_job_runs returns (NamedTupleCursor). Built by hand here so
