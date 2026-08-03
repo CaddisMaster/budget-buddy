@@ -36,7 +36,7 @@ bp = Blueprint('announce', __name__)
 
 # The same on every release. Short enough to read at a glance on a lock screen,
 # and evergreen — nothing here has to be re-authored per release.
-BODY = "Check out what's new in the app."
+BODY = "Check out what's new in the app!"
 
 
 def build_release_notification(version):
@@ -44,9 +44,15 @@ def build_release_notification(version):
 
     Only the version varies. See the module docstring for why the release notes
     deliberately do not reach this payload.
+
+    ⚠️ The title deliberately does NOT name the app (#133). Chrome renders its own
+    attribution line under the title — "from Budget Buddy" on an installed PWA,
+    sourced from manifest.json's `name` — which nothing here emits and nothing
+    here can suppress. Naming the app again in the title is what made the phrase
+    appear twice. Read the two together, not the title alone.
     """
     return {
-        'title': f'Budget Buddy {version} is live',
+        'title': f'Version {version} is live',
         'body': BODY,
         # The dashboard, because that is where the .whatsnew strip for this exact
         # release renders — the tap lands on the release's own summary.

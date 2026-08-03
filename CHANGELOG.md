@@ -8,6 +8,15 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Changed
+
+- **The update notification no longer says "Budget Buddy" twice.** On a phone
+  with the app installed, the notification carried the name in its own heading
+  *and* again on the line underneath — so it read "Budget Buddy 0.4.1 is live /
+  from Budget Buddy". That second line is written by the browser itself and
+  cannot be turned off, so the heading gives it up instead: it now reads
+  "Version 0.4.1 is live". The closing line gained an exclamation point.
+
 ## [0.4.1] - 2026-07-31
 
 Carries everything in `0.4.0`, which was tagged but **never deployed** — it was
