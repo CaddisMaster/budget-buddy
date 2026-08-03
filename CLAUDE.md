@@ -29,7 +29,7 @@ app/
     accounts.py      # account CRUD (inline); ACCOUNT_ROW_SQL (THE canonical balance formula, reused by ask.py — namedtuple read by NAME everywhere, column order doesn't matter); pure Jinja globals credit_utilization() (warn ≥30% / danger ≥80%, pct uncapped / bar capped 100, Decimal→float) + monthly_interest(balance, apr) (None when apr unusable OR debt ≤ 0 — THE gate every surface checks; ~monthly = debt × apr/100/12, "~" wording); _parse_credit_limit()/_parse_apr() (blank → NULL; apr REJECTS > 100 — the units-typo guard); credit_card_utilization_facts(user_id) (per-card facts for Insight/Digest — a card qualifies with usable utilization OR interest, per-key presence); Balance check-in (GET/POST /accounts/<id>/checkin — recomputes balance server-side in a FOR UPDATE-locked txn, inserts ONE is_adjustment transaction closing the gap, always stamps last_checked_in); edit error paths re-render via account._replace(...) echoing the RAW posted string
     budgets.py       # budget cockpit (set/clear) + compute_budget_suggestions/_vs_actual helpers; AI Budget Review (compute_budget_review_facts() + load_budget_rows() + POST /budgets/review/scan|apply); Budget report (pure build_budget_report() hit/miss grid + streaks + ±10% 3-vs-3 trend, load_budget_report() calendar-aligned last-6-COMPLETE-months — NOT the review facts' rolling window; only SAVED budgets grade, vs the CURRENT amount); record_budget_change() appends to budget_history at all THREE write points (set/clear/review-apply), before the upsert/delete in the same txn, no-ops skipped — writer only, nothing reads the log yet
     analytics.py     # redirect stub: GET /analytics → 302 / carrying ?month=. No @login_required on the hop — the target enforces auth
-    admin.py         # user mgmt, create user, backup, settings
+    admin.py         # user mgmt, create user, backup, settings; pure integration_status() + scheduler_enabled() (#139) drive the admin-only Integrations table on /settings — three states from a per-variable length floor in INTEGRATIONS, never the value
     transfers.py     # account transfers (linked income/expense pair) + recurring transfers (transfer_schedules CRUD + run_due_transfers() materializing a paired transfer per due date)
     goals.py         # goals (save + payoff) + compute_goal_projection(..., apr=None) — payoff goals feed the linked card's apr (GOAL_SELECT carries a.apr AS account_apr; _goal_view reads rows by ATTRIBUTE): est_monthly_interest always in the dict (None unless apr + debt), pace date = bounded 600-month simulation (pace ≤ interest → None + Behind), required_per_month amortized; Goal Coach (compute_goal_coach_facts() + load_goal_coach() + POST /goals/coach/generate, cached in goal_coach); GET /goals gates the card on ai_enabled() + in-progress goals
     push.py          # POST /push/subscribe|unsubscribe (#33) — one row per DEVICE, endpoint is the identity (globally UNIQUE, so re-subscribing upserts); validates the posted JSON, scopes every write to current_user. Profile UI gated on push_enabled()
@@ -132,6 +132,34 @@ landing/             # Static landing page at seandesmet.com
   to catch duplicate hex, so don't loosen that regex to `[\w-]+`. ⚠️ The fold does not fix the past-8 wrap
   on its own (#108 wrongly claimed it did) — but it is the precondition that made the real fix
   possible, see the slot gotcha above
+- ⚠️ **Sonnet 5 thinks BY DEFAULT, and `max_tokens` bounds thinking + output TOGETHER**
+  (#140, PR #142). `ai.py` never passes `thinking`, and on `claude-sonnet-4-6` that meant
+  *no* thinking; on `claude-sonnet-5` the same omission runs adaptive thinking. So the
+  `max_tokens=4096` and the explicit `output_config={"effort": ...}` at
+  `_call_categorize_model` and `_call_agent_model` are **load-bearing, not slack** —
+  dropping either reintroduces silent truncation into the `ParseError` fallback rather
+  than a loud failure. Its tokenizer also counts ~30% more per unit of text, shrinking
+  the same headroom again. Effort is explicit because Sonnet 5 **defaults to `high`**.
+  ⚠️ **Thinking is deliberately left ON** — with it disabled Sonnet 5 reaches for tools
+  *less*, and the agent's grounding guard turns a run with no successful data-tool call
+  into a `ParseError`. `tests/test_model_constants.py` pins all of this.
+  ⚠️ **`messages.parse()` merges `output_format` INTO `output_config`** as its `"format"`
+  key (verified in the SDK source), so passing both is supported, not a clash.
+  ⚠️ The issue's claim that intro pricing makes Sonnet 5 "also the cheaper one" is **not
+  reliably true**: thinking tokens bill as *output* and the tokenizer counts ~30% more,
+  so $2/$10 can land above 4.6's $3/$15. Justify on capability; measure cost.
+- ⚠️ **The integration-status panel judges by LENGTH, never by prefix** (#139, PR #143).
+  `admin.integration_status()` reports three states per env-gated feature — `unset`,
+  `configured`, `implausible` — from a per-variable minimum length in `INTEGRATIONS`.
+  A prefix check would have **passed** the real incident (`github_pat_YOURTOKEN` starts
+  with `github_pat_`); length is what discriminates it, 22 chars against a real PAT's
+  ~93. The **third state is the point** — `unset` is a forgotten step, `implausible` is a
+  bad paste that renders a feature which accepts input and fails every submission. Do not
+  collapse it to a boolean. **Admin-only, never `/healthz`, and never the value** — not a
+  prefix, not a mask; a test asserts the value, three prefix lengths of it, *and the
+  variable names* are all absent from the response. `ENABLE_DIGEST_SCHEDULER` is
+  deliberately its own line, not a fifth row: it is not a credential and its jobs each
+  carry their own gate.
 - **Amount validation:** every form amount goes through `helpers.parse_positive_amount()` — `float('nan')` passes a plain `<= 0` check and Postgres stores NaN in numeric, poisoning every SUM(). Never hand-roll `float(x); if x <= 0`
 - **Param validation:** same rule for query/form params — `?month` → `parse_month_param()`, `?page` → `parse_page_param()`, posted FK ids → `parse_int_param()`. A raw string into a psycopg2 `%s` against an int column raises (= 500)
 - **Write-side FK ownership:** when a form posts a `category_id`/`account_id`, validate it belongs to the user *before* the INSERT/UPDATE — `validate_category_account()` in transactions.py, folded into the route's validation-error path. Used by transaction new/edit, schedule create/edit, bulk edit, cleanup apply
@@ -183,8 +211,8 @@ landing/             # Static landing page at seandesmet.com
 
 ### On `main`, NOT yet deployed
 
-**Prod runs `0.4.1`; `main` is one commit ahead of it.** One user-facing change is
-merged and waiting for a release:
+**Prod runs `0.4.1`; `main` is six commits ahead of it.** Three user-facing changes are
+merged and waiting for a release, plus three dependency bumps:
 
 - **PR #135 / #133 — the release notification stops saying "Budget Buddy" twice.**
   Title `Budget Buddy X is live` → `Version X is live`, body `.` → `!`. See the
@@ -193,27 +221,28 @@ merged and waiting for a release:
   `release: published` and the announce logic lives inside the built image, so there is
   no local or staging way to see it. The next release is the first sighting.
 
-Two issues were **filed and deliberately not built** this session, both with Gherkin
-criteria and `skip-triage`:
+- **PR #142 / #140 — the two Sonnet beats moved to `claude-sonnet-5`.** Tests
+  **763 → 770**. No migration. See the Sonnet 5 gotcha below for why it was not a
+  string swap. ✅ **Live-verified before merge**, which is the only gate that counts
+  here: a real Auto-Categorize scan returned 50 parsed suggestions for 50 rows, and a
+  real agent run terminated through `submit_findings` on turn 2 of 12 using four data
+  tools, peak usage 4053 in / 423 out. No truncation on either.
 
-- **#140 — move `CATEGORIZE_MODEL`/`AGENT_MODEL` from `claude-sonnet-4-6` to
-  `claude-sonnet-5`.** ⏰ **Has a date**: Sonnet 5 is on introductory pricing ($2/$10 per
-  MTok vs 4.6's $3/$15) **through 2026-08-31**, after which it is parity and only the
-  capability argument remains. ⚠️ Not a string swap — **adaptive thinking is ON BY
-  DEFAULT** when `thinking` is omitted (which `ai.py` always does), and `max_tokens` then
-  caps thinking + output together; both beats sit at `max_tokens=2048` parsing strict
-  JSON, so truncation lands in the `ParseError` fallback rather than failing loudly. The
-  agent multiplies it by `AGENT_MAX_TURNS=12`. ✅ Already verified clear of the *other*
-  breaking change: `ai.py` passes **no** sampling params anywhere. Haiku (`MODEL`,
-  `ASK_MODEL`) is current and stays. ⚠️ **The suite cannot gate this** — every
-  `_call_*_model` seam is stubbed, so green proves only that the constants are spelled
-  right; a live run against real data is the actual gate.
-- **#139 — an admin-only panel showing which optional integrations are configured.**
-  Closes the "a missing env var is the one deploy failure with NO signal" gap, which has
-  now bitten twice (`FEEDBACK_GITHUB_TOKEN` unset after #64 shipped; a
-  `github_pat_YOURTOKEN` placeholder that passed `grep -c`). Constraints recorded on the
-  issue: admin-only (**never `/healthz`**, which exists to leak nothing), never the value,
-  and judged by **plausibility not presence**.
+- **PR #143 / #139 — an admin-only integration-status table on `/settings`.** Tests
+  **770 → 783**. No migration, no new env var. See the integration-status gotcha.
+
+- **PRs #138 / #137 / #136 — Dependabot's weekly Monday run.** `anthropic`
+  0.120.0 → 0.120.2 and `resend` 2.34.0 → 2.35.0; `docker/login-action` 3 → 4
+  (`release.yml`, first exercised on the next actual release); `actions/checkout`
+  4 → 7 in `claude-triage.yml`, which was the last file still on v4 — every other
+  workflow was already on v7. ⚠️ **Nothing in CI executes `claude-triage.yml`**, so
+  its green tick proves nothing about triage; the next issue opened naturally is the
+  free verification. Risk is low rather than unknown: it is a bare `actions/checkout`
+  with no inputs on `ubuntu-latest`, the exact combination already proven eight times
+  in `ci.yml`.
+
+Both issues filed on 2026-08-03 were **built the same day** (PRs #142 and #143 above),
+so the backlog is empty again apart from the date-parked #36.
 
 Three candidates were checked and **deliberately NOT filed** — recorded so they are not
 re-proposed: Flask-Login's 345 deprecation warnings (**0.6.3 is the latest release**, so
@@ -533,12 +562,22 @@ CURRENT month, not the last complete one — the UI always sends them; only bite
 requests.
 
 **Roadmap** — the issue tracker is authoritative. **`0.2.0`, `0.3.0` and `0.4.1` are all CLOSED
-and shipped** (see above). **Three issues open (2026-08-03): #139, #140 and #36.** Only the
-first two are workable — #36 is date-parked until ~Dec 2026, and **#140 carries its own
-deadline of 2026-08-31** (see the not-yet-deployed block for both). The 2026-08-03 session
-started from a genuinely empty backlog and refilled it by **reading for evidence rather than
-brainstorming**: every candidate had to point at something already written down or already
+and shipped** (see above). **ONE issue open (2026-08-03, end of day): #36 alone**, and it is
+date-parked until ~Dec 2026 — so the workable backlog is empty. #139 and #140 were filed and
+built the same day (PRs #143 and #142); all five open PRs, including three Dependabot bumps,
+were merged. The morning session refilled the backlog by **reading for evidence rather than
+brainstorming** — every candidate had to point at something already written down or already
 gone wrong, which is also why three others were rejected outright and recorded as rejected.
+
+✅ **#140 is CLOSED** (PR #142, 2026-08-03, **merged but NOT deployed**) — the two Sonnet
+beats run on `claude-sonnet-5`. Its cost premise did **not** survive contact: intro pricing
+is not reliably cheaper once adaptive thinking (billed as output) and a ~30% tokenizer are
+in play, so the move stands on capability. Do not re-file it as a cost win.
+
+✅ **#139 is CLOSED** (PR #143, 2026-08-03, **merged but NOT deployed**) — the integration
+panel. ⚠️ Its Gherkin named `/admin/settings`; the real route is **`/settings`**. The
+behaviour was right, the path was wrong — a reminder to check a filed path against
+`url_for`/the blueprint rather than trusting the issue.
 
 ✅ **#64 is CLOSED** (PR #120, 2026-07-31) — in-app bug/feature reporting, built exactly to the
 privacy design settled on 2026-07-30. Do not re-open the privacy question. Two deviations from
@@ -686,11 +725,29 @@ install cost ~1.5s and total per-invocation overhead ~2.9s, cut to ~0.8s by #70.
 predicted to "roughly halve" the run; it actually cut it by ~12×, because the suite is
 IO/DB-bound rather than CPU-bound and parallelises far better than a CPU-bound suite would.
 
-**763 tests in `tests/`** (5 of them skip on the last day of a month — `test_forecast.py`'s date guards). ⚠️ **Recount rather than trusting this number** — it read 757 while the true figure was 762 (measured 2026-08-03), so the drift is real and the month-end skips do not explain it. Cross-cutting patterns: **no real API calls anywhere** — every
+**783 tests in `tests/`** (5 of them skip on the last day of a month — `test_forecast.py`'s date guards). ⚠️ **Recount rather than trusting this number** — it read 757 while the true figure was 762 (measured 2026-08-03), so the drift is real and the month-end skips do not explain it. Cross-cutting patterns: **no real API calls anywhere** — every
 `ai.py::_call_*_model` seam (and `mailer.py::_call_resend`) is monkeypatched with canned
 `SimpleNamespace` responses; every feature file asserts **user isolation**; route tests assert
 anon → 302. What each file covers:
 
+- `test_model_constants.py` — #140: which model each beat runs on, **and the request
+  parameters the Sonnet 5 move made load-bearing**. Beyond the two constant scenarios it
+  pins `max_tokens >= 4096` and the explicit `effort` at both Sonnet seams, so a later
+  "tidy" back to 2048 fails loudly instead of silently reintroducing truncation. It does
+  this by stubbing the **client factory** (`anthropic.Anthropic` / `ai._get_ask_client`)
+  with a recorder rather than the `_call_*_model` seam itself — one level deeper than the
+  usual convention, because the kwargs live *inside* the seam. Also asserts no sampling
+  parameter is ever passed (a 400 on Sonnet 5). ⚠️ Its docstring states the ceiling: green
+  proves the constants are spelled right and the kwargs are what we intended, and nothing
+  about whether real output fits — the live run is the gate
+- `test_integration_status.py` — #139: the pure three-state rule, the placeholder property
+  (`github_pat_YOURTOKEN` must not read as configured — stated as the incident so swapping
+  the length floor for a format check fails loudly), push needing *both* VAPID keys, the
+  scheduler line, and non-admin/anon redirects. ⚠️ **The load-bearing one asserts the value,
+  three prefix lengths of it, and the variable names are all absent from the response.**
+  ⚠️ Every test sets the environment **explicitly** — the dev container legitimately
+  carries a real `ANTHROPIC_API_KEY`, so a test assuming "unset by default" would pass or
+  fail depending on whose machine it runs on
 - `test_release_announce.py` — #115/#131/#133 via the mocked `pusher._call_webpush` seam: the fixed body, that **only the version varies** between two releases, that the title **does not contain "Budget Buddy"** (#133 — stated as a property, not a string, because every other assertion would read a regression as a mere wording change and the duplicate is only visible on a real device), and — the load-bearing one — that `build_release_notification` **takes exactly one parameter** (`inspect.signature`), so reintroducing release text is a visible regression rather than a quiet reopening of the injection surface; the CLI rejecting `--notes`; the `push_enabled()` gate; **reaching every user's devices** (the not-user-scoped property); `PushGone` deleting vs a transient `PushError` keeping; one bad device not aborting the batch; and the Profile consent copy. ⚠️ Assertions are written against **this worker's own endpoints**, never a global count — see the xdist gotcha above
 - `test_feedback.py` — #64 end to end via the mocked `github._call_github` seam: the gate (no token → no UI on /profile and the route creates nothing), happy path + label set (`bug`/`enhancement` **plus `from-app`**), an arbitrary posted kind never becoming a label, validation, the input caps, `GitHubError` → GENERIC_ERROR with **the API text, status code and repo name all absent from the response**, the seam unit tests, anon → 302, and the rate-limit registration (`limiter._marked_for_limiting`, the test_admin_backup.py convention — the limiter is disabled under test). ⚠️ **`test_body_carries_only_what_the_user_typed` is the load-bearing one**: it asserts the username and the seeded account/category/transaction names and amount are all absent. The privacy decision is invisible in the code's shape, so a later change attaching context would look like an improvement and break nothing else
 - `test_pending_transactions.py` — #86 end to end: create/badge (content-asserting — `HistoryRow` is positional), the page-scoped pin, several pending rows staying newest-first (the stable-sort property), pinning NOT overriding `?month`, the em-dash balance cell **anchored to the actual `<td>`** (a bare `"—"` also matches the edit selects' "— none —" and passes without the feature), **the walk-guard property** (posted rows' balance cells are character-identical whether a sibling is pending or posted — this fails if anyone moves the pin into SQL), page-1 top balance still equalling the full net, mark-posted (clears only, whole-tbody fragment, returns the row to date order), edit-preserves-the-flag, pending counting in month spending, a pending row still being an Auto-Categorize candidate (i.e. NOT behaving like `is_adjustment`), export + cleanup keeping pure date order, and the isolation/anon set
@@ -894,6 +951,10 @@ A `sweeper` worker agent (Sonnet, tools: Read/Grep/Glob/Edit only) is defined in
   ✅ **That check earned its keep on its first outing** (2026-07-31, cutting `0.4.1`): it surfaced
   `FEEDBACK_GITHUB_TOKEN` as the one new variable since `v0.3.1`, which would otherwise have
   deployed #64 completely invisible. Run it **before** cutting the release.
+  ✅ **Since #139 the app answers this itself** — `/settings` carries an admin-only
+  Integrations table reporting each gate as configured / not configured / set-but-implausible.
+  It is the first place to look after a deploy, and it makes the check below something you do
+  to *confirm* a suspicion rather than to discover one.
   ⚠️ **Verify a secret landed by LENGTH, not presence.** `grep -c` reports a placeholder as
   happily as a real token — a literal `github_pat_YOURTOKEN` from copy-pasted instructions once
   reached the Droplet `.env` and would have rendered a form that accepts input and fails on every
