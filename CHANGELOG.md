@@ -8,6 +8,45 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Added
+
+- **The Settings page now says which optional features are actually switched on.**
+  Several features — the AI cards, the weekly digest email, push notifications and
+  in-app bug reports — only appear once their credentials are set on the server.
+  That is deliberate, but it means a feature that was never configured looks
+  exactly like a feature that is broken: in both cases there is simply nothing
+  there. Until now the only way to tell them apart was to log into the server.
+
+  An admin-only table on Settings answers it directly, one line per feature. It
+  also distinguishes a third case that used to be invisible: a credential that is
+  present but too short to be real — a half-finished copy-paste. That one is worse
+  than a missing credential, because the feature appears, accepts what you type,
+  and then fails every time.
+
+  **No credential is ever shown** — not the value, not the first few characters,
+  not a masked version. Each line says only whether the feature is on, off, or
+  misconfigured.
+
+### Changed
+
+- **Auto-Categorize and the weekly money check run on a newer model.** These are
+  the two places the app asks for judgement rather than a summary — which
+  category a transaction belongs in, and whether a week's spending is worth
+  mentioning — so they run on a more capable model than the rest. That model has
+  been superseded, and both now use its replacement.
+
+  The newer model reasons before it answers, which takes room it did not need
+  before, so both were given more of it. Without that, a long answer would have
+  been cut off mid-sentence and quietly discarded — the app would have shown you
+  nothing rather than something wrong, but shown you nothing all the same.
+
+- **The update notification no longer says "Budget Buddy" twice.** On a phone
+  with the app installed, the notification carried the name in its own heading
+  *and* again on the line underneath — so it read "Budget Buddy 0.4.1 is live /
+  from Budget Buddy". That second line is written by the browser itself and
+  cannot be turned off, so the heading gives it up instead: it now reads
+  "Version 0.4.1 is live". The closing line gained an exclamation point.
+
 ## [0.4.1] - 2026-07-31
 
 Carries everything in `0.4.0`, which was tagged but **never deployed** — it was
