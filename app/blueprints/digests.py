@@ -26,6 +26,7 @@ from app.blueprints.agent import load_agent_run, run_money_agent
 from app.blueprints.insights import compute_month_facts
 from app.db import db_cursor
 from app.helpers import most_recent_sunday
+from app.jobs import WEEKLY_DIGEST, record_job_run
 
 bp = Blueprint('digests', __name__)
 
@@ -189,6 +190,11 @@ def send_weekly_digests(*, today=None):
             app.logger.warning('Weekly digest skipped for user %s: %s', user_id, e)
         except Exception as e:  # never let one user break the batch
             app.logger.exception('Weekly digest failed for user %s: %s', user_id, e)
+    # #151 — recorded AFTER the batch, so /settings reports a job that finished.
+    # Counts recipients as well as sends: "0 sent of 0 due" is a healthy week,
+    # "0 sent of 3 due" is not, and the panel should be able to tell them apart.
+    record_job_run(WEEKLY_DIGEST,
+                   f'sent {sent} of {len(recipients)} due')
     return sent
 
 
