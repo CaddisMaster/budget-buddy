@@ -136,8 +136,20 @@ landing/             # Static landing page at seandesmet.com
 - **Param validation:** same rule for query/form params — `?month` → `parse_month_param()`, `?page` → `parse_page_param()`, posted FK ids → `parse_int_param()`. A raw string into a psycopg2 `%s` against an int column raises (= 500)
 - **Write-side FK ownership:** when a form posts a `category_id`/`account_id`, validate it belongs to the user *before* the INSERT/UPDATE — `validate_category_account()` in transactions.py, folded into the route's validation-error path. Used by transaction new/edit, schedule create/edit, bulk edit, cleanup apply
 - **Error messages:** unexpected write failures show `helpers.GENERIC_ERROR` and log the real exception via `current_app.logger.exception()` — never flash/toast `str(e)` (psycopg2 text leaks constraint names/SQL). The two FK-delete sites keep their friendly "Cannot delete — in use" branch
+- ⚠️ **The release notification title deliberately does NOT name the app** —
+  `Version {version} is live`, not `Budget Buddy {version} is live` (#133, PR #135).
+  Chrome renders its **own** attribution line under the title — "from Budget Buddy" on
+  an installed PWA, sourced from `manifest.json`'s `name` — which nothing in
+  `announce.py`/`sw.js` emits and `showNotification()` has no option to suppress. Naming
+  the app in our title too is what printed the phrase twice on the lock screen. ⚠️ Read
+  the title and that attribution line **together**: the title alone looks incomplete, and
+  on **desktop** the attribution is the origin rather than the app name, so it genuinely
+  is thinner there — an accepted trade (Sean, 2026-08-03), not an oversight.
+  `test_title_does_not_name_the_app` states the constraint rather than the string, since
+  every other assertion would read a regression as a mere wording change. Renaming
+  `manifest.json` is NOT the lever — that string is the home-screen icon label.
 - ⚠️ **The release notification body is a FIXED line** — `announce.BODY`, "Check out
-  what's new in the app." — and `build_release_notification()` takes **only a version**
+  what's new in the app!" — and `build_release_notification()` takes **only a version**
   (#131, reversing #115's settled "the text comes from the Release notes body", before
   it ever deployed). This is not merely wording: carrying human-authored text is what
   required a markdown flattener, a word-boundary truncator, an empty-notes fallback, a
@@ -169,10 +181,53 @@ landing/             # Static landing page at seandesmet.com
 
 ## Current Status
 
+### On `main`, NOT yet deployed
+
+**Prod runs `0.4.1`; `main` is one commit ahead of it.** One user-facing change is
+merged and waiting for a release:
+
+- **PR #135 / #133 — the release notification stops saying "Budget Buddy" twice.**
+  Title `Budget Buddy X is live` → `Version X is live`, body `.` → `!`. See the
+  notification-title gotcha. Tests **762 → 763**. No migration.
+  ⚠️ **Structurally unverifiable before it ships** — the notification only fires on
+  `release: published` and the announce logic lives inside the built image, so there is
+  no local or staging way to see it. The next release is the first sighting.
+
+Two issues were **filed and deliberately not built** this session, both with Gherkin
+criteria and `skip-triage`:
+
+- **#140 — move `CATEGORIZE_MODEL`/`AGENT_MODEL` from `claude-sonnet-4-6` to
+  `claude-sonnet-5`.** ⏰ **Has a date**: Sonnet 5 is on introductory pricing ($2/$10 per
+  MTok vs 4.6's $3/$15) **through 2026-08-31**, after which it is parity and only the
+  capability argument remains. ⚠️ Not a string swap — **adaptive thinking is ON BY
+  DEFAULT** when `thinking` is omitted (which `ai.py` always does), and `max_tokens` then
+  caps thinking + output together; both beats sit at `max_tokens=2048` parsing strict
+  JSON, so truncation lands in the `ParseError` fallback rather than failing loudly. The
+  agent multiplies it by `AGENT_MAX_TURNS=12`. ✅ Already verified clear of the *other*
+  breaking change: `ai.py` passes **no** sampling params anywhere. Haiku (`MODEL`,
+  `ASK_MODEL`) is current and stays. ⚠️ **The suite cannot gate this** — every
+  `_call_*_model` seam is stubbed, so green proves only that the constants are spelled
+  right; a live run against real data is the actual gate.
+- **#139 — an admin-only panel showing which optional integrations are configured.**
+  Closes the "a missing env var is the one deploy failure with NO signal" gap, which has
+  now bitten twice (`FEEDBACK_GITHUB_TOKEN` unset after #64 shipped; a
+  `github_pat_YOURTOKEN` placeholder that passed `grep -c`). Constraints recorded on the
+  issue: admin-only (**never `/healthz`**, which exists to leak nothing), never the value,
+  and judged by **plausibility not presence**.
+
+Three candidates were checked and **deliberately NOT filed** — recorded so they are not
+re-proposed: Flask-Login's 345 deprecation warnings (**0.6.3 is the latest release**, so
+there is nothing to bump to and the issue would be unworkable); a second latent xdist
+race (schema checked — `push_subscriptions.endpoint` really is the only globally-unique
+non-user-scoped column besides `users.username`, so #128's claim holds); and #36's
+trigger date (**verified**, not assumed — `budget_history` has been written since the
+v10.x era, not since `0.3.0`, so the six-complete-month window genuinely closes ~Dec 2026).
+
 ### Shipped: `0.4.1` (2026-07-31) — feedback, release notifications, Python 3.14
 
-**Prod runs `ghcr.io/caddismaster/budget-buddy:0.4.1`.** `main` is level with the
-release; nothing is merged-but-undeployed. Tests **723 → 757**. No migration.
+**Prod runs `ghcr.io/caddismaster/budget-buddy:0.4.1`.** Tests **723 → 757**. No
+migration. ⚠️ `main` was level with this release until 2026-08-03 — **PR #135 is now
+merged and undeployed**; see the not-yet-deployed block above.
 
 - **PR #120 / #64 — in-app bug reports and feature suggestions**, via the
   `app/github.py` seam. ✅ **`FEEDBACK_GITHUB_TOKEN` is now set on the Droplet** and
@@ -478,9 +533,12 @@ CURRENT month, not the last complete one — the UI always sends them; only bite
 requests.
 
 **Roadmap** — the issue tracker is authoritative. **`0.2.0`, `0.3.0` and `0.4.1` are all CLOSED
-and shipped** (see above). **The tracker is down to ONE open issue: #36**, which is date-parked
-until ~Dec 2026 — so the next session starts from a genuinely empty backlog, plus whatever
-arrives through the in-app feedback form.
+and shipped** (see above). **Three issues open (2026-08-03): #139, #140 and #36.** Only the
+first two are workable — #36 is date-parked until ~Dec 2026, and **#140 carries its own
+deadline of 2026-08-31** (see the not-yet-deployed block for both). The 2026-08-03 session
+started from a genuinely empty backlog and refilled it by **reading for evidence rather than
+brainstorming**: every candidate had to point at something already written down or already
+gone wrong, which is also why three others were rejected outright and recorded as rejected.
 
 ✅ **#64 is CLOSED** (PR #120, 2026-07-31) — in-app bug/feature reporting, built exactly to the
 privacy design settled on 2026-07-30. Do not re-open the privacy question. Two deviations from
@@ -512,14 +570,13 @@ same day, before it ever deployed) — the body is now a fixed line. Do not rest
 issue's history; see the fixed-body gotcha for why the reversal *deletes* the injection surface
 rather than guarding it.
 
-**#133** — the first issue filed through the in-app form. The notification reads
-`Budget Buddy 0.4.1 is live / from Budget Buddy / Check out what's new in the app.` and the
-middle line is duplicated. ⚠️ That line is **Chrome's own attribution, sourced from
-`manifest.json`'s `name`** — nothing in `announce.py`/`sw.js` emits it and it cannot be removed
-from the payload side. The tractable fix is to drop the app name from **our** title
-(`Version 0.4.1 is live`), plus the requested `.` → `!`. Open question recorded on the issue:
-the title is also what a **desktop** browser shows, where that reads less clearly — check there
-before committing. This does **not** reopen #131.
+✅ **#133 is CLOSED** (PR #135, 2026-08-03, **merged but NOT deployed**) — the first issue
+filed through the in-app form, and it was about a line the app does not emit. Fixed by
+dropping the app name from **our** title plus the requested `.` → `!`; see the
+notification-title gotcha above for the full reasoning and the accepted desktop cost.
+⚠️ **It cannot be verified until the next release actually ships** — the notification
+only fires on `release: published` and the announce code lives inside the built image.
+This did **not** reopen #131.
 
 ✅ **#111 is CLOSED** (fixed in `0.3.1`) — a category past the eighth created used to wrap
 onto an earlier one's colour. See the slot gotcha above; the fix reverses #83's
@@ -629,12 +686,12 @@ install cost ~1.5s and total per-invocation overhead ~2.9s, cut to ~0.8s by #70.
 predicted to "roughly halve" the run; it actually cut it by ~12×, because the suite is
 IO/DB-bound rather than CPU-bound and parallelises far better than a CPU-bound suite would.
 
-**757 tests in `tests/`** (5 of them skip on the last day of a month — `test_forecast.py`'s date guards). Cross-cutting patterns: **no real API calls anywhere** — every
+**763 tests in `tests/`** (5 of them skip on the last day of a month — `test_forecast.py`'s date guards). ⚠️ **Recount rather than trusting this number** — it read 757 while the true figure was 762 (measured 2026-08-03), so the drift is real and the month-end skips do not explain it. Cross-cutting patterns: **no real API calls anywhere** — every
 `ai.py::_call_*_model` seam (and `mailer.py::_call_resend`) is monkeypatched with canned
 `SimpleNamespace` responses; every feature file asserts **user isolation**; route tests assert
 anon → 302. What each file covers:
 
-- `test_release_announce.py` — #115/#131 via the mocked `pusher._call_webpush` seam: the fixed body, that **only the version varies** between two releases, and — the load-bearing one — that `build_release_notification` **takes exactly one parameter** (`inspect.signature`), so reintroducing release text is a visible regression rather than a quiet reopening of the injection surface; the CLI rejecting `--notes`; the `push_enabled()` gate; **reaching every user's devices** (the not-user-scoped property); `PushGone` deleting vs a transient `PushError` keeping; one bad device not aborting the batch; and the Profile consent copy. ⚠️ Assertions are written against **this worker's own endpoints**, never a global count — see the xdist gotcha above
+- `test_release_announce.py` — #115/#131/#133 via the mocked `pusher._call_webpush` seam: the fixed body, that **only the version varies** between two releases, that the title **does not contain "Budget Buddy"** (#133 — stated as a property, not a string, because every other assertion would read a regression as a mere wording change and the duplicate is only visible on a real device), and — the load-bearing one — that `build_release_notification` **takes exactly one parameter** (`inspect.signature`), so reintroducing release text is a visible regression rather than a quiet reopening of the injection surface; the CLI rejecting `--notes`; the `push_enabled()` gate; **reaching every user's devices** (the not-user-scoped property); `PushGone` deleting vs a transient `PushError` keeping; one bad device not aborting the batch; and the Profile consent copy. ⚠️ Assertions are written against **this worker's own endpoints**, never a global count — see the xdist gotcha above
 - `test_feedback.py` — #64 end to end via the mocked `github._call_github` seam: the gate (no token → no UI on /profile and the route creates nothing), happy path + label set (`bug`/`enhancement` **plus `from-app`**), an arbitrary posted kind never becoming a label, validation, the input caps, `GitHubError` → GENERIC_ERROR with **the API text, status code and repo name all absent from the response**, the seam unit tests, anon → 302, and the rate-limit registration (`limiter._marked_for_limiting`, the test_admin_backup.py convention — the limiter is disabled under test). ⚠️ **`test_body_carries_only_what_the_user_typed` is the load-bearing one**: it asserts the username and the seeded account/category/transaction names and amount are all absent. The privacy decision is invisible in the code's shape, so a later change attaching context would look like an improvement and break nothing else
 - `test_pending_transactions.py` — #86 end to end: create/badge (content-asserting — `HistoryRow` is positional), the page-scoped pin, several pending rows staying newest-first (the stable-sort property), pinning NOT overriding `?month`, the em-dash balance cell **anchored to the actual `<td>`** (a bare `"—"` also matches the edit selects' "— none —" and passes without the feature), **the walk-guard property** (posted rows' balance cells are character-identical whether a sibling is pending or posted — this fails if anyone moves the pin into SQL), page-1 top balance still equalling the full net, mark-posted (clears only, whole-tbody fragment, returns the row to date order), edit-preserves-the-flag, pending counting in month spending, a pending row still being an Auto-Categorize candidate (i.e. NOT behaving like `is_adjustment`), export + cleanup keeping pure date order, and the isolation/anon set
 - `test_seed_dev.py` — `scripts/seed_dev.py` (#69): determinism (same seed+day → identical rows), dates derived from `today` not hardcoded, **the fixture scaling property** (parametrized 2–36 months — a fixed opening debt pays the card off entirely on a long window and a fixed goal target gets overshot), analytics-exclusion coverage, schedule `next_due` always FUTURE, plus a DB round-trip: persistence counts, transfer-pair shape, login + populated dashboard, **loading `/` materializes nothing**, refuse/force/dry-run paths

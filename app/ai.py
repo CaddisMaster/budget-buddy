@@ -459,7 +459,10 @@ def _call_ask_model(messages, tool_specs, today, api_key):
 # beats above.
 # ---------------------------------------------------------------------------
 
-CATEGORIZE_MODEL = "claude-sonnet-4-6"
+# ⚠️ Sonnet 5 thinks BY DEFAULT (adaptive) because we never pass `thinking` — 4.6
+# did not. max_tokens then caps thinking AND the JSON together, so the 4096 and the
+# explicit effort at the call site are load-bearing, not slack. See _call_categorize_model.
+CATEGORIZE_MODEL = "claude-sonnet-5"
 _CONFIDENCES = ("high", "medium", "low")
 
 
@@ -569,8 +572,16 @@ def _call_categorize_model(rows, category_names, today, api_key):
         # rather than drifting toward the gunicorn worker timeout.
         client = anthropic.Anthropic(api_key=api_key, timeout=60.0)
         response = client.messages.parse(
+            # 4096, not 2048: Sonnet 5 thinks by default and max_tokens caps thinking
+            # + the JSON together, so a long think would truncate the suggestions into
+            # the ParseError fallback rather than failing loudly. Its tokenizer also
+            # counts ~30% more per row. effort is explicit because Sonnet 5 defaults to
+            # "high" — batch classification is exactly the scoped work "low" is for.
+            # The SDK merges output_format INTO output_config as its "format" key, so
+            # passing both is supported (verified in anthropic 0.120.0), not a clash.
             model=CATEGORIZE_MODEL,
-            max_tokens=2048,
+            max_tokens=4096,
+            output_config={"effort": "low"},
             system=system,
             messages=[{"role": "user", "content": json.dumps(rows, default=str)}],
             output_format=_Suggestions,
@@ -931,7 +942,11 @@ def _call_coach_model(facts, today, api_key):
 # in the app, and it runs once a week.
 # ---------------------------------------------------------------------------
 
-AGENT_MODEL = "claude-sonnet-4-6"
+# ⚠️ Same Sonnet 5 thinking-by-default coupling as CATEGORIZE_MODEL, multiplied by
+# AGENT_MAX_TURNS — see _call_agent_model. Thinking is deliberately left ON here:
+# with it disabled Sonnet 5 reaches for tools LESS, and the grounding guard below
+# turns a run with no successful data-tool call into a ParseError.
+AGENT_MODEL = "claude-sonnet-5"
 AGENT_MAX_TURNS = 12       # investigation needs more room than ASK_MAX_TURNS
 AGENT_MAX_FINDINGS = 3
 AGENT_TITLE_MAX = 120
@@ -1119,8 +1134,13 @@ def _call_agent_model(messages, tool_specs, today, api_key):
     try:
         client = _get_ask_client(api_key, timeout=60.0)
         return client.messages.create(
+            # 4096 + explicit effort for the same reason as _call_categorize_model —
+            # Sonnet 5 thinks by default and max_tokens bounds thinking + output
+            # together. "medium" rather than "low" here: this beat is genuinely
+            # agentic, and the spend is per TURN (AGENT_MAX_TURNS = 12).
             model=AGENT_MODEL,
-            max_tokens=2048,
+            max_tokens=4096,
+            output_config={"effort": "medium"},
             system=_AGENT_SYSTEM.format(today=today.isoformat()),
             tools=tool_specs,
             messages=messages,

@@ -90,7 +90,17 @@ def _endpoints_sent(sent):
 
 def test_title_names_the_version():
     note = build_release_notification("0.4.1")
-    assert note["title"] == "Budget Buddy 0.4.1 is live"
+    assert note["title"] == "Version 0.4.1 is live"
+
+
+def test_title_does_not_name_the_app():
+    """#133 — Chrome renders its OWN attribution line ("from Budget Buddy",
+    from manifest.json's `name`) under the title, and nothing in this app can
+    suppress it. Naming the app in the title too is what printed the phrase
+    twice on the lock screen. This is the whole point of the change, and it is
+    invisible in the payload — the duplicate only shows on a real device."""
+    title = build_release_notification("0.4.1")["title"]
+    assert "Budget Buddy" not in title
 
 
 def test_tap_target_is_the_dashboard():
@@ -100,7 +110,7 @@ def test_tap_target_is_the_dashboard():
 
 def test_body_is_the_fixed_line():
     assert build_release_notification("0.4.1")["body"] == BODY
-    assert BODY == "Check out what's new in the app."
+    assert BODY == "Check out what's new in the app!"
 
 
 def test_only_the_version_varies_between_releases():
@@ -169,7 +179,7 @@ def test_every_device_gets_the_same_release_payload(monkeypatch, users):
             if s["endpoint"] in (ENDPOINT_A1, ENDPOINT_B1)]
     assert len(ours) == 2
     assert ours[0] == ours[1]
-    assert ours[0]["title"] == "Budget Buddy 0.4.1 is live"
+    assert ours[0]["title"] == "Version 0.4.1 is live"
     assert ours[0]["body"] == BODY
 
 
@@ -226,7 +236,7 @@ def test_cli_sends_the_fixed_body(app, monkeypatch, users):
     assert result.exit_code == 0, result.output
     ours = [s for s in sent if s["endpoint"] == ENDPOINT_A1]
     assert ours[0]["payload"]["body"] == BODY
-    assert ours[0]["payload"]["title"] == "Budget Buddy 0.4.1 is live"
+    assert ours[0]["payload"]["title"] == "Version 0.4.1 is live"
 
 
 def test_cli_rejects_release_text(app, monkeypatch):
