@@ -15,6 +15,53 @@
     <p style="font-size:14px;color:var(--text-muted);margin-bottom:1rem">View and manage all user accounts.</p>
     <a href="{{ url_for('admin.admin_users') }}" class="btn btn-primary">Manage users</a>
 </div>
+
+{# #139 — which optional integrations are actually configured. Admin-only (the
+   route already redirects non-admins). NEVER render a value here, not even a
+   prefix or a mask: each row shows one word about one integration, and the
+   credential itself must not enter the response. See admin.integration_status. #}
+<h2>Integrations</h2>
+<div class="card">
+    <p style="font-size:14px;color:var(--text-muted);margin-bottom:1rem">
+        Each of these features is off unless its credentials are set on the server.
+        A feature that is off looks exactly like a feature that is broken, which is
+        what this table is for. Values are never shown — only whether one is present
+        and long enough to be real.
+    </p>
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr><th>Feature</th><th>What it powers</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+                {% for row in integrations %}
+                <tr>
+                    <td>{{ row.name }}</td>
+                    <td style="color:var(--text-muted)">{{ row.description }}</td>
+                    <td>
+                        {% if row.state == 'configured' %}
+                            <span class="integration-state is-configured">Configured</span>
+                        {% elif row.state == 'implausible' %}
+                            <span class="integration-state is-implausible">Set, but does not look valid</span>
+                        {% else %}
+                            <span class="integration-state is-unset">Not configured</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <p style="font-size:13px;color:var(--text-muted);margin-top:1rem">
+        Background scheduler:
+        {% if scheduler_on %}
+            <strong>running</strong> — recurring transactions are materialized daily.
+        {% else %}
+            <strong>not running</strong> — recurring transactions are materialized when
+            someone loads the app, not on a schedule.
+        {% endif %}
+    </p>
+</div>
 {% endif %}
 
 {% endblock %}

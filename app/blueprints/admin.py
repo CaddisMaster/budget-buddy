@@ -113,13 +113,102 @@ def backup_database():
     return response
 
 
+# ---------------------------------------------------------------------------
+# #139 — which optional integrations are actually configured.
+#
+# A missing env var is the one deploy failure with NO signal: nothing in
+# release.yml writes or validates .env, and a gated feature whose variable is
+# unset is indistinguishable from that feature working as designed — the UI is
+# simply absent, which is exactly what the gate is supposed to do when the
+# feature is off. It has bitten twice (FEEDBACK_GITHUB_TOKEN unset after #64
+# shipped; a github_pat_YOURTOKEN placeholder that reached the Droplet).
+#
+# ⚠️ Three rules this must keep:
+#
+#   * ADMIN-ONLY. This can never move to /healthz — that endpoint exists to leak
+#     nothing, and configuration is precisely what it exists not to say.
+#   * NEVER the value. Not a prefix, not four characters, not a mask. Each row
+#     answers ONE question, and the value never enters the response.
+#   * PLAUSIBILITY, not presence. A minimum LENGTH per variable, deliberately
+#     not a prefix match: the placeholder that actually reached production was
+#     `github_pat_YOURTOKEN`, which a `github_pat_` prefix check would have
+#     PASSED. Length is the check that discriminates it (22 chars vs ~93).
+#
+# Floors sit well below the observed real shapes so a provider tweaking its
+# format cannot turn this into a false alarm — the real values are ~108
+# (Anthropic), ~35 (Resend), 87/43 (VAPID public/private) and ~93 (fine-grained
+# PAT). Being generous is correct: a false "looks fine" costs one deploy check,
+# a false "looks broken" costs trust in the panel.
+# ---------------------------------------------------------------------------
+
+CONFIGURED = 'configured'
+UNSET = 'unset'
+IMPLAUSIBLE = 'implausible'
+
+INTEGRATIONS = (
+    ('AI features', 'Insights, forecasts, budget review, Ask and the weekly money check',
+     ('ANTHROPIC_API_KEY',), 40),
+    ('Weekly email digest', 'The Sunday summary email',
+     ('RESEND_API_KEY',), 20),
+    ('Push notifications', 'Bill reminders and release notices',
+     ('VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY'), 40),
+    ('In-app feedback', 'Bug reports and suggestions filed as GitHub issues',
+     ('FEEDBACK_GITHUB_TOKEN',), 60),
+)
+
+
+def integration_status():
+    """One row per env-gated integration: {name, description, state}.
+
+    Pure — reads os.environ, touches no request context and no database, so the
+    plausibility rule is unit-testable without a client (the same reason the
+    gates themselves are). `state` is one of the three module constants:
+
+        UNSET        every variable is missing or blank — the feature is OFF,
+                     which is a legitimate state and not an error
+        CONFIGURED   every variable is present and at least its floor long
+        IMPLAUSIBLE  something is set but too short to be a real credential
+
+    The third state is the point of the panel. `unset` is a forgotten step;
+    `implausible` is a bad paste that renders a feature which accepts input and
+    fails on every submission — worse than absent, and the failure mode that
+    motivated the issue. Collapsing them back into a boolean loses exactly the
+    distinction this exists to draw. A partially-set integration (one VAPID key
+    but not the other) lands in IMPLAUSIBLE too, which is right: half-configured
+    push is broken, not off.
+    """
+    rows = []
+    for name, description, variables, floor in INTEGRATIONS:
+        values = [(os.getenv(var) or '').strip() for var in variables]
+        if not any(values):
+            state = UNSET
+        elif all(len(value) >= floor for value in values):
+            state = CONFIGURED
+        else:
+            state = IMPLAUSIBLE
+        rows.append({'name': name, 'description': description, 'state': state})
+    return rows
+
+
+def scheduler_enabled():
+    """Whether the background scheduler is running. Deliberately NOT a fifth
+    integration row: it is not a credential, so plausibility means nothing for
+    it, and its semantics differ — it starts a thread whose jobs each carry
+    their OWN gate (weekly digest ← mail_enabled(); daily materialization ←
+    nothing at all). Reporting it as "configured" alongside four credentials
+    would imply it can be half-set, which it cannot."""
+    return os.getenv('ENABLE_DIGEST_SCHEDULER') == '1'
+
+
 @bp.route('/settings')
 @login_required
 def settings():
     if not current_user.is_admin:
         flash('Access denied')
         return redirect(url_for('main.index'))
-    return render_template('settings.html')
+    return render_template('settings.html',
+                           integrations=integration_status(),
+                           scheduler_on=scheduler_enabled())
 
 
 @bp.route('/admin/users')
