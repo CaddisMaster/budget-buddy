@@ -17,7 +17,7 @@
 # TEST_PREFIX from the xdist worker id so every worker owns its own database
 # rows — read the note there before changing how test users are named.
 #
-# ⚠️ The default is a BOUNDED 4 workers, deliberately not `-n auto`. On a Mac,
+# ⚠️ The default is a BOUNDED 10 workers, deliberately not `-n auto`. On a Mac,
 # `auto` means one worker per core (15 here) — all of them inside the Docker VM,
 # each hammering Postgres and the VirtioFS-mounted source tree. The host's
 # VirtualMachineService then reports the aggregate as ~1000% CPU, the fans spin
@@ -25,10 +25,15 @@
 # once; it is not fine when a verification protocol asks for five consecutive
 # runs (see #128/#157), which is how this was found.
 #
-# The trade, both figures MEASURED on the 806-test suite rather than estimated:
-# ~21s at `auto` against ~67s at 4, for eleven cores left free. Wall-clock was
-# never the binding constraint — the old ~204s serial time was, and 67s is not a
-# return to that. If you want the 21s back for one run, pass `-n auto`.
+# The trade, all figures MEASURED on the 806-test suite rather than estimated:
+#
+#     -n auto (15)   ~21s   every core pinned, fans audible
+#     -n 10          ~29s   five cores left for the rest of the machine
+#     -n 4           ~67s
+#
+# 10 is the chosen point: it gives up ~8 seconds and keeps the machine usable.
+# Wall-clock was never the binding constraint — the old ~204s serial time was.
+# If you want the 21s back for one run, pass `-n auto` explicitly.
 #
 # ⚠️ CI is deliberately NOT affected: ci.yml invokes `pytest -q -n auto`
 # directly and never goes through this script. Ephemeral runners have no
@@ -61,12 +66,12 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 # Default to a BOUNDED worker count, unless the caller specified their own -n.
-# See the header for why this is 4 and not `auto`. Matched as a prefix so `-n0`,
+# See the header for why this is 10 and not `auto`. Matched as a prefix so `-n0`,
 # `-n 4` and `-nauto` are all recognised.
 #
 # Built as a plain string rather than an array: macOS still ships bash 3.2,
 # where expanding an EMPTY array under `set -u` is an "unbound variable" error.
-PARALLEL="-n 4"
+PARALLEL="-n 10"
 for arg in "$@"; do
   case "$arg" in
     -n*|--numprocesses*) PARALLEL="" ; break ;;
