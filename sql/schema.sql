@@ -283,3 +283,19 @@ CREATE TABLE public.reminder_log (
     sent_at timestamp without time zone DEFAULT now(),
     UNIQUE (user_id, source, source_id, occurrence_date)
 );
+
+-- ------------------------------------------------------------
+-- Job runs (#151 — when each scheduled job last finished; see sql/34)
+-- One row per JOB, upserted on completion — not an append-only log, and
+-- deliberately NOT user-scoped: these jobs run for everyone at once, so there is
+-- no user the daily pass belongs to. Exists because /settings could previously
+-- only report that the scheduler was switched ON, which since #33 is a different
+-- question from whether the ledger is still being materialized daily.
+-- `summary` is free text for a human; nothing parses it.
+-- ------------------------------------------------------------
+CREATE TABLE public.job_runs (
+    id SERIAL PRIMARY KEY,
+    job_name text NOT NULL UNIQUE,
+    last_run_at timestamp without time zone NOT NULL DEFAULT now(),
+    summary text
+);
