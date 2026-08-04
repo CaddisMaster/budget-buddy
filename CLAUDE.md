@@ -903,12 +903,13 @@ through as a literal CLI argument; comments go outside the block.
 
 ## Delegation (worker agents)
 
-Three agents are defined in `.claude/agents/`, all Sonnet. They split into **one executor**
-that edits files and **two reporters** that only read:
+Four agents are defined in `.claude/agents/`, all Sonnet. They split into **two executors**
+that edit files and **two reporters** that only read:
 
 | Agent | Tools | Does |
 |---|---|---|
 | `sweeper` | Read/Grep/Glob/**Edit** | Mechanical multi-file sweeps from an explicit spec file |
+| `test-first` | Read/Grep/Glob/**Edit** | Makes an orchestrator-written failing test pass, editing app code only |
 | `gotcha-auditor` | Read/Grep/Glob/**Bash** | Audits a branch diff against this file's Key Gotchas |
 | `release-prep` | Read/Grep/Glob/**Bash** | Runs the pre-release checklist against `main`, reports go/no-go |
 
@@ -924,24 +925,47 @@ Policy:
   conversions, url_for conversions, find-replace-shaped work), and wide read-only recon. Write
   the spec to a scratchpad file (file list, old→new table, exclusions, expected per-file counts)
   and pass the worker the spec path — specs are re-runnable and diffable.
+- **Delegate feature work ONLY test-first**, via `test-first`: the orchestrator writes the
+  failing test, runs the suite, and hands the worker the test path, the verbatim failure and
+  an explicit file surface. The worker edits app code and **never the test**. This is the one
+  delegable shape of feature work, and it is delegable *because the spec is machine-checkable*
+  — a wrong build stays red instead of going quietly wrong. See the ⚠️ below for why
+  plan-then-execute delegation is NOT the general pattern here.
 - **Do NOT delegate:** anything touching ownership guards, row shapes mid-refactor,
-  SQL/migrations, AI seams (`_call_*_model`), or exception handling.
-- **Do NOT delegate running the suite.** A full run is ~17 seconds — a background test agent
+  SQL/migrations, AI seams (`_call_*_model`), or exception handling. `test-first` carries this
+  same list as a decline list and hands back rather than doing it carefully.
+- **Do NOT delegate running the suite.** A full run is ~35 seconds — a background test agent
   has no win to capture. **Every worker batch gets `./test.sh` (full suite) run by the
   orchestrator before commit**, plus a spot-grep that the swept pattern is gone. Workers never
-  run tests, never commit, never edit outside their spec.
+  run tests, never commit, never edit outside their spec. With `test-first` this is also the
+  iteration loop: suite → relay the failure → worker fixes, which keeps the orchestrator's
+  per-cycle cost at a suite result rather than a diff review.
 - **Batch sizing:** don't spin one worker per tiny area — target batches that gate meaningful
   work per full-suite run; per-file expected counts + the leftover grep localize failures.
 - **If the prompt approaches the length of the work, don't delegate.** The cold start is then
-  pure loss, which is why the delegate list names sweeps and recon and nothing else.
+  pure loss, which is why the delegate list names sweeps, recon and test-first work — and
+  nothing else. For `test-first` the test itself is most of the prompt, so the rule is
+  already satisfied whenever the test was worth writing.
 
-⚠️ **`sweeper` is tool-constrained; the two reporters are only PROMPT-constrained.** Sweeper
-has no Bash, so "you cannot run tests or commit" is structurally true. `gotcha-auditor` and
-`release-prep` need `git diff`/`gh` reads to be useful standalone, so they carry Bash and
-their read-only discipline lives in their prompt — a weaker guarantee. Under manual
-invocation that is an accepted trade. **If either is ever wired to automatic routing, add
-`deny` rules for `Bash(git commit:*)`, `Bash(git push:*)` and `Bash(gh release:*)` to
-`.claude/settings.json` first.**
+⚠️ **Plan-then-execute is deliberately NOT the general pattern**, despite being the popular
+one. The orchestrator does not hand a written plan to a cheap worker and take the diff.
+Two reasons, both specific to this repo. First, **the plan is the fragile part**: four
+issues running (#87, #83, #86, #108) had a specified approach that was *wrong on contact
+with the code*, so a worker that faithfully implements a plan produces convincingly wrong
+code rather than obviously wrong code. Second, **delegation pays only when verification is
+cheaper than the work** — that holds for a reporter's conclusion (spot-check a few claims)
+and for a sweep (grep + suite), but reviewing a feature diff against these gotchas costs
+about what writing it costs, and Jinja's silent-empty-string failure mode means a wrong
+diff can look right. A **failing test** is what restores the asymmetry, which is the whole
+reason `test-first` is scoped the way it is. Settled 2026-08-04.
+
+⚠️ **The two executors are tool-constrained; the two reporters are only PROMPT-constrained.**
+`sweeper` and `test-first` have no Bash, so "you cannot run tests or commit" is structurally
+true. `gotcha-auditor` and `release-prep` need `git diff`/`gh` reads to be useful standalone,
+so they carry Bash and their read-only discipline lives in their prompt — a weaker guarantee.
+Under manual invocation that is an accepted trade. **If either is ever wired to automatic
+routing, add `deny` rules for `Bash(git commit:*)`, `Bash(git push:*)` and
+`Bash(gh release:*)` to `.claude/settings.json` first.**
 
 ⚠️ **Agents are not skills, and neither is a slash command.** `/verify` is a skill — it loads
 instructions into the orchestrator's own turn. An agent is a separate instance with its own
