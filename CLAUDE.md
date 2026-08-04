@@ -17,6 +17,7 @@ app/
   pusher.py          # outbound Web Push seam (#33, the mailer.py twin). push_enabled() gate, public_key(), send_push(), PushError + PushGone (404/410 = the subscription is DEAD, caller deletes it; anything else is transient and retried tomorrow), single _call_webpush() network seam tests stub. NEVER touches the DB
   mailer.py          # outbound email seam (Resend). mail_enabled() gate (twin of ai_enabled()), send_email(), MailError, single _call_resend() network seam tests stub. NOT named email.py (would shadow stdlib)
   github.py          # outbound GitHub issue seam (#64, the mailer.py/pusher.py triplet's fourth). feedback_enabled() gate (env FEEDBACK_GITHUB_TOKEN — deliberately NOT named GITHUB_TOKEN, which is a magic name in Actions), create_issue(), GitHubError, single _call_github() network seam tests stub. Uses stdlib urllib, NOT requests (requests is undeclared — only transitively present via pywebpush). NEVER touches the DB
+  jobs.py            # scheduled-job bookkeeping (#151). record_job_run(job_name, summary) upserts ONE row per job on completion (never on dispatch — a job that throws must not leave a row that looks like it worked); load_job_runs(cursor); pure summarize_job_runs(rows, *, scheduler_on, digest_registered, checked_at) → one display row per known job with an OK/STALE/NEVER/NOT_SCHEDULED state from a per-job threshold. Job-name constants DAILY/WEEKLY_DIGEST are the join key to app/__init__.py's registrations. Its own module (not admin.py) because the WRITERS are reminders.py + digests.py — the mailer.py/pusher.py/github.py single-purpose shape, though unlike those three it DOES touch the DB. ⚠️ record_job_run() swallows its own psycopg2 errors deliberately: a bookkeeping write must never break a job that already did its work
   db.py              # get_db_connection() + db_cursor() context manager (commit/rollback/close); db_cursor yields a NamedTupleCursor — rows read row.field (positional still works), SELECT columns must be uniquely named (alias with AS)
   helpers.py         # is_htmx(), hx_toast(), recent_months(), ai_enabled(); parse_positive_amount() (THE shared amount validator, rejects NaN/inf — every amount form routes through it) + parse_signed_amount() (same guard, allows negative/zero — bank balances); most_recent_sunday() (the weekly period key shared by the digest idempotency guard AND the agent's run key — lives here because digests.py imports agent.py); param parsers: parse_month_param() (every ?month read), parse_page_param() (every ?page read), parse_int_param() (every posted FK id); GENERIC_ERROR (the one user-facing message for unexpected write failures — raw exception text goes to current_app.logger.exception, never the browser)
   ai.py              # ALL model calls. parse_transaction_text() (NL quick-add), generate_insight(), generate_forecast(), answer_question() (Haiku multi-turn TOOL-USE loop), classify_transactions() (Sonnet batch), propose_budgets() (the model DOES propose amounts — pure _normalize_budget_proposals() re-resolves categories + SNAPS amounts into a facts-derived range), generate_digest(), coach, investigate_finances() (the Money agent's AUTONOMOUS loop — Sonnet, AGENT_MAX_TURNS=12, ends ONLY via the strict submit_findings tool intercepted locally; one nudge for a text-only turn then ParseError; grounding guard: submit with zero successful data-tool calls → ParseError; pure _normalize_findings() caps at 3 + drops unevidenced). Each feature has its OWN isolated _call_*_model() network seam so tests stub independently; pure _normalize()/_match_id() re-resolve ownership reading rows by ATTRIBUTE (.id/.name — the quick-add account feeder dual-names account_id AS id / account_name AS name). ai.py NEVER touches the DB or sees a user id — tool dispatch is a callback the blueprint supplies
@@ -61,6 +62,7 @@ landing/             # Static landing page at seandesmet.com
 - `forecasts` — cached month-ahead projection, **identical shape to `insights`** (separate table, not a `kind` column). Narrative only; figures recomputed by `compute_forecast()`
 - `goal_coach` — cached goal-pace narration, identical shape to the twins, pointed at the Goals page. Monthly-keyed to reuse the load/upsert even though goals aren't month-scoped
 - `agent_runs` — cached Money-agent weekly runs: user_id, **period_start (the week's Sunday, via `helpers.most_recent_sunday` — same boundary as `last_digest_sent_on`)**, content (JSON `{summary, findings:[{title, detail, evidence}], tools_used}`), model, created_at; **UNIQUE(user_id, period_start)** upsert. Stores only the narrative + cited evidence text — no figures are trusted from it
+- `job_runs` — when each scheduled job last **finished** (#151): job_name (**UNIQUE**), last_run_at, summary (free text for a human — *"materialized 3 user(s), sent 1 reminder(s)"*; nothing parses it and nothing should start to). **ONE ROW PER JOB, UPSERTED** — not append-only: the panel asks "when did this last finish", which is one fact per job (`agent_runs` is the upsert precedent; `reminder_log` is append-only because there every occurrence is a distinct claim that must not be lost). ⚠️ **NO `user_id`, deliberately** — these jobs run for everyone at once, so "which user did the daily pass belong to" has no answer. With `push_subscriptions` (per DEVICE) it is one of only two non-user-keyed shapes; this one is per JOB. Written on completion, **never on dispatch**
 - `push_subscriptions` — one row per **DEVICE** (#33): user_id, `endpoint` (**globally UNIQUE** — it is the push service's URL for that browser install, so re-subscribing upserts and a different user subscribing on the same browser MOVES the row to them, which is correct), p256dh, auth, created_at. A user may have several
 - `reminder_log` — the reminder idempotency marker (#33): user_id, `source` ('schedule' | 'transfer'), `source_id`, `occurrence_date`, sent_at; **UNIQUE(user_id, source, source_id, occurrence_date)**. Keyed per **OCCURRENCE**, not a per-day column on `users` — a date marker only holds while the lead time is exactly 1 day; widen the window and the same bill re-notifies daily. The row IS the lock (claimed with `ON CONFLICT DO NOTHING`), so it survives the container restart a deploy causes. `source_id` addresses two tables, so it is deliberately **not** an FK — orphaned markers are inert
 - `categories` — id, name, description, **kind ('expense' | 'income', default 'expense')**, user_id. Kind drives which category LISTS a surface offers (cockpit/review/Auto-Categorize = expense-kind only; forms group both kinds in optgroups; quick-add parse sees all) and Ask's `total_for_category` sums by it — transaction rollups still filter on the transaction's own `transaction_type`
@@ -85,6 +87,7 @@ landing/             # Static landing page at seandesmet.com
 - **Due-runners fire TWO ways (changed in `0.2.0`, #33):** the login-triggered path — GET `/` (dashboard), `/transactions`, `/scheduled` (schedules only), `/transfers` (transfers only), lazy-imported to avoid the schedules↔transactions import cycle, materializing for the CURRENT user only — **plus a daily server-side pass** (`reminders.run_daily_tasks` → `materialize_all_users()`) that runs both runners for EVERY user with an active schedule. Both **loop to catch up**, then advance `next_due` past today; new schedules seed `next_due` forward so setup never back-fills, and a schedule past its `end_date` materializes nothing (#32). The old "a user who never logs in gets nothing materialized" caveat is GONE — that was the gap #33 closed. Recurring is configured ONLY on the Scheduled tab — Add Transaction is one-off entries only
 - **Due-runner locking is now LOAD-BEARING, not merely prudent:** the due-row SELECTs are `FOR UPDATE`. They already guarded two simultaneous page loads (gunicorn serves on 4 threads); since `0.2.0` the **scheduler thread races those page loads too**. Keep the lock if those queries are ever touched — `test_push_reminders.py::test_daily_job_racing_a_page_load_materializes_once` is the net
 - **⚠️ The scheduler is NOT gated on `mail_enabled()`** (`app/__init__.py`). It was until `0.2.0`, which was fine while its only job was email — but the daily job now also materializes, and hanging that off a Resend key would mean a missing third-party credential silently stops the ledger updating. `ENABLE_DIGEST_SCHEDULER=1` starts the scheduler; **each JOB carries its own gate** (digest ← `mail_enabled()`, reminder half of the daily job ← `push_enabled()`, materialization ← nothing). Do not "tidy" this back into one condition
+- ⚠️ **"The scheduler is enabled" and "the job ran" are DIFFERENT QUESTIONS** (#151, PR #156). `admin.scheduler_enabled()` reads an env var at request time — it answers *was the switch set when this process started*, not *is the job running*. Those were the same question while the scheduler's only job was the digest (a missed digest is self-evident: no email arrives). They stopped being the same in `0.2.0`, because the daily job now also runs `materialize_all_users()`, which is **gated on nothing** and is what turns a schedule into a real transaction row. The failure it makes visible: the thread dies, `/settings` still reports whatever the env var says, `/healthz` stays green (the database is reachable), and recurring transactions silently stop appearing — indistinguishable from "nothing was due", noticed weeks later via wrong balances. `app/jobs.py` answers the second question from `job_runs`; **do not collapse the two back into one indicator**. ⚠️ A job that is switched off on this server reports `NOT_SCHEDULED`, deliberately **not** a fault — a panel that cried wolf about a legitimate state would be worth ignoring
 - All data tables have `user_id` FK — every SELECT/INSERT/UPDATE/DELETE must be scoped to `current_user.id`
 - ⚠️ **The History pending-pin is sorted in PYTHON, never in SQL** (#86). `_load_history`
   seeds its balance walk from a SUM of every filtered row *older* than the page — and the
@@ -209,10 +212,32 @@ landing/             # Static landing page at seandesmet.com
 
 ## Current Status
 
-### Nothing is merged-but-undeployed
+### On `main`, not yet deployed — the `0.6.0` candidate
 
-**Prod runs `0.5.0` and `main` is level with it.** Verified 2026-08-03 — see the release
-block below.
+**Prod runs `0.5.0`; `main` is AHEAD of it.** Release prep is **#165**, and the
+`release-prep` agent returned **GO, cut as `0.6.0`** against `f25b80f` on 2026-08-04
+(`### Added` only, so MINOR not PATCH). What is merged and undeployed:
+
+- **PR #155 — the `job_runs` table.** One additive migration, `sql/34_job_runs.sql`,
+  standing alone in its own commit. Applies **BEFORE** the image pull, which
+  `release.yml` already does automatically.
+- **PR #156 / #151 — "when did each background job last actually run" on /settings.**
+  New `app/jobs.py`; `/settings` gains a line per job with an overdue badge. See the
+  scheduler-visibility gotcha.
+- **PR #158 / #157 — the xdist `loadgroup` fix.** Test-only; see the Testing section.
+- **PRs #162 / #161 and #166 / #163 — the four worker agents.** No `app/` change.
+
+⚠️ **`css_v` CANNOT verify this deploy** — the CSS is unchanged since `v0.5.0`, so prod's
+value will match the already-verified `44ef4f4a…` and prove nothing. The strongest check
+is `from app.jobs import record_job_run, load_job_runs, summarize_job_runs` inside the
+running container: that module did not exist in the `0.5.0` image, so the import is a fact
+about the running code rather than about metadata. The image tag (`:0.6.0`, not `:latest`)
+is the secondary check. **No new env vars** — `.env.example` is unchanged, so there is
+nothing to set on the Droplet first.
+
+⚠️ **The What's-new strip is still on `v0.5.0`** (`dashboard.html`) and is the one blocker
+in #165. It needs one new block for the job-runs panel; the xdist fix and the agent
+definitions get none (test-only and no-UI infrastructure are never feature blocks).
 
 ### Shipped: `0.5.0` (2026-08-03) — smarter categorization, and Settings tells you what's on
 
@@ -571,13 +596,18 @@ Smoke aside carried over: POSTing `/insights/generate` without the form's year/m
 CURRENT month, not the last complete one — the UI always sends them; only bites hand-rolled
 requests.
 
-**Roadmap** — the issue tracker is authoritative. **`0.2.0`, `0.3.0` and `0.4.1` are all CLOSED
-and shipped** (see above). **`0.5.0` is CLOSED and shipped too.** **ONE issue open (2026-08-03, end of day):
-#36 alone**, and it is date-parked until ~Dec 2026 — so the workable backlog is empty. #139
-and #140 were filed, built AND shipped the same day (PRs #143 and #142); all five open PRs,
-including three Dependabot bumps, were merged and released as `0.5.0`. The morning session refilled the backlog by **reading for evidence rather than
-brainstorming** — every candidate had to point at something already written down or already
-gone wrong, which is also why three others were rejected outright and recorded as rejected.
+**Roadmap** — the issue tracker is authoritative; **recount from `gh issue list` rather than
+trusting any figure written here.** **`0.2.0`, `0.3.0`, `0.4.1` and `0.5.0` are all CLOSED and
+shipped** (see above). As of **2026-08-04** the backlog is no longer empty — the workable items
+are **#165** (cut `0.6.0`, the blocker being the What's-new strip), **#164** (this file's own
+accuracy), **#160** / **#159** (schema and migration-CI gaps), **#154** (automate release prep),
+**#153** (rehearse a restore) and **#150** (unbounded container logs). **#36 remains the only
+date-parked one** (~Dec 2026).
+
+⚠️ **The backlog was refilled by reading for EVIDENCE rather than brainstorming** — every
+candidate had to point at something already written down or already gone wrong. That is also
+why three were rejected outright and recorded as rejected (see the `0.5.0` block), and why
+#160/#159/#164 exist at all: each came out of a diff or an agent report, not a wishlist.
 
 ✅ **#140 is CLOSED** (PR #142, shipped in `0.5.0`) — the two Sonnet
 beats run on `claude-sonnet-5`. Its cost premise did **not** survive contact: intro pricing
@@ -712,13 +742,32 @@ in `/home/appuser/.local/bin`, which is NOT on `PATH`.) `test.sh` also passes
 `-p no:cacheprovider`: `/app` is root-owned (`WORKDIR` created it before the `COPY --chown`) so
 pytest can never write its cache there, and passing it turns two warnings per run into none.
 
-**⚠️ Test-run economy is OBSOLETE — a full run costs ~17 SECONDS.** `./test.sh` runs `-n auto`
-by default (#71, 668 tests, 15 workers on the Mac: 204s → 17.2s, measured across five
-consecutive runs at ±0.15s). **Just run the full suite.** The old rationing advice — targeted
-`-k` runs for iteration signal, one full run per commit as the gate, batching mechanical commits
-coarser so each full run gates more work, capturing red output to a file because re-running was
-expensive — was written when a run cost 2:40 and is now actively counterproductive. Delete it
-from your habits; a `-k` run saves ~16 seconds and risks missing the thing that broke.
+**⚠️ Test-run economy is OBSOLETE — a full run costs ~35 SECONDS.** **Just run the full
+suite.** The old rationing advice — targeted `-k` runs for iteration signal, one full run per
+commit as the gate, batching mechanical commits coarser so each full run gates more work,
+capturing red output to a file because re-running was expensive — was written when a run cost
+2:40 and is now actively counterproductive. Delete it from your habits; a `-k` run saves
+~30 seconds and risks missing the thing that broke.
+
+⚠️ **`./test.sh` defaults to a BOUNDED `-n 10`, deliberately NOT `-n auto`** (`test.sh:20`
+carries the measurements: `-n auto` pins every core at ~21s, `-n 10` leaves five cores for the
+rest of the machine at ~29s, `-n 4` is ~67s). Pass `-n auto` explicitly to buy the difference
+back for one run. **CI is deliberately unaffected** — `ci.yml` invokes `pytest -q -n auto`
+directly, where pinning every core is the point.
+
+⚠️ **`pytest.ini` sets `--dist loadgroup`, not the default `load`** (#157/PR #158), and it
+lives there rather than in `test.sh` because **CI invokes `pytest` directly** (twice), so
+`test.sh` is not on every path this must hold for. Scheduling is identical for ungrouped
+tests; a test marked `@pytest.mark.xdist_group("scheduler_sweep")` is guaranteed the SAME
+worker as everything else in that group. That is the only way to stop two workers running a
+**global sweep** simultaneously: `reminders.send_due_reminders()` reads
+`SELECT DISTINCT user_id FROM push_subscriptions` with no user filter — correct, it is the
+daily job for everybody — so one worker's call also processes every other worker's users, and
+its `ON CONFLICT DO NOTHING` claim in `reminder_log` means the neighbour then delivers through
+the **wrong process's mocked seam**. ⚠️ **`TEST_PREFIX` cannot help here** — it isolates *rows*,
+and this is contention over a global *operation*. Four files drive such a sweep
+(`test_push_reminders.py`, `test_job_runs.py`, `test_digest.py`, `test_money_agent.py`) plus
+the broadcast in `test_release_announce.py`; all carry the group.
 
 What still holds: the suite's content assertions are the only net for Jinja's
 silent-empty-string failure mode, so a global change (a cursor-factory flip, a template-wide
@@ -735,7 +784,7 @@ install cost ~1.5s and total per-invocation overhead ~2.9s, cut to ~0.8s by #70.
 predicted to "roughly halve" the run; it actually cut it by ~12×, because the suite is
 IO/DB-bound rather than CPU-bound and parallelises far better than a CPU-bound suite would.
 
-**783 tests in `tests/`** (5 of them skip on the last day of a month — `test_forecast.py`'s date guards). ⚠️ **Recount rather than trusting this number** — it read 757 while the true figure was 762 (measured 2026-08-03), so the drift is real and the month-end skips do not explain it. Cross-cutting patterns: **no real API calls anywhere** — every
+**806 tests in `tests/`** (measured 2026-08-04; 5 of them skip on the last day of a month — `test_forecast.py`'s date guards). ⚠️ **Recount rather than trusting this number** — it has now been wrong twice (read 757 against a true 762 on 2026-08-03, then 783 against a true 806 on 2026-08-04), so the drift is real and the month-end skips do not explain it. Cross-cutting patterns: **no real API calls anywhere** — every
 `ai.py::_call_*_model` seam (and `mailer.py::_call_resend`) is monkeypatched with canned
 `SimpleNamespace` responses; every feature file asserts **user isolation**; route tests assert
 anon → 302. What each file covers:
@@ -750,6 +799,7 @@ anon → 302. What each file covers:
   parameter is ever passed (a 400 on Sonnet 5). ⚠️ Its docstring states the ceiling: green
   proves the constants are spelled right and the kwargs are what we intended, and nothing
   about whether real output fits — the live run is the gate
+- `test_job_runs.py` — #151: the pure `summarize_job_runs()` state machine (OK/STALE/NEVER/NOT_SCHEDULED boundaries, per-job thresholds, unknown job names filtered out), the writer (**upsert not append**, a swallowed `psycopg2.Error`, the naive-datetime cast), and the route (admin sees the panel, non-admin/anon don't). ⚠️ **`test_every_badge_actually_renders` is the load-bearing one** — every state must render real text, since a Jinja typo in a badge is an empty string rather than an error. Carries `@pytest.mark.xdist_group("scheduler_sweep")` — it drives a global sweep, see the loadgroup gotcha
 - `test_integration_status.py` — #139: the pure three-state rule, the placeholder property
   (`github_pat_YOURTOKEN` must not read as configured — stated as the incident so swapping
   the length floor for a format check fails loudly), push needing *both* VAPID keys, the
