@@ -903,8 +903,22 @@ through as a literal CLI argument; comments go outside the block.
 
 ## Delegation (worker agents)
 
-A `sweeper` worker agent (Sonnet, tools: Read/Grep/Glob/Edit only) is defined in
-`.claude/agents/sweeper.md`. Policy:
+Three agents are defined in `.claude/agents/`, all Sonnet. They split into **one executor**
+that edits files and **two reporters** that only read:
+
+| Agent | Tools | Does |
+|---|---|---|
+| `sweeper` | Read/Grep/Glob/**Edit** | Mechanical multi-file sweeps from an explicit spec file |
+| `gotcha-auditor` | Read/Grep/Glob/**Bash** | Audits a branch diff against this file's Key Gotchas |
+| `release-prep` | Read/Grep/Glob/**Bash** | Runs the pre-release checklist against `main`, reports go/no-go |
+
+**Why delegate at all:** the scarce resource on this project is the orchestrator's context
+window, not time. Wide reads are what exhaust it, and wide reads are exactly what the
+gotchas demand (*grep for the failure SHAPE*, the ~23 `is_adjustment = false` filter lists).
+An agent burns its own context and returns a conclusion. That is the entire trade — against a
+cold start, since **an agent cannot see the session that spawned it**.
+
+Policy:
 
 - **Delegate:** mechanical multi-file sweeps with an explicit written spec (attribute-access
   conversions, url_for conversions, find-replace-shaped work), and wide read-only recon. Write
@@ -912,14 +926,33 @@ A `sweeper` worker agent (Sonnet, tools: Read/Grep/Glob/Edit only) is defined in
   and pass the worker the spec path — specs are re-runnable and diffable.
 - **Do NOT delegate:** anything touching ownership guards, row shapes mid-refactor,
   SQL/migrations, AI seams (`_call_*_model`), or exception handling.
-- **Every worker batch gets `./test.sh` (full suite) run by the orchestrator before commit**,
-  plus a spot-grep that the swept pattern is gone. Workers never run tests, never commit, never
-  edit outside their spec.
+- **Do NOT delegate running the suite.** A full run is ~17 seconds — a background test agent
+  has no win to capture. **Every worker batch gets `./test.sh` (full suite) run by the
+  orchestrator before commit**, plus a spot-grep that the swept pattern is gone. Workers never
+  run tests, never commit, never edit outside their spec.
 - **Batch sizing:** don't spin one worker per tiny area — target batches that gate meaningful
   work per full-suite run; per-file expected counts + the leftover grep localize failures.
-- **Gotcha: agent definitions register at session START.** A `.claude/agents/*.md` created
-  mid-session isn't callable until next session — fall back to a general-purpose agent with
-  `model: sonnet` and the sweeper rules inlined.
+- **If the prompt approaches the length of the work, don't delegate.** The cold start is then
+  pure loss, which is why the delegate list names sweeps and recon and nothing else.
+
+⚠️ **`sweeper` is tool-constrained; the two reporters are only PROMPT-constrained.** Sweeper
+has no Bash, so "you cannot run tests or commit" is structurally true. `gotcha-auditor` and
+`release-prep` need `git diff`/`gh` reads to be useful standalone, so they carry Bash and
+their read-only discipline lives in their prompt — a weaker guarantee. Under manual
+invocation that is an accepted trade. **If either is ever wired to automatic routing, add
+`deny` rules for `Bash(git commit:*)`, `Bash(git push:*)` and `Bash(gh release:*)` to
+`.claude/settings.json` first.**
+
+⚠️ **Agents are not skills, and neither is a slash command.** `/verify` is a skill — it loads
+instructions into the orchestrator's own turn. An agent is a separate instance with its own
+context whose report comes back to the orchestrator, never straight to the user. There is no
+`/gotcha-auditor`. Nothing invokes an agent on a schedule either: automatic firing would be a
+**hook** in `settings.json`, deliberately not configured (a Sonnet agent on every commit is
+expensive and noisy, and both reporters are naturally once-per-PR / once-per-release).
+
+⚠️ **Gotcha: agent definitions register at session START.** A `.claude/agents/*.md` created
+mid-session isn't callable until next session — fall back to a general-purpose agent with
+`model: sonnet` and the relevant rules inlined.
 
 ## Deployment
 
