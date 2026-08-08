@@ -881,6 +881,11 @@ live in the archived repo (`CaddisMaster/budget-buddy-archive`). Do not resurrec
 5. **Update `CHANGELOG.md`** under `## [Unreleased]`.
 6. **Open a PR** with `Closes #<issue>` (one line per issue closed); squash-merge once CI is green.
 
+▶️ **If you use Claude Code, `/wrap` runs this sequence** (`.claude/commands/wrap.md`), and a
+`Stop` hook catches the `app/`-without-`CHANGELOG.md` rule locally rather than on CI. Documented
+in [`.claude/README.md`](.claude/README.md). None of it is required, and this section stays
+authoritative over all of it.
+
 **Batch issues into PRs by COHERENCE, never by calendar** (issue #53). A PR may close several
 issues — but only when they share a **file surface**, a **test surface**, or one **user-facing
 story**. Being open the same week is not a reason. Work runs in **weekly sessions**, each producing
@@ -1124,3 +1129,9 @@ incrementally.
 
 Nothing in the app or the test suite depends on any of it. A fresh clone is fully functional
 without it.
+
+The same line runs through `.claude/`. The harness there is **committed** — agents, skills,
+`/wrap`, the changelog hook, the permission allowlist — because a permission grant belongs in a
+reviewable diff. `.claude/settings.local.json` holds the machine half (absolute `$HOME` paths,
+`ssh`, the deploy user) and is gitignored alongside this file, as is `.claude/worktrees/`.
+`/wrap` step 3 defers to `CLAUDE.local.md` for where notes go rather than restating any of it.

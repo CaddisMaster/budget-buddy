@@ -13,6 +13,17 @@ bw-seed.sh
 # CLAUDE.md itself IS tracked — it is the project's onboarding doc.
 CLAUDE.local.md
 
+# The same line, drawn through .claude/. The harness is COMMITTED on purpose —
+# agents, skills, commands, hooks and the permission allowlist, because a
+# permission grant belongs in a reviewable diff. These two are the machine half:
+#   - settings.local.json: absolute $HOME paths, ssh, the deploy user.
+#   - worktrees/: live git worktrees. Untracked and, until now, UNIGNORED —
+#     one `git add .` from committing a second whole checkout into a public
+#     repo. Relying on a global ~/.config/git/ignore covered this machine only.
+# See .claude/README.md.
+.claude/settings.local.json
+.claude/worktrees/
+
 # Real financial data — pg_dump output. Never commit.
 backups/
 *.dump
