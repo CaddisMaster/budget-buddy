@@ -457,7 +457,33 @@ def test_main_refuses_without_writing_a_partial_result(fake_repo):
 
 
 # ── The real files ───────────────────────────────────────────────────────────
+#
+# ⚠️ These two are SKIPPED when the file they read is absent, and the reason is
+# not laziness (#176). `.dockerignore` excludes `*.md`, so `CHANGELOG.md` is
+# genuinely and deliberately missing from the shipped image — and CI runs this
+# whole suite INSIDE that image whenever the Dockerfile or requirements change.
+# Failing there would assert the image is wrong when it is right.
+#
+# It is worth knowing why this was not caught for an hour. Two masks, stacked:
+#
+#   1. It cannot fail locally. `docker-compose.override.yml` bind-mounts the
+#      source over the image's COPY, so the file IS there in the dev container.
+#      `./test.sh` passes on any developer machine regardless of .dockerignore.
+#   2. It cannot fail on most PRs. The in-image step only runs when the
+#      Dockerfile or requirements change, so the PR that introduced these tests
+#      never ran them in the image at all.
+#
+# So the guard that exists to catch "the shipped image differs from dev" was
+# itself skipped, while the bind mount hid the very difference it guards. The
+# first dependency bump afterwards went red on a test that had nothing to do
+# with it.
+REAL_CHANGELOG = release_prep.REPO_ROOT / "CHANGELOG.md"
+REAL_DASHBOARD = release_prep.REPO_ROOT / "app/templates/dashboard.html"
 
+_NOT_IN_IMAGE = "not present in the shipped image — .dockerignore excludes it"
+
+
+@pytest.mark.skipif(not REAL_CHANGELOG.exists(), reason=_NOT_IN_IMAGE)
 def test_it_parses_the_real_changelog():
     """A parser tuned to the fixtures above and not to the actual file would
     pass every test in this module and still fail on the day it is used.
@@ -469,7 +495,7 @@ def test_it_parses_the_real_changelog():
     the release commit itself, looking exactly like a parser regression. Assert
     the parser copes with the real *format*; never with today's contents.
     """
-    text = (release_prep.REPO_ROOT / "CHANGELOG.md").read_text()
+    text = REAL_CHANGELOG.read_text()
 
     previous = release_prep.previous_tag(text)
     assert re.fullmatch(r"v\d+\.\d+\.\d+", previous)
@@ -486,14 +512,19 @@ def test_it_parses_the_real_changelog():
     assert f"compare/{previous}...v9.9.9" in rolled
 
 
+@pytest.mark.skipif(not REAL_DASHBOARD.exists(), reason=_NOT_IN_IMAGE)
 def test_it_parses_the_real_dashboard_strip():
     """Same rule: the property, not the prose.
 
     The first draft asserted a literal sentence from the current strip, which
     the next release replaces — so cutting any release would have turned this
     red for a reason unconnected to the parser.
+
+    Carries the same guard as its sibling even though templates ARE shipped in
+    the image — relying on "`.dockerignore` happens not to exclude this one"
+    is exactly the kind of accident that stops being true quietly.
     """
-    html = (release_prep.REPO_ROOT / "app/templates/dashboard.html").read_text()
+    html = REAL_DASHBOARD.read_text()
     out = release_prep.rewrite_strip(html, "9.9.9", RELEASE_DATE)
 
     assert 'data-version="v9.9.9"' in out
