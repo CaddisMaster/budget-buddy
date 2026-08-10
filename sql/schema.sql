@@ -299,3 +299,74 @@ CREATE TABLE public.job_runs (
     last_run_at timestamp without time zone NOT NULL DEFAULT now(),
     summary text
 );
+
+-- ============================================================
+-- The least-privilege application role (see sql/30_app_role.sql)
+--
+-- ⚠️ MUST STAY LAST. `GRANT ... ON ALL TABLES IN SCHEMA public` binds what
+-- exists at execution time, so every table and sequence above has to be
+-- created before this runs. Anything added below these statements would be
+-- unreachable by the app until the next `ALTER DEFAULT PRIVILEGES` grant
+-- happened to cover it.
+--
+-- Why it is here at all: sql/30_app_role.sql is a forward-only migration, and
+-- schema.sql is the ONLY artifact that builds a database from nothing. Without
+-- this block a fresh database plus `scripts/migrate.py --baseline` records
+-- 30_app_role.sql as applied while the role does not exist — `--status` then
+-- reports everything applied and nothing pending, and the drift is invisible
+-- to every tool that would normally surface it (#160). The numbered migration
+-- stays exactly as it is; it remains the path for an EXISTING deployment.
+-- ============================================================
+
+-- Idempotent: a role is a CLUSTER-level object, not a database one, so it may
+-- already exist on a cluster that has hosted a previous database. Loading
+-- schema.sql into a second database on that same cluster must not fail.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'budget_app') THEN
+        CREATE ROLE budget_app LOGIN;
+    END IF;
+END
+$$;
+
+-- Explicitly deny the things it must never have. NOSUPERUSER/NOCREATEDB/
+-- NOCREATEROLE are the defaults, but stating them makes the intent auditable
+-- and survives a role that was created by hand with different options.
+ALTER ROLE budget_app NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION;
+
+-- Reach the database and see the schema, but not modify the schema itself.
+-- GRANT ... ON DATABASE needs a literal name, so the current one is
+-- interpolated rather than hardcoded — this file has to work against whatever
+-- DB_NAME an environment happens to use.
+DO $$
+BEGIN
+    EXECUTE format('GRANT CONNECT ON DATABASE %I TO budget_app', current_database());
+END
+$$;
+
+GRANT USAGE ON SCHEMA public TO budget_app;
+
+-- Read and write rows. Note the absence of TRUNCATE, REFERENCES and TRIGGER,
+-- and of any CREATE on the schema — the application performs no DDL at runtime.
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO budget_app;
+
+-- Sequences back every id column, and transfer_group_seq is read directly when
+-- pairing the two legs of a transfer.
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO budget_app;
+
+-- Tables added by a later migration are created by the superuser, so without
+-- this the app would lose access to them the moment they appear.
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO budget_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT USAGE, SELECT ON SEQUENCES TO budget_app;
+
+-- ⚠️ NO PASSWORD IS SET HERE, deliberately — this repository is public, and the
+-- same reasoning as sql/30_app_role.sql applies identically. The role cannot
+-- log in until an operator runs:
+--
+--   ALTER ROLE budget_app PASSWORD 'generate-a-strong-one';
+--
+-- On a rebuild that is not optional: a restored .env carrying
+-- DB_APP_USER=budget_app is the difference between the app connecting and not.
+-- See RUNBOOK.md §8 step 9.

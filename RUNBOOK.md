@@ -312,10 +312,28 @@ is a superuser. An application connected as that role means any SQL injection or
 code execution inherits superuser: drop any table, read every database on the
 cluster, create roles, or run shell commands via `COPY ... FROM PROGRAM`.
 
-`sql/30_app_role.sql` creates a `budget_app` role holding `SELECT`, `INSERT`,
-`UPDATE`, `DELETE` and nothing else. The application connects as it via
-`DB_APP_USER` / `DB_APP_PASSWORD`; **`DB_USER` stays exactly as it is**, because
-migrations and `pg_dump` still need the owner.
+The `budget_app` role holds `SELECT`, `INSERT`, `UPDATE`, `DELETE` and nothing
+else. The application connects as it via `DB_APP_USER` / `DB_APP_PASSWORD`;
+**`DB_USER` stays exactly as it is**, because migrations and `pg_dump` still
+need the owner.
+
+**Two paths create it, and which one you are on depends on the database:**
+
+| Situation | Where the role comes from |
+|---|---|
+| An **existing** database (production today) | `sql/30_app_role.sql`, applied by hand — the procedure below |
+| A **fresh** database (a rebuild, CI, a wiped dev volume) | `sql/schema.sql`, which carries the same block at the end |
+
+⚠️ **Neither path sets a password** — this repository is public, so both files
+deliberately omit one and the role cannot log in until you set one yourself. On
+a rebuild that step is not optional: the `.env` you restore from the configs
+backup already carries `DB_APP_USER=budget_app`, so without it the web container
+starts and cannot connect. See §8 step 9.
+
+Before #160 `schema.sql` carried no role block at all, which meant a fresh
+database plus `scripts/migrate.py --baseline` recorded `30_app_role.sql` as
+applied while the role did not exist — and `--status` reported everything
+applied and nothing pending, so nothing surfaced the drift.
 
 Rolling it out on an existing deployment:
 
@@ -609,11 +627,30 @@ transaction is present.
    lineage names before copying any `ssl_certificate` path verbatim.
 8. **Start:** `docker compose up -d`. The empty volume triggers `schema.sql`, so
    you get the current schema directly — no migration replay needed.
-9. **Restore** the most recent dump (§7).
-10. **Verify:** load the site over HTTPS, log in, confirm the dashboard figures
+9. **Give the app role a password.** `schema.sql` creates `budget_app` but
+   deliberately sets no password (this repository is public), while the `.env`
+   you restored in step 5 already points the app at it. Until you do this, the
+   web container starts and cannot connect:
+
+    ```bash
+    cd /opt/budget-buddy
+    docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" \
+      -c "ALTER ROLE budget_app PASSWORD 'the-value-of-DB_APP_PASSWORD-in-.env';"
+    docker compose up -d --force-recreate web
+    ```
+
+    Use the password already in the restored `.env` rather than generating a new
+    one — then `.env` needs no edit. If you would rather rotate it, change both
+    together.
+
+10. **Restore** the most recent dump (§7).
+11. **Baseline the migration tracker:** `python scripts/migrate.py --baseline`.
+    `schema.sql` is current, so every numbered migration is genuinely already
+    applied and none should be executed.
+12. **Verify:** load the site over HTTPS, log in, confirm the dashboard figures
     match the pre-loss state, and confirm the container runs as a non-root user
     (`docker compose exec web whoami` → `appuser`).
-11. **Re-point** the Mac backup job at the new host.
+13. **Re-point** the Mac backup job at the new host.
 
 ---
 
