@@ -127,6 +127,28 @@ def test_a_fresh_empty_unreleased_is_left_at_the_top():
     assert between.strip() == ""
 
 
+def test_the_new_heading_is_followed_by_a_blank_line():
+    """The seam between heading and body, not just its contents (#174).
+
+    The first real outing wrote `## [0.6.0] - 2026-08-10` with `### Added` on
+    the very next line, making the newest entry the only one in the file that
+    did not match the others. `test_unreleased_content_moves_under_the_dated_
+    heading` passed throughout, because asserting a substring *is present* says
+    nothing about the shape around it.
+    """
+    rolled = release_prep.roll_changelog(CHANGELOG, "0.6.0", RELEASE_DATE)
+    assert "## [0.6.0] - 2026-08-10\n\n### Added" in rolled
+
+
+def test_the_new_entry_is_spaced_like_the_ones_already_in_the_file():
+    """Stated as a comparison rather than a literal, so it keeps holding if the
+    file's conventions ever change."""
+    rolled = release_prep.roll_changelog(CHANGELOG, "0.6.0", RELEASE_DATE)
+    new_seam = rolled.split("## [0.6.0] - 2026-08-10")[1][:2]
+    existing_seam = rolled.split("## [0.5.0] - 2026-08-03")[1][:2]
+    assert new_seam == existing_seam
+
+
 def test_the_released_content_appears_once_not_twice():
     """A roll that copies rather than moves would leave the entry duplicated."""
     rolled = release_prep.roll_changelog(CHANGELOG, "0.6.0", RELEASE_DATE)
