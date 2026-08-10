@@ -16,10 +16,10 @@
    test red. Say "weekly money check", as the v10.15.0 strip did. (This comment
    deliberately avoids the literal too — a Jinja comment never renders, but it
    would still show up in a grep and read as a violation.) #}
-<div class="card whatsnew" id="whatsnew" data-version="v0.5.0" hidden>
+<div class="card whatsnew" id="whatsnew" data-version="v0.6.0" hidden>
   <div class="whatsnew-head">
-    <strong>What's new in v0.5.0</strong>
-    <span class="recurring-badge">2026-08-03</span>
+    <strong>What's new in v0.6.0</strong>
+    <span class="recurring-badge">2026-08-10</span>
     <span class="whatsnew-actions">
       <button type="button" class="btn btn-sm" id="whatsnew-toggle">Details</button>
       <button type="button" class="btn btn-sm" id="whatsnew-dismiss" aria-label="Dismiss">&#10005;</button>
@@ -27,30 +27,18 @@
   </div>
   <div class="whatsnew-body" hidden>
     <div class="whatsnew-block">
-      <strong>Better guesses when sorting your spending</strong>
+      <strong>Settings now says when the scheduled work last ran</strong>
       <ul class="whatsnew-list">
-        <li><strong>Auto-Categorize thinks harder before it suggests:</strong> the two
-            places Budget Buddy makes a judgement call &mdash; guessing which category a
-            transaction belongs in, and writing your weekly money check &mdash; now run on
-            a newer, more capable model.</li>
-        <li><strong>Nothing about how you use it changes:</strong> suggestions still arrive
-            as a list you confirm or ignore. Nothing is ever filed on your behalf.</li>
-        <li><strong>It has more room to answer:</strong> the newer model reasons before it
-            replies, so it was given the space to do that &mdash; without it, a long answer
-            could be cut off and quietly dropped.</li>
-      </ul>
-    </div>
-    <div class="whatsnew-block">
-      <strong>Settings now says which features are switched on</strong>
-      <ul class="whatsnew-list">
-        <li><strong>For admins, on the Settings page:</strong> a short table listing each
-            optional feature &mdash; the AI cards, the weekly email, notifications, and the
-            report-a-problem form &mdash; and whether it is actually turned on.</li>
-        <li><strong>It tells apart "off" from "broken":</strong> a feature that was never
-            set up looks exactly like one that is failing, because both simply show
-            nothing. The table now distinguishes them.</li>
-        <li><strong>No secrets are shown:</strong> each line says only whether something is
-            on, off, or misconfigured &mdash; never the value, not even part of it.</li>
+        <li><strong>Some things happen without you:</strong> once a day Budget Buddy creates
+            the transactions for your recurring bills and paychecks &mdash; whether or not
+            anyone opens the app.</li>
+        <li><strong>Settings now shows when that last finished,</strong> and what it did
+            &mdash; not just whether it was switched on. Those are not the same thing: if it
+            ever stopped, every page would still load and your recurring transactions would
+            simply stop appearing.</li>
+        <li><strong>Overdue is flagged, off is not:</strong> a job that has not run recently
+            enough is marked, while one that is deliberately turned off says so plainly
+            instead of looking like a fault.</li>
       </ul>
     </div>
   </div>
