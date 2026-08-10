@@ -48,7 +48,7 @@ app/
     emails/          # weekly_digest.html (rendered server-side, sent via Resend)
   static/            # style.css, htmx.min.js, chart.umd.min.js (Chart.js 4.5.1 pinned/vendored), manifest.json + sw.js + icons/ (PWA — SW is stale-while-revalidate on /static/ GETs ONLY, everything else passes through; bump the 'bb-static-vN' cache name in sw.js to purge — currently v3). sw.js also carries the #33 'push' + 'notificationclick' handlers. icons/icon.svg = the coin-with-$ brand mark (favicon + sidebar via brand_svg); icons/icon-maskable.svg = full-bleed BUILD SOURCE only (not served) — maskable-512 AND apple-touch-icon rasterize from it (apple-touch must be full-bleed: iOS composites WHITE behind transparent corners); rasters regenerated via macOS qlmanage
 sql/                 # Numbered migration files + schema.sql (clean single-file schema)
-scripts/             # ingest.py, clean.py, insert.py data pipeline (own requirements.txt — pandas lives THERE, not in the app image); migrate.py; seed_dev.py (#69 — synthetic dev dataset; PURE build_seed_plan() + thin write_plan(), standalone like migrate.py, never imports the app); release_prep.py (#154 — the MECHANICAL half of a release: rolls CHANGELOG's [Unreleased] under a dated heading, repairs the whole link-ref block, moves the What's-new strip's version/date, and reports env vars added to .env.example since the last tag. Pure roll_changelog()/rewrite_strip()/new_env_vars() + a thin main(); ONE subprocess seam _read_env_example_at() so tests need no git. It does NOT choose the version or write prose, and never touches a .whatsnew-block. Three-state env report — None means "could not tell" and must never render as "nothing new")
+scripts/             # ingest.py, clean.py, insert.py data pipeline (own requirements.txt — pandas lives THERE, not in the app image); migrate.py; seed_dev.py (#69 — synthetic dev dataset; PURE build_seed_plan() + thin write_plan(), standalone like migrate.py, never imports the app); release_prep.py (#154 — the MECHANICAL half of a release: rolls CHANGELOG's [Unreleased] under a dated heading, repairs the whole link-ref block, moves the What's-new strip's version/date, and reports env vars added to .env.example since the last tag. Pure roll_changelog()/rewrite_strip()/new_env_vars() + a thin main(); ONE subprocess seam _read_env_example_at() so tests need no git. It does NOT choose the version or write prose, and never touches a .whatsnew-block. Three-state env report — None means "could not tell" and must never render as "nothing new"); restore_check.py (#153 — restores a dump into its OWN throwaway postgres container, counts every table, exits non-zero naming the file it rejected. Pure newest_dump()/parse_owner_role()/referenced_roles()/role_statements()/evaluate() + `_`-seams. ⚠️ Runs on the machine holding the dumps, NOT in the app container — stdlib only, no Flask, no psycopg2. ⚠️ Reaches its container over `docker exec` ALONE — no published port, no --network — which is what makes "cannot touch production or dev" structural rather than intended. The dump path is a REQUIRED argument with no default: this repo is public and the backup location is maintainer-local)
 landing/             # Static landing page at seandesmet.com
 .github/workflows/   # ci.yml (a `changes` job classifies the diff → app/image/sql flags; jobs ALWAYS RUN and gate their expensive STEPS on them — `paths-ignore` on a required check strands the PR forever; fails open at BOTH levels, incl. `if: ${{ !cancelled() }}` + `needs.changes.result != 'success'` so a classifier failure runs everything. lint + pytest on postgres:16 + image builds/boots as appuser + the suite re-run INSIDE the built image when Dockerfile/requirements change); release.yml (published Release → build+push ghcr → smoke the PUSHED image → approval gate → SSH deploy → verify /healthz); rollback.yml (workflow_dispatch a version → redeploy that exact tag); changelog.yml (app changes must touch CHANGELOG.md unless labelled `skip-changelog`); claude-triage.yml (automated first-pass comment on a new issue — see the Automated issue triage section below)
 ```
@@ -163,6 +163,35 @@ landing/             # Static landing page at seandesmet.com
   variable names* are all absent from the response. `ENABLE_DIGEST_SCHEDULER` is
   deliberately its own line, not a fifth row: it is not a credential and its jobs each
   carry their own gate.
+- ⚠️ **NEVER run a bare `docker compose up -d` on the Droplet — always `TAG=<version>`** (#190,
+  observed in prod 2026-08-10). Compose resolves the app image as `${TAG:-latest}`, and the
+  Droplet's local `latest` is **stale by construction**: deploys pull the exact version tag and
+  never `latest`, so nothing refreshes it. A bare `up -d` while applying the log limits moved
+  production from `:0.6.0` to the **`0.3.1`** image — three releases and two migrations back —
+  and gave **no signal**: container `healthy`, `/healthz` 200, app working (old code against an
+  additively-migrated schema runs fine), uptime check green. Caught only by comparing image IDs.
+  Automated deploys are unaffected (`release.yml`/`rollback.yml` always pass `TAG`); every
+  *hand-run* command is exposed, which is exactly what a maintenance procedure is. **Verify the
+  running CODE, not the tag** — `docker compose exec -T web python -c "import app.jobs"` proves
+  0.6.0+. The local `latest` was deliberately NOT retagged: that hides the symptom and leaves the
+  mechanism. See `RUNBOOK.md` §5.
+- ⚠️ **`docker compose exec -T` reads STDIN and will eat the rest of your script.** Inside a
+  heredoc piped to `ssh … bash -s`, it consumes the remaining commands and they silently do not
+  run — output just stops, with no error. Every scripted `exec -T` needs `< /dev/null`.
+- ⚠️ **Editing the `db` service in `docker-compose.yml` recreates the database container** on the
+  next `docker compose up -d` — the one sanctioned exception to `pull web`, and never a side
+  effect of a release. It needs a window and a dump verified by `restore_check.py`. **Compose's
+  output does not tell you whether it happened**: it printed only `Starting`/`Started` for a
+  container it had replaced. Compare `docker compose ps -q db` before and after, and run `up -d`
+  a *second* time to confirm the ID is then unchanged (that is what proves future releases are
+  safe). Verified both locally and in prod on 2026-08-10; the named volume re-attaches and data
+  survives. Both services carry `json-file` at `max-size 10m` × `max-file 3`.
+- ⚠️ **A `pg_dump` from this database needs TWO roles to already exist** (#153): `OWNER TO admin`
+  *and* ~33 `GRANT ... TO budget_app` lines, and it creates neither. Restoring with only the owner
+  fails at the grants — which are the **LAST** thing in a dump, so every row is already loaded
+  when it happens: the tables look complete and the restore has **not** succeeded. `PUBLIC` is a
+  pseudo-role and must never be created. ⚠️ Do not read a piped `psql`'s success from `$?` — that
+  is the pipe's last command; this is exactly how the first rehearsal was misreported as passing.
 - **Amount validation:** every form amount goes through `helpers.parse_positive_amount()` — `float('nan')` passes a plain `<= 0` check and Postgres stores NaN in numeric, poisoning every SUM(). Never hand-roll `float(x); if x <= 0`
 - **Param validation:** same rule for query/form params — `?month` → `parse_month_param()`, `?page` → `parse_page_param()`, posted FK ids → `parse_int_param()`. A raw string into a psycopg2 `%s` against an int column raises (= 500)
 - **Write-side FK ownership:** when a form posts a `category_id`/`account_id`, validate it belongs to the user *before* the INSERT/UPDATE — `validate_category_account()` in transactions.py, folded into the route's validation-error path. Used by transaction new/edit, schedule create/edit, bulk edit, cleanup apply
@@ -226,6 +255,56 @@ landing/             # Static landing page at seandesmet.com
 - **AI-card collapse:** the four AI narration cards are `<details>` with `data-ai-key` + `data-generated` (the cache row's `created_at.isoformat()`; `initAiCollapse` in base.html + localStorage `bb-ai-seen:<key>` drive read-state). Generate routes must get the timestamp via `RETURNING created_at` — a route-local `datetime.today()` makes every regenerate read as new twice. Server renders CLOSED except empty-state (Generate must work without JS) and `just_generated` fragments. The What's-new strip says "weekly money check", NOT "Money agent" — a dashboard test asserts the agent CARD's absence by that exact string
 
 ## Current Status
+
+### On `main`, NOT released — the operational backlog, cleared (2026-08-10, second session)
+
+**Prod still runs `0.6.0`, and that is correct: there is nothing to release.** Five PRs merged
+after the `0.6.0` cut, closing **#160, #159, #153, #150**. Tests **843 → 875**. No migration.
+
+⚠️ **`main` contains ZERO `app/` changes since `v0.6.0`**, and `## [Unreleased]` in
+`CHANGELOG.md` is **empty**. A release would build an image byte-identical to the running one,
+deploy it, and fire a "check out what's new" notification about nothing. **Every effective change
+is already in place**: the log limits were applied to the Droplet by hand (below),
+`restore_check.py` runs from the maintainer's machine, `schema.sql` is inert on an existing
+database, and the rest is CI and docs. Do not cut a release to "ship" this.
+
+⚠️ **Standing instruction (Sean, 2026-08-10): do not send a release notification for a release
+with no user-facing change.** The only built-in lever is marking the GitHub Release as a
+pre-release — `release.yml` gates the announce step on `github.event.release.prerelease == false`
+— but that also suppresses the `:latest` update, so it is a misuse with side effects. Usually the
+right answer is that there is nothing to release.
+
+⚠️ **The `0.7.0` milestone only stays honest if a feature lands in it.** Under `VERSIONING.md`
+(`0.MINOR` = features, `0.MINOR.PATCH` = fixes) a release carrying none of the former is a
+**patch**. **#191** is what makes it a genuine minor.
+
+- **PR #185 / #160 — `sql/schema.sql` never carried the `budget_app` role.** A fresh database
+  plus `--baseline` recorded `30_app_role.sql` as applied while the role did not exist. The block
+  is ported verbatim from the migration and **must stay last in the file**. The migration itself
+  is unchanged — it remains the path for an *existing* deployment. ⚠️ The real exposure was
+  `RUNBOOK.md` §8: it restores `.env` (carrying `DB_APP_USER=budget_app`) and never set the
+  role's password, so a rebuild produced an app that could not connect. Fixed, along with the
+  missing `--baseline` step.
+- **PR #186 / #159 — the `migrations` CI job now actually applies the migration.** It had
+  asserted nothing since it was written. See the Testing section; the fix baselines against the
+  **merge base's** file list and builds from the merge base's `schema.sql`, needing no change to
+  `migrate.py` (`SQL_DIR` derives from the script's own location, so the base worktree's copy
+  does it). Also: the `changes` classifier now sets `sql=true` for `ci.yml` itself, and all three
+  `psql -f schema.sql` loads carry `ON_ERROR_STOP=1` (psql exits 0 on SQL errors without it).
+- **PR #187 / #153 — the restore was rehearsed for the first time, and it works.** All **14**
+  retained dumps restore cleanly. New `scripts/restore_check.py`. See the two-roles gotcha.
+- **PR #188 / #150 — container log caps**, `10m × 3` on both services. ✅ **Applied to the
+  Droplet 2026-08-10** with a verified dump in hand: db container recreated, volume re-attached,
+  row counts identical (`6 users / 341 transactions`) before and after, `/healthz` 200 over TLS,
+  APScheduler alive, and a second `up -d` left the db container ID unchanged.
+- **PR #189 — the `${TAG:-latest}` warning**, written because applying the above hit it. See the
+  gotcha; the sequence added in #188 had the defect itself.
+
+⚠️ **Every guard involved in this session was already broken or vacuous, and all were green** —
+the migrations job, the path filter that would have run it, the missing `ON_ERROR_STOP`, the
+drift check that structurally could not see `sql/30`, and a documented restore procedure whose
+"throwaway database" command targeted the *development* database. None of it was visible from a
+dashboard; all of it was visible from running the thing and checking the exit code.
 
 ### Shipped: `0.6.0` (2026-08-10) — background jobs you can check on, and release prep that runs itself
 
@@ -654,10 +733,24 @@ requests.
 
 **Roadmap** — the issue tracker is authoritative; **recount from `gh issue list` rather than
 trusting any figure written here.** **`0.2.0`, `0.3.0`, `0.4.1` and `0.5.0` are all CLOSED and
-shipped** (see above), and **`0.6.0` shipped and was verified on 2026-08-10**. As of
-**2026-08-10** the workable backlog is
-**#160** / **#159** (schema and migration-CI gaps), **#153** (rehearse a restore) and **#150**
-(unbounded container logs). **#36 remains the only date-parked one** (~Dec 2026).
+shipped** (see above), and **`0.6.0` shipped and was verified on 2026-08-10**. As of the **end of
+2026-08-10** the operational backlog is **empty** — #160, #159, #153 and #150 all closed that
+afternoon (see the block at the top of Current Status). The workable backlog is now
+**#191** (a push notification when a variable-amount bill posts — the first issue filed through
+the in-app form since #133) and **#190** (the `${TAG:-latest}` trap, found by hitting it in
+production), both on `0.7.0`. **#36 remains the only date-parked one** (~Dec 2026) and correctly
+carries **no milestone** — abandoned or calendar-gated scope is not part of any release.
+
+⚠️ **#191 has one real design fork to settle before any code, and the obvious answer is wrong.**
+Notifying from the daily job would mostly **not fire**: `run_due_schedules()` is called from three
+page-load paths (`main.py`, `transactions.py`, `schedules.py`) as well as the 18:00 job, so opening
+the app at any point during the day materializes the bill and advances `next_due`, leaving the
+evening job nothing to notice. Hooking materialization instead would put a push send on the request
+path, which nothing in the app does today. The likely way through is having the daily job
+**enumerate past occurrences** (the `_advance_past`/`upcoming_occurrences` walkers already have the
+shape) and claim them in `reminder_log` under a **new `source`** — `'schedule'` is already taken by
+the due-tomorrow reminder for the same occurrence. It also needs a standalone migration and, per
+the consent gotcha, the `profile.html` copy updated **in the same change**.
 
 ✅ Closed on 2026-08-10: **#154** (automate release prep → `scripts/release_prep.py`, PR #173)
 and **#165** (the `0.6.0` prep, PR #178), plus three found by doing the work — **#171** (the
@@ -846,7 +939,7 @@ install cost ~1.5s and total per-invocation overhead ~2.9s, cut to ~0.8s by #70.
 predicted to "roughly halve" the run; it actually cut it by ~12×, because the suite is
 IO/DB-bound rather than CPU-bound and parallelises far better than a CPU-bound suite would.
 
-**843 tests in `tests/`** (measured 2026-08-10; 5 of them skip on the last day of a month — `test_forecast.py`'s date guards, and 1 more skips *inside the shipped image* — see the `.dockerignore` gotcha). ⚠️ **Recount rather than trusting this number** — it has now been wrong three times (757 against a true 762 on 2026-08-03, 783 against a true 806 on 2026-08-04, 806 against a true 843 on 2026-08-10), so the drift is real and the month-end skips do not explain it. Cross-cutting patterns: **no real API calls anywhere** — every
+**875 tests in `tests/`** (measured 2026-08-10; 5 of them skip on the last day of a month — `test_forecast.py`'s date guards, and 1 more skips *inside the shipped image* — see the `.dockerignore` gotcha). ⚠️ **Recount rather than trusting this number** — it has now been wrong three times (757 against a true 762 on 2026-08-03, 783 against a true 806 on 2026-08-04, 806 against a true 843 on 2026-08-10), so the drift is real and the month-end skips do not explain it. Cross-cutting patterns: **no real API calls anywhere** — every
 `ai.py::_call_*_model` seam (and `mailer.py::_call_resend`) is monkeypatched with canned
 `SimpleNamespace` responses; every feature file asserts **user isolation**; route tests assert
 anon → 302. What each file covers:
@@ -861,6 +954,7 @@ anon → 302. What each file covers:
   parameter is ever passed (a 400 on Sonnet 5). ⚠️ Its docstring states the ceiling: green
   proves the constants are spelled right and the kwargs are what we intended, and nothing
   about whether real output fits — the live run is the gate
+- `test_restore_check.py` — #153: `scripts/restore_check.py`, entirely pure — the tool needs Docker, the suite runs inside an image that has none (the `.dockerignore` trap pointed at a new file), so every judgement is a pure function and everything that shells out is a `_`-seam. Covers dump selection (by the date **in the filename**, never mtime), role extraction, `role_statements()` skipping `COPY` blocks, and `evaluate()`. ⚠️ **Two tests exist to make a REVERSAL loud, the `test_release_announce.py` device:** `test_an_empty_non_core_table_is_not_a_failure` asserts `goal_coach`/`insights` are legitimately 0 (the issue's own criterion said every table must be non-empty — false against a real dump), and `test_the_owner_is_not_the_only_role_a_dump_needs` asserts a dump names **both** `admin` and `budget_app`. The fixture `REAL_COUNTS` is the verbatim table from a real restore *because* two of its values are zero. ⚠️ Its docstring states the ceiling: green proves the judgement is right and nothing about whether a real dump restores — only running it against one does that
 - `test_release_prep.py` — #154: `scripts/release_prep.py`, all pure except one stubbed seam. The changelog roll (content moved not copied, the fresh empty `[Unreleased]`, link refs derived from the version HEADINGS rather than the stale `[Unreleased]` ref), the strip rewrite (**the prose comes through byte-identical** — the load-bearing one, since the tool rewriting copy would be a defect), the refusals (empty `[Unreleased]`, double-roll), and the env report's **three** states. ⚠️ Three separate traps are stated as tests here, each having actually bitten: `test_the_new_entry_is_spaced_like_the_ones_already_in_the_file` compares the seam against a release ALREADY in the file rather than a literal `\n\n` (#174 — the previous assertion checked contents and never shape); `test_the_tool_is_never_told_which_variables_are_new` asserts the ABSENCE of a `--env-var` flag, the `test_release_announce.py` device; and the two real-file tests **skip when the file is absent** (#176 — see the `.dockerignore` gotcha) and assert the parser copes with the real FORMAT, never with today's contents, because the tool itself replaces those contents
 - `test_job_runs.py` — #151: the pure `summarize_job_runs()` state machine (OK/STALE/NEVER/NOT_SCHEDULED boundaries, per-job thresholds, unknown job names filtered out), the writer (**upsert not append**, a swallowed `psycopg2.Error`, the naive-datetime cast), and the route (admin sees the panel, non-admin/anon don't). ⚠️ **`test_every_badge_actually_renders` is the load-bearing one** — every state must render real text, since a Jinja typo in a badge is an empty string rather than an error. Carries `@pytest.mark.xdist_group("scheduler_sweep")` — it drives a global sweep, see the loadgroup gotcha
 - `test_integration_status.py` — #139: the pure three-state rule, the placeholder property
@@ -1199,7 +1293,14 @@ mid-session isn't callable until next session — fall back to a general-purpose
 - **Backups:** in-app `/admin/backup` (manual pg_dump download), plus an automated nightly pull to
   the maintainer's machine (Mac-side launchd job, not in the repo — see `CLAUDE.local.md`).
   Rationale: the DB is the only irreplaceable thing (source in git, images in the registry, certs
-  re-issue).
+  re-issue). ✅ **The restore was executed for the first time on 2026-08-10 (#153) and all 14
+  retained dumps restore cleanly** — verify any dump with
+  `python3 scripts/restore_check.py <dump-or-dir>`. ⚠️ Two holes in the retained window, both
+  still worth an answer from healthchecks.io: **2026-08-02** is missing entirely (the run never
+  fired), and **2026-08-09** is a *partial* failure — database dump fine, SSH dropped, configs
+  tarball absent. On that day **no ping was sent at all**, because the direct ping is blocked on
+  some networks and the fallback routes *via the Droplet*, so one fault silences start and
+  failure together and absence is the only remaining signal.
 - 📕 **`RUNBOOK.md` (committed) is the operational source of truth** — topology, the full Nginx
   config, TLS/certbot, prod compose, backup + **restore** procedure, and a rebuild-from-nothing
   checklist. Read it before touching anything on the server. **The Droplet now runs Budget Buddy
