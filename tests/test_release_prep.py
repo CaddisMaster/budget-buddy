@@ -16,6 +16,7 @@ shape as `scripts/seed_dev.py` (pure `build_seed_plan()`, thin `write_plan()`).
 that matches the fixtures in this file but not the actual repo would pass
 everything above them and still be useless on the day it is needed.
 """
+import re
 from datetime import date
 
 import pytest
@@ -437,17 +438,46 @@ def test_main_refuses_without_writing_a_partial_result(fake_repo):
 
 def test_it_parses_the_real_changelog():
     """A parser tuned to the fixtures above and not to the actual file would
-    pass every test in this module and still fail on the day it is used."""
+    pass every test in this module and still fail on the day it is used.
+
+    ⚠️ Deliberately asserts nothing about WHICH version is newest, and seeds its
+    own `[Unreleased]` entry. The first draft did neither, and both were traps:
+    `roll_changelog()` correctly leaves an EMPTY `[Unreleased]` behind, so the
+    moment the tool was used for real this test would have refused — failing on
+    the release commit itself, looking exactly like a parser regression. Assert
+    the parser copes with the real *format*; never with today's contents.
+    """
     text = (release_prep.REPO_ROOT / "CHANGELOG.md").read_text()
-    rolled = release_prep.roll_changelog(text, "9.9.9", RELEASE_DATE)
+
+    previous = release_prep.previous_tag(text)
+    assert re.fullmatch(r"v\d+\.\d+\.\d+", previous)
+
+    seeded = text.replace(
+        "## [Unreleased]\n",
+        "## [Unreleased]\n\n### Added\n\n- A seeded entry, so this test does not\n"
+        "  depend on whether a release was just cut.\n",
+        1,
+    )
+    rolled = release_prep.roll_changelog(seeded, "9.9.9", RELEASE_DATE)
     assert "## [9.9.9] - 2026-08-10" in rolled
-    assert "compare/v0.5.0...v9.9.9" in rolled
+    # Derived from the file, never hardcoded — see the warning above.
+    assert f"compare/{previous}...v9.9.9" in rolled
 
 
 def test_it_parses_the_real_dashboard_strip():
+    """Same rule: the property, not the prose.
+
+    The first draft asserted a literal sentence from the current strip, which
+    the next release replaces — so cutting any release would have turned this
+    red for a reason unconnected to the parser.
+    """
     html = (release_prep.REPO_ROOT / "app/templates/dashboard.html").read_text()
     out = release_prep.rewrite_strip(html, "9.9.9", RELEASE_DATE)
+
     assert 'data-version="v9.9.9"' in out
     assert "<strong>What's new in v9.9.9</strong>" in out
-    # The real strip's blocks survive untouched.
-    assert "Settings now says which features are switched on" in out
+
+    # Whatever the blocks currently say, they come through byte-identical.
+    before = html.split('<div class="whatsnew-body"')[1]
+    after = out.split('<div class="whatsnew-body"')[1]
+    assert before == after
