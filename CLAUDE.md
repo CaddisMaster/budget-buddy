@@ -935,7 +935,8 @@ live in the archived repo (`CaddisMaster/budget-buddy-archive`). Do not resurrec
 2026-07 repo reboot; do not work directly on `main`.
 
 1. **Every change starts from an issue.** No issueless PRs. Feature issues carry Gherkin
-   acceptance criteria (`.github/ISSUE_TEMPLATE/feature.yml`).
+   acceptance criteria (`.github/ISSUE_TEMPLATE/feature.yml`). **Assign it a milestone** — the
+   next release, normally the one open milestone (see below).
 2. **Branch** off `main` as `<issue#>-short-slug`.
 3. **Test locally — both:** `docker compose up --build` → verify at `http://localhost:5001`,
    AND `./test.sh` (full suite). CI does not click through the app.
@@ -943,6 +944,23 @@ live in the archived repo (`CaddisMaster/budget-buddy-archive`). Do not resurrec
    means content-asserting tests are the only net.
 5. **Update `CHANGELOG.md`** under `## [Unreleased]`.
 6. **Open a PR** with `Closes #<issue>` (one line per issue closed); squash-merge once CI is green.
+
+**Milestones = what shipped in a release** (#183, backfilled 2026-08-10). One per released
+version, holding the issues **resolved in that release cycle** — not strictly "which PR closed
+it", since an issue can be resolved in one cycle and closed by a PR that lands in the next.
+Exactly **one milestone is open at a time** (the next release); it is **closed when that version
+ships**. An issue closed `NOT_PLANNED` gets none — abandoned scope is not part of any release —
+and neither does a date-parked item like #36.
+
+⚠️ **There is deliberately NO `0.4.0` milestone.** That tag was cut and **withdrawn at the
+approval gate**; it never deployed, and its contents shipped as `0.4.1`. A milestone means *what
+users actually got*, so creating one would assert a release that never happened. ⚠️ `0.3.1`
+*does* have one — it was a real shipped patch, not a re-cut of `0.3.0`.
+
+⚠️ **This convention lapsed once already** — used for `0.1.0` and `0.2.0`, then dropped for four
+releases, which is why `0.3.0`–`0.6.0` had to be reconstructed from `git log <prev>..<tag>` and
+each PR's `closingIssuesReferences`. That reconstruction is possible but tedious; assigning at
+filing time costs nothing.
 
 ▶️ **If you use Claude Code, `/wrap` runs this sequence** (`.claude/commands/wrap.md`), and a
 `Stop` hook catches the `app/`-without-`CHANGELOG.md` rule locally rather than on CI. Documented

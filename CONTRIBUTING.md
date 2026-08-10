@@ -189,7 +189,8 @@ PRs, no direct pushes to `main`.
 
 1. **Open an issue** (or claim an existing one) using one of the templates. A
    feature issue states its acceptance criteria in Given/When/Then form, so
-   "done" is agreed before any code is written.
+   "done" is agreed before any code is written. **Assign it the open milestone**
+   — see "Milestones" below.
 2. **Branch** off `main`, named `<issue#>-short-slug` — e.g. `42-push-reminders`.
 3. **Build it,** and test locally: `docker compose up --build` to see it work,
    then `./test.sh` for the full suite. Both, not one.
@@ -204,6 +205,30 @@ PRs, no direct pushes to `main`.
 6. **Open a PR** with `Closes #<issue>` in the body — one line per issue the PR
    closes. CI must be green.
 7. **Squash-merge.** `main` reads as one commit per pull request.
+
+### Milestones
+
+**A milestone is a released version, and it holds the issues resolved in that
+release cycle.** Exactly one is open at a time — the next release — and it is
+closed when that version ships. Assign one when you file the issue; it costs
+nothing then, and it is the only record of *what shipped when* that does not
+require reading tags and commit ranges.
+
+Not every issue gets one. An issue closed as **not planned** gets none, because
+abandoned scope is not part of any release, and neither does an item parked on a
+future date rather than a version.
+
+Two things about the historical milestones are deliberate and should not be
+"corrected":
+
+- **There is no `0.4.0`.** That tag was cut and then withdrawn at the approval
+  gate — it never deployed, and the same contents shipped as `0.4.1`. A
+  milestone means what users actually got.
+- **`0.3.1` has its own**, because it was a genuine shipped patch rather than a
+  re-cut of `0.3.0`.
+
+The convention lapsed once, after `0.2.0`, and four releases had to be
+reconstructed afterwards from commit ranges. It is much cheaper to keep up.
 
 ### How much goes in one PR
 
