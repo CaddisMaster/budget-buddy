@@ -6,7 +6,7 @@ workflows — if any of them disagree, this directory is what needs fixing.
 
 ```
 .claude/
-  agents/                   # gotcha-auditor, release-prep, sweeper
+  agents/                   # sweeper, test-first (edit) · gotcha-auditor, release-prep (report)
   skills/verify/            # drive the real HTTP surface at :5001 (CSRF cookie jar included)
   commands/wrap.md          # /wrap — the end-of-session sequence
   hooks/changelog-guard.sh  # Stop hook: the CHANGELOG rule, locally
