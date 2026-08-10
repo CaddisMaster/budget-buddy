@@ -48,7 +48,7 @@ app/
     emails/          # weekly_digest.html (rendered server-side, sent via Resend)
   static/            # style.css, htmx.min.js, chart.umd.min.js (Chart.js 4.5.1 pinned/vendored), manifest.json + sw.js + icons/ (PWA — SW is stale-while-revalidate on /static/ GETs ONLY, everything else passes through; bump the 'bb-static-vN' cache name in sw.js to purge — currently v3). sw.js also carries the #33 'push' + 'notificationclick' handlers. icons/icon.svg = the coin-with-$ brand mark (favicon + sidebar via brand_svg); icons/icon-maskable.svg = full-bleed BUILD SOURCE only (not served) — maskable-512 AND apple-touch-icon rasterize from it (apple-touch must be full-bleed: iOS composites WHITE behind transparent corners); rasters regenerated via macOS qlmanage
 sql/                 # Numbered migration files + schema.sql (clean single-file schema)
-scripts/             # ingest.py, clean.py, insert.py data pipeline (own requirements.txt — pandas lives THERE, not in the app image); migrate.py; seed_dev.py (#69 — synthetic dev dataset; PURE build_seed_plan() + thin write_plan(), standalone like migrate.py, never imports the app)
+scripts/             # ingest.py, clean.py, insert.py data pipeline (own requirements.txt — pandas lives THERE, not in the app image); migrate.py; seed_dev.py (#69 — synthetic dev dataset; PURE build_seed_plan() + thin write_plan(), standalone like migrate.py, never imports the app); release_prep.py (#154 — the MECHANICAL half of a release: rolls CHANGELOG's [Unreleased] under a dated heading, repairs the whole link-ref block, moves the What's-new strip's version/date, and reports env vars added to .env.example since the last tag. Pure roll_changelog()/rewrite_strip()/new_env_vars() + a thin main(); ONE subprocess seam _read_env_example_at() so tests need no git. It does NOT choose the version or write prose, and never touches a .whatsnew-block. Three-state env report — None means "could not tell" and must never render as "nothing new")
 landing/             # Static landing page at seandesmet.com
 .github/workflows/   # ci.yml (a `changes` job classifies the diff → app/image/sql flags; jobs ALWAYS RUN and gate their expensive STEPS on them — `paths-ignore` on a required check strands the PR forever; fails open at BOTH levels, incl. `if: ${{ !cancelled() }}` + `needs.changes.result != 'success'` so a classifier failure runs everything. lint + pytest on postgres:16 + image builds/boots as appuser + the suite re-run INSIDE the built image when Dockerfile/requirements change); release.yml (published Release → build+push ghcr → smoke the PUSHED image → approval gate → SSH deploy → verify /healthz); rollback.yml (workflow_dispatch a version → redeploy that exact tag); changelog.yml (app changes must touch CHANGELOG.md unless labelled `skip-changelog`); claude-triage.yml (automated first-pass comment on a new issue — see the Automated issue triage section below)
 ```
@@ -200,6 +200,21 @@ landing/             # Static landing page at seandesmet.com
   `test_profile_copy_names_both_kinds_of_notification` is the net (Jinja fails silent).
 - **Cache-bust is automatic:** the stylesheet `?v=` is `css_v` (startup md5 of style.css) — nobody bumps a number. base.html AND login.html (which doesn't extend base) both read it. ⚠️ **Local dev consequence:** the source is now bind-mounted, and `css_v` is computed ONCE at import — so editing `style.css` changes nothing until `docker compose restart web` (~2s). Python and template edits ARE live. A CSS change that "does nothing" is this, not a broken mount
 - **Local dev runs bind-mounted with live reload** (`docker-compose.override.yml`, local-only — the Droplet has no override, so production gets none of it): `.:/app` over the image's `COPY`, gunicorn `--reload`, and `TEMPLATES_AUTO_RELOAD=1`. **Both reload mechanisms are needed** — `--reload` watches Python modules only, so without the env var (read in `app/__init__.py`) an edited template reaches the container and is silently ignored, which looks exactly like the mount failing. Anonymous volumes mask `/app/.venv`, `/app/.ruff_cache` and `/app/.pytest_cache`: a bind mount ignores `.dockerignore`, and `.venv` holds macOS-native wheels that are wrong for Linux
+- ⚠️ **THE DEV CONTAINER AND THE SHIPPED IMAGE HOLD DIFFERENT FILES, and the bind mount hides
+  it** (#176, PR #177, 2026-08-10). `.dockerignore` excludes `*.md`, so `CHANGELOG.md`,
+  `README.md` and `RUNBOOK.md` are **genuinely absent from the built image** — while the
+  `.:/app` mount above puts them back in the dev container. So a test that reads a repo file by
+  path passes locally forever and fails only when CI runs the suite **inside the image**. Two
+  masks, stacked: **(1)** `./test.sh` structurally cannot catch it, and **(2)** the in-image
+  suite only runs when `Dockerfile`/`requirements*.txt` change, so the PR that introduces the
+  break usually is not the PR that goes red — the next dependency bump is. That is the
+  documented skipped-vs-passed trap **pointed the other way**, and the tell is the job's
+  DURATION (~33s = boot check only, ~2m10s = it genuinely ran pytest). To check the real
+  artifact, build and run with **no compose and no mount**:
+  `docker build -q --target dev -t probe . && docker run --rm -e SECRET_KEY=x -e DB_HOST=db -e DB_NAME=budget -e DB_USER=admin -e DB_PASSWORD=x probe sh -c 'python -m pytest tests/ -q -n0'`
+  (`SECRET_KEY` is required or `app/__init__.py` raises at import). A test that must read such
+  a file **skips** when it is absent, naming `.dockerignore` — failing would assert the image is
+  wrong when it is right
 - **`.venv/` is EDITOR-ONLY** — it exists so the language server can resolve `flask`/`psycopg2`/`pytest`; nothing is ever run from it and the app and tests stay in containers. VS Code auto-discovers it in the workspace root, so **no `.vscode/` config is committed** and none is needed. It must be **Python 3.14** (Homebrew): the Mac's system 3.9 cannot evaluate `app/ai.py`'s `str | None` annotations and reports working code as broken. Gitignored (both `venv/` and `.venv/`) and in `.dockerignore`
 - ⚠️ **There is deliberately NO dev container** (#80, removed 2026-07-28). One was added in #76 and removed two PRs later: it shipped broken twice, needed `git`/`procps`/`curl` in the image's `dev` stage purely for the editor, and split the workflow because it has no Docker inside it. The `.venv` fixes the editor on its own with no maintenance. **Do not re-add one** without a reason that the venv does not already cover. If a remote/container editor setup is ever revisited, the trap that bit #78 is worth knowing: VS Code resolves **workspace** settings ABOVE **remote** ones, so a `python.defaultInterpreterPath` in `.vscode/settings.json` silently overrides a devcontainer's own value
 - **Security headers + cookies** (`app/__init__.py`): one `@app.after_request` sets X-Frame-Options/X-Content-Type-Options/CSP `frame-ancestors 'none'`/Referrer-Policy (+ HSTS in prod). Cookies are `HttpOnly` + `SameSite=Lax`; **`Secure` + HSTS gated on `COOKIE_SECURE`** (Droplet-only) so local HTTP dev + tests still work. CSP is `frame-ancestors` only — a full policy would break the inline scripts
@@ -212,11 +227,14 @@ landing/             # Static landing page at seandesmet.com
 
 ## Current Status
 
-### On `main`, not yet deployed — the `0.6.0` candidate
+### `v0.6.0` — CUT 2026-08-10, WAITING at the approval gate, **NOT deployed**
 
-**Prod runs `0.5.0`; `main` is AHEAD of it.** Release prep is **#165**, and the
-`release-prep` agent returned **GO, cut as `0.6.0`** against `f25b80f` on 2026-08-04
-(`### Added` only, so MINOR not PATCH). What is merged and undeployed:
+⚠️ **Prod still runs `0.5.0`.** The Release is published and `release.yml` has built the
+image, pushed it to ghcr, and confirmed it boots and serves `/healthz`. The deploy job is
+**`waiting` on the `production` gate**, so the Droplet has not been touched. Do not describe
+`0.6.0` as shipped, live or deployed until that gate is approved and verified.
+
+The bundle (`### Added` only, so MINOR not PATCH):
 
 - **PR #155 — the `job_runs` table.** One additive migration, `sql/34_job_runs.sql`,
   standing alone in its own commit. Applies **BEFORE** the image pull, which
@@ -224,8 +242,18 @@ landing/             # Static landing page at seandesmet.com
 - **PR #156 / #151 — "when did each background job last actually run" on /settings.**
   New `app/jobs.py`; `/settings` gains a line per job with an overdue badge. See the
   scheduler-visibility gotcha.
+- **PR #173 / #154 — `scripts/release_prep.py`**, which prepared this very release. Built
+  **test-first** (the agent's first outing). Two follow-up fixes found by *using* it:
+  **#175 / #174** (a greedy `\s*$` ate the blank line under the new heading) and
+  **#177 / #176** (see the in-image gotcha — it was blocking every future dependency bump).
+- **PR #170 — `pywebpush` 2.3.0 → 2.4.0.** Verified beyond the green ticks: the in-image
+  suite genuinely ran (`842 passed, 1 skipped` on Python 3.14.7), and every keyword
+  `app/pusher.py` passes still exists in 2.4.0's signature. ⚠️ **Real push delivery is
+  unproven** — the suite stubs `_call_webpush` by design. **This release's own notification
+  is the check.**
 - **PR #158 / #157 — the xdist `loadgroup` fix.** Test-only; see the Testing section.
-- **PRs #162 / #161 and #166 / #163 — the four worker agents.** No `app/` change.
+- **PRs #162 / #161, #166 / #163, #169 / #168, #172 / #171 — the worker agents and the
+  committed `.claude/` harness.** No `app/` change.
 
 ⚠️ **`css_v` CANNOT verify this deploy** — the CSS is unchanged since `v0.5.0`, so prod's
 value will match the already-verified `44ef4f4a…` and prove nothing. The strongest check
@@ -235,9 +263,9 @@ about the running code rather than about metadata. The image tag (`:0.6.0`, not 
 is the secondary check. **No new env vars** — `.env.example` is unchanged, so there is
 nothing to set on the Droplet first.
 
-⚠️ **The What's-new strip is still on `v0.5.0`** (`dashboard.html`) and is the one blocker
-in #165. It needs one new block for the job-runs panel; the xdist fix and the agent
-definitions get none (test-only and no-UI infrastructure are never feature blocks).
+✅ The What's-new strip blocker from #165 is **cleared** — the strip reads `v0.6.0` with one
+block for the job-runs panel, and was confirmed *rendered* at `localhost:5001`, not merely
+diffed.
 
 ### Shipped: `0.5.0` (2026-08-03) — smarter categorization, and Settings tells you what's on
 
@@ -598,11 +626,17 @@ requests.
 
 **Roadmap** — the issue tracker is authoritative; **recount from `gh issue list` rather than
 trusting any figure written here.** **`0.2.0`, `0.3.0`, `0.4.1` and `0.5.0` are all CLOSED and
-shipped** (see above). As of **2026-08-04** the backlog is no longer empty — the workable items
-are **#165** (cut `0.6.0`, the blocker being the What's-new strip), **#164** (this file's own
-accuracy), **#160** / **#159** (schema and migration-CI gaps), **#154** (automate release prep),
-**#153** (rehearse a restore) and **#150** (unbounded container logs). **#36 remains the only
-date-parked one** (~Dec 2026).
+shipped** (see above); **`0.6.0` is CUT but WAITING at the approval gate** — see the top of
+Current Status, and do not call it shipped. As of **2026-08-10** the workable backlog is
+**#160** / **#159** (schema and migration-CI gaps), **#153** (rehearse a restore) and **#150**
+(unbounded container logs). **#36 remains the only date-parked one** (~Dec 2026).
+
+✅ Closed on 2026-08-10: **#154** (automate release prep → `scripts/release_prep.py`, PR #173)
+and **#165** (the `0.6.0` prep, PR #178), plus three found by doing the work — **#171** (the
+`.claude/README.md` agent list), **#174** (the changelog heading spacing) and **#176** (the
+in-image test trap). ⚠️ **The last two were defects in the release-prep tool found by USING it,
+not by testing it** — its suite was green throughout. That is the argument for a tool's first
+outing being a real one.
 
 ⚠️ **The backlog was refilled by reading for EVIDENCE rather than brainstorming** — every
 candidate had to point at something already written down or already gone wrong. That is also
@@ -784,7 +818,7 @@ install cost ~1.5s and total per-invocation overhead ~2.9s, cut to ~0.8s by #70.
 predicted to "roughly halve" the run; it actually cut it by ~12×, because the suite is
 IO/DB-bound rather than CPU-bound and parallelises far better than a CPU-bound suite would.
 
-**806 tests in `tests/`** (measured 2026-08-04; 5 of them skip on the last day of a month — `test_forecast.py`'s date guards). ⚠️ **Recount rather than trusting this number** — it has now been wrong twice (read 757 against a true 762 on 2026-08-03, then 783 against a true 806 on 2026-08-04), so the drift is real and the month-end skips do not explain it. Cross-cutting patterns: **no real API calls anywhere** — every
+**843 tests in `tests/`** (measured 2026-08-10; 5 of them skip on the last day of a month — `test_forecast.py`'s date guards, and 1 more skips *inside the shipped image* — see the `.dockerignore` gotcha). ⚠️ **Recount rather than trusting this number** — it has now been wrong three times (757 against a true 762 on 2026-08-03, 783 against a true 806 on 2026-08-04, 806 against a true 843 on 2026-08-10), so the drift is real and the month-end skips do not explain it. Cross-cutting patterns: **no real API calls anywhere** — every
 `ai.py::_call_*_model` seam (and `mailer.py::_call_resend`) is monkeypatched with canned
 `SimpleNamespace` responses; every feature file asserts **user isolation**; route tests assert
 anon → 302. What each file covers:
@@ -799,6 +833,7 @@ anon → 302. What each file covers:
   parameter is ever passed (a 400 on Sonnet 5). ⚠️ Its docstring states the ceiling: green
   proves the constants are spelled right and the kwargs are what we intended, and nothing
   about whether real output fits — the live run is the gate
+- `test_release_prep.py` — #154: `scripts/release_prep.py`, all pure except one stubbed seam. The changelog roll (content moved not copied, the fresh empty `[Unreleased]`, link refs derived from the version HEADINGS rather than the stale `[Unreleased]` ref), the strip rewrite (**the prose comes through byte-identical** — the load-bearing one, since the tool rewriting copy would be a defect), the refusals (empty `[Unreleased]`, double-roll), and the env report's **three** states. ⚠️ Three separate traps are stated as tests here, each having actually bitten: `test_the_new_entry_is_spaced_like_the_ones_already_in_the_file` compares the seam against a release ALREADY in the file rather than a literal `\n\n` (#174 — the previous assertion checked contents and never shape); `test_the_tool_is_never_told_which_variables_are_new` asserts the ABSENCE of a `--env-var` flag, the `test_release_announce.py` device; and the two real-file tests **skip when the file is absent** (#176 — see the `.dockerignore` gotcha) and assert the parser copes with the real FORMAT, never with today's contents, because the tool itself replaces those contents
 - `test_job_runs.py` — #151: the pure `summarize_job_runs()` state machine (OK/STALE/NEVER/NOT_SCHEDULED boundaries, per-job thresholds, unknown job names filtered out), the writer (**upsert not append**, a swallowed `psycopg2.Error`, the naive-datetime cast), and the route (admin sees the panel, non-admin/anon don't). ⚠️ **`test_every_badge_actually_renders` is the load-bearing one** — every state must render real text, since a Jinja typo in a badge is an empty string rather than an error. Carries `@pytest.mark.xdist_group("scheduler_sweep")` — it drives a global sweep, see the loadgroup gotcha
 - `test_integration_status.py` — #139: the pure three-state rule, the placeholder property
   (`github_pat_YOURTOKEN` must not read as configured — stated as the incident so swapping
@@ -1013,6 +1048,17 @@ and for a sweep (grep + suite), but reviewing a feature diff against these gotch
 about what writing it costs, and Jinja's silent-empty-string failure mode means a wrong
 diff can look right. A **failing test** is what restores the asymmetry, which is the whole
 reason `test-first` is scoped the way it is. Settled 2026-08-04.
+
+✅ **`test-first` was first exercised on 2026-08-10** (PR #173, `scripts/release_prep.py`) and
+the pattern held: 25 tests green on the first pass, 10 more after one round trip, the test file
+never edited, and it did not claim the tests passed. Two things worth keeping. It **flagged its
+own scope creep** — an unrequested `--env-var` flag — rather than leaving it to be found; that
+flag was in fact wrong, and volunteering it is what surfaced the design error. And **the round
+trip caught a wrong SPEC, not wrong code**: the orchestrator's replacement tests shelled out to
+`git`, which can never pass because the suite runs in a container with no git binary. A faithful
+worker would have stayed red rather than producing something convincing — which is the entire
+argument for this shape, demonstrated in about ninety seconds. **`sweeper` is now the only agent
+never run.**
 
 ⚠️ **The two executors are tool-constrained; the two reporters are only PROMPT-constrained.**
 `sweeper` and `test-first` have no Bash, so "you cannot run tests or commit" is structurally
