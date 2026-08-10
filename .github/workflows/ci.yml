@@ -234,6 +234,82 @@ jobs:
         if: needs.changes.result != 'success' || needs.changes.outputs.sql == 'true'
         run: psql "postgresql://budget:budget@localhost:5432/budget" -f sql/schema.sql
 
+      - name: A fresh database from schema.sql has the app role
+        if: needs.changes.result != 'success' || needs.changes.outputs.sql == 'true'
+        run: |
+          # Its OWN database, so this asserts what schema.sql BUILDS rather than
+          # whatever the steps around it happen to leave behind.
+          #
+          # ⚠️ Do not simplify this to "does budget_app exist in pg_roles". A
+          # role is a CLUSTER-level object, so the load above has already
+          # created it and that check passes here even against a schema.sql
+          # carrying no role block at all — verified locally against the
+          # pre-#160 file, which passed role-existence and failed on the
+          # grants. The per-table DML check is the one doing the work.
+          psql "postgresql://budget:budget@localhost:5432/budget" \
+            -v ON_ERROR_STOP=1 -c 'CREATE DATABASE freshcheck'
+          psql "postgresql://budget:budget@localhost:5432/freshcheck" \
+            -v ON_ERROR_STOP=1 -q -f sql/schema.sql
+          psql "postgresql://budget:budget@localhost:5432/freshcheck" \
+            -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          DECLARE
+              offenders text;
+          BEGIN
+              IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'budget_app') THEN
+                  RAISE EXCEPTION 'schema.sql built a database with no budget_app role (#160).';
+              END IF;
+
+              IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'budget_app' AND rolsuper) THEN
+                  RAISE EXCEPTION 'budget_app is a SUPERUSER — the entire point of the role is that it is not.';
+              END IF;
+
+              IF has_schema_privilege('budget_app', 'public', 'CREATE') THEN
+                  RAISE EXCEPTION 'budget_app holds CREATE on schema public — the app performs no DDL and must not be able to.';
+              END IF;
+
+              -- Every table, not a representative one: a role block placed
+              -- before the last CREATE TABLE would silently miss what follows.
+              SELECT string_agg(c.relname, ', ' ORDER BY c.relname) INTO offenders
+              FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = 'public' AND c.relkind = 'r'
+                AND NOT (has_table_privilege('budget_app', c.oid, 'SELECT')
+                     AND has_table_privilege('budget_app', c.oid, 'INSERT')
+                     AND has_table_privilege('budget_app', c.oid, 'UPDATE')
+                     AND has_table_privilege('budget_app', c.oid, 'DELETE'));
+              IF offenders IS NOT NULL THEN
+                  RAISE EXCEPTION 'budget_app lacks DML on: %. The role block must stay LAST in schema.sql — GRANT ON ALL TABLES binds what exists when it runs.', offenders;
+              END IF;
+
+              SELECT string_agg(c.relname, ', ' ORDER BY c.relname) INTO offenders
+              FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = 'public' AND c.relkind = 'r'
+                AND has_table_privilege('budget_app', c.oid, 'TRUNCATE');
+              IF offenders IS NOT NULL THEN
+                  RAISE EXCEPTION 'budget_app holds TRUNCATE on: % — deliberately withheld.', offenders;
+              END IF;
+
+              SELECT string_agg(c.relname, ', ' ORDER BY c.relname) INTO offenders
+              FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = 'public' AND c.relkind = 'S'
+                AND NOT (has_sequence_privilege('budget_app', c.oid, 'USAGE')
+                     AND has_sequence_privilege('budget_app', c.oid, 'SELECT'));
+              IF offenders IS NOT NULL THEN
+                  RAISE EXCEPTION 'budget_app cannot use sequence(s): %', offenders;
+              END IF;
+
+              -- This repository is PUBLIC, so schema.sql sets no password and
+              -- the role cannot log in until an operator sets one. Asserting it
+              -- keeps a well-meaning "make it work out of the box" change loud.
+              IF EXISTS (SELECT 1 FROM pg_authid WHERE rolname = 'budget_app' AND rolpassword IS NOT NULL) THEN
+                  RAISE EXCEPTION 'budget_app has a password set. schema.sql is in a PUBLIC repository and must never set one.';
+              END IF;
+
+              RAISE NOTICE 'budget_app: present, DML on every table, no CREATE, no TRUNCATE, not superuser, no password.';
+          END
+          $$;
+          SQL
+
       - name: Baseline, then apply anything newer
         if: needs.changes.result != 'success' || needs.changes.outputs.sql == 'true'
         run: |
