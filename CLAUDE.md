@@ -227,12 +227,35 @@ landing/             # Static landing page at seandesmet.com
 
 ## Current Status
 
-### `v0.6.0` — CUT 2026-08-10, WAITING at the approval gate, **NOT deployed**
+### Shipped: `0.6.0` (2026-08-10) — background jobs you can check on, and release prep that runs itself
 
-⚠️ **Prod still runs `0.5.0`.** The Release is published and `release.yml` has built the
-image, pushed it to ghcr, and confirmed it boots and serves `/healthz`. The deploy job is
-**`waiting` on the `production` gate**, so the Droplet has not been touched. Do not describe
-`0.6.0` as shipped, live or deployed until that gate is approved and verified.
+**Prod runs `ghcr.io/caddismaster/budget-buddy:0.6.0`.** Tests **806 → 843**. One additive
+migration (`sql/34_job_runs.sql`), applied automatically before the image pull. No new env vars.
+
+✅ **Deploy verified independently of the workflow.** `/healthz` 200 over valid TLS; the running
+image is tagged `:0.6.0` (not `:latest`); the `db` container was **not** recreated (up 9 days
+against web's 58 seconds, so `pull web` held); the pre-deploy dump is timestamped *before* web
+restarted; `34_job_runs.sql` is recorded in `schema_migrations`; and — the check that proves the
+new **code** rather than the metadata — `from app.jobs import record_job_run, load_job_runs,
+summarize_job_runs` imports in the running container, a module that did not exist in the `0.5.0`
+image. `flask announce-release` reported **"Announced 0.6.0 to 3 device(s)."**
+
+⚠️ **The app logs NOTHING when the scheduler starts** (`app/__init__.py` just calls
+`_scheduler.start()`), so `docker compose logs web | grep -i scheduler` returns nothing whether
+or not it started — an empty grep is not evidence. What discriminates is the **thread**:
+
+```bash
+docker compose exec -T web sh -c \
+  'for p in /proc/[0-9]*; do for t in $p/task/*; do cat $t/comm 2>/dev/null; done; done | sort | uniq -c | sort -rn'
+# → an "APScheduler" line means it is genuinely alive
+```
+
+Confirmed on this deploy. This is #151's own distinction — *the switch was set* vs *the job is
+running* — applied to the deploy itself.
+
+⚠️ **`job_runs` is EMPTY immediately after a deploy**, so the new panel reads **NEVER** for every
+job until the daily pass fires (18:00 America/New_York). That is correct, but the first sight of
+a brand-new panel reading NEVER looks exactly like a fault. Do not report it as one.
 
 The bundle (`### Added` only, so MINOR not PATCH):
 
@@ -264,8 +287,13 @@ is the secondary check. **No new env vars** — `.env.example` is unchanged, so 
 nothing to set on the Droplet first.
 
 ✅ The What's-new strip blocker from #165 is **cleared** — the strip reads `v0.6.0` with one
-block for the job-runs panel, and was confirmed *rendered* at `localhost:5001`, not merely
-diffed.
+block for the job-runs panel, confirmed *rendered* at `localhost:5001` before merge and present
+in the deployed template after.
+
+⚠️ **`pywebpush` 2.4.0's real delivery is confirmed only as far as the SEND.** The release
+notification reached three devices without raising, which is more than the suite can say (it
+stubs `_call_webpush` by design) — but whether it *appeared* still needs a human looking at a
+phone, exactly as with #133.
 
 ### Shipped: `0.5.0` (2026-08-03) — smarter categorization, and Settings tells you what's on
 
@@ -626,8 +654,8 @@ requests.
 
 **Roadmap** — the issue tracker is authoritative; **recount from `gh issue list` rather than
 trusting any figure written here.** **`0.2.0`, `0.3.0`, `0.4.1` and `0.5.0` are all CLOSED and
-shipped** (see above); **`0.6.0` is CUT but WAITING at the approval gate** — see the top of
-Current Status, and do not call it shipped. As of **2026-08-10** the workable backlog is
+shipped** (see above), and **`0.6.0` shipped and was verified on 2026-08-10**. As of
+**2026-08-10** the workable backlog is
 **#160** / **#159** (schema and migration-CI gaps), **#153** (rehearse a restore) and **#150**
 (unbounded container logs). **#36 remains the only date-parked one** (~Dec 2026).
 
