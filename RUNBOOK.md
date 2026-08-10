@@ -577,6 +577,23 @@ boot, and storing the key on the same disk defeats the purpose.
 
 - Let's Encrypt material is not backed up, which is fine — certificates
   re-issue freely. Only DNS needs to be correct.
+- **The retained window has two holes** (observed 2026-08-10). `2026-08-02` is
+  missing entirely — the job never fired, and the catch-up the following morning
+  was recorded as *that* day's run, so the 08-02 snapshot does not exist and
+  cannot be recovered. `2026-08-09` is a **partial** failure of a different kind:
+  the database dump succeeded, then the SSH connection dropped
+  (`Connection reset by peer`) and the configs tarball failed 86 minutes later.
+  The database dump for 08-09 is present and verified good; only the configs
+  snapshot is absent.
+- ⚠️ **The two dead-man's-switch ping paths are not independent.** The direct
+  `hc-ping.com` call is blocked on some networks, and the documented fallback
+  sends the ping *from the Droplet* over the SSH connection the job already
+  needs. On 08-09 that connection was the thing that broke, so **no ping was
+  sent at all** — not start, not failure. That is the designed behaviour (the
+  check then alerts on absence, which is correct), but it means a Droplet-side
+  network fault silences the start ping and the failure ping together, leaving
+  absence as the only signal. Worth confirming the check's period and grace are
+  tight enough to catch a single missed run.
 
 ### Taking a manual dump
 
@@ -586,13 +603,56 @@ docker compose exec -T db pg_dump -U "$DB_USER" "$DB_NAME" | gzip \
   > "backups/pre-change-$(date +%Y%m%d-%H%M).sql.gz"
 ```
 
-### Restoring
+### Checking that a dump actually restores
 
-Into a **throwaway local database first** — never straight at production.
+✅ **Executed for the first time on 2026-08-10, and it works.** All **14** retained
+dumps (`2026-07-27` … `2026-08-10`) restored cleanly into a disposable container —
+16 tables, every core table populated, row counts climbing monotonically day over
+day. Until that date this procedure had never been run: two weeks of dumps and no
+evidence any of them worked.
 
 ```bash
-gunzip -c backup.sql.gz | docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME"
+python3 scripts/restore_check.py ~/path/to/backups/droplet/budget-buddy
 ```
+
+Point it at a directory (it takes the newest dump by the date **in the filename**)
+or at one `.sql.gz`. It creates its own throwaway Postgres container, restores with
+`ON_ERROR_STOP=1`, counts every table, and exits non-zero on any failure naming the
+file it rejected. It talks to the container over `docker exec` only — no published
+port — so it **cannot** reach production or your development database.
+
+⚠️ **A dump needs TWO roles to already exist, and the second one is easy to miss.**
+`pg_dump` writes `OWNER TO admin` *and*, since `sql/30_app_role.sql` shipped, 33
+`GRANT ... TO budget_app` lines — but it creates neither role. Restoring into a
+container that has only `admin` fails at `role "budget_app" does not exist`. Because
+grants are the **last** thing in a dump, every row is already loaded when it happens:
+the tables look complete, the counts look right, and the restore has still not
+succeeded. `restore_check.py` reads both roles out of the dump and creates them; a
+hand-rolled restore must do the same.
+
+⚠️ **Check the exit code of `psql`, not of a pipeline.** `... | psql ... | head` reports
+`head`'s status, which is always 0. That is exactly how the failure above was missed on
+first inspection.
+
+Scheduling this monthly is a reasonable next step now that it is trusted; it is
+deliberately manual for the moment.
+
+### Restoring
+
+Into a **genuinely throwaway database first** — never straight at production.
+`restore_check.py --keep` does this and leaves the container up for inspection:
+
+```bash
+python3 scripts/restore_check.py backup.sql.gz --keep
+# then: docker exec -it <printed name> psql -U admin -d restore_probe
+# and when finished: docker rm -f <printed name>
+```
+
+⚠️ This section previously showed
+`gunzip -c backup.sql.gz | docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME"`
+under the heading "throwaway local database". That command targets the **local
+development database** — the opposite of a throwaway. Restoring into `db` merges
+production rows into whatever is already there.
 
 To restore over a live database, drop and recreate it first so you are not
 merging into existing rows:
