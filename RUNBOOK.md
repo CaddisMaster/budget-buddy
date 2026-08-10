@@ -277,6 +277,59 @@ hand-run `docker compose up -d` working.
 completely empty data volume**. On an existing database it is inert. This is why
 migrations are applied by hand rather than by editing `schema.sql` alone.
 
+### Container log limits, and changing the `db` service at all
+
+Both services declare a `json-file` driver capped at `max-size: 10m` × `max-file: 3`
+(30 MB each). Without it Docker's default has **no** limit, and `db` is the one
+container that is never recycled — `release.yml` runs `docker compose pull web`
+precisely so shipping app code cannot restart the database (issue #22), so its log
+had been accumulating since the container was created.
+
+Measured before the change (2026-08-10): `db` **46,982 bytes** over 14 days
+(~3.3 KB/day), `web` 722 bytes, `/var/lib/docker/containers` 140 KB total, disk 35%.
+At that rate the disk is never the problem — the cap exists for a **fault loop**, a
+crash-looping container or a repeating Postgres error writing gigabytes in days, which
+gives no warning because `/healthz` stays green until Postgres cannot write.
+
+⚠️ **Any edit to the `db` service definition makes the next `docker compose up -d`
+recreate the database container.** That is the one sanctioned exception to the
+`pull web` rule and it is a scheduled operation, never a side effect of a release:
+
+```bash
+# 1. Verify a dump you could actually fall back to (§7), then take a fresh one.
+python3 scripts/restore_check.py <backup-dir>            # must be green
+cd /opt/budget-buddy
+docker compose exec -T db pg_dump -U "$DB_USER" "$DB_NAME" | gzip \
+  > "backups/pre-change-$(date +%Y%m%d-%H%M).sql.gz"
+#    pull that file down and restore_check.py IT — the dump that matters is the
+#    one taken immediately before, not last night's.
+
+# 2. Record what must survive.
+docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" -tAc \
+  "SELECT (SELECT count(*) FROM users), (SELECT count(*) FROM transactions)"
+docker compose ps -q db          # note the container ID
+
+# 3. Apply. NEVER `docker compose pull` here — the image is pinned and already
+#    local, and a bare pull is what issue #22 exists to prevent.
+#    (scp docker-compose.yml up first)
+docker compose up -d
+
+# 4. Verify.
+docker compose ps -q db          # ID MUST have changed
+docker inspect -f '{{range .Mounts}}{{.Name}}{{end}}' $(docker compose ps -q db)
+docker inspect -f '{{.HostConfig.LogConfig.Config}}' $(docker compose ps -q db)
+#    row counts identical to step 2, and /healthz 200
+
+# 5. Run `docker compose up -d` again and confirm the db container ID is
+#    UNCHANGED. That is what proves every future release is safe again.
+```
+
+⚠️ **Compose's output does not tell you whether the database was recreated.**
+Rehearsed locally on 2026-08-10: it printed only `Container budget-buddy-db-1
+Starting / Started` for a container it had in fact replaced. **Compare the container
+ID**, which is unambiguous. The named volume re-attaches and the data survives — that
+was verified in the same rehearsal, and step 1 exists for the case where it does not.
+
 ### Environment variables
 
 The server's `.env` sets everything in `.env.example` plus the production-only
