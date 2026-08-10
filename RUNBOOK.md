@@ -308,21 +308,54 @@ docker compose exec -T db pg_dump -U "$DB_USER" "$DB_NAME" | gzip \
 docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" -tAc \
   "SELECT (SELECT count(*) FROM users), (SELECT count(*) FROM transactions)"
 docker compose ps -q db          # note the container ID
+docker compose ps --format '{{.Service}} {{.Image}}'   # note the web VERSION
 
-# 3. Apply. NEVER `docker compose pull` here — the image is pinned and already
-#    local, and a bare pull is what issue #22 exists to prevent.
-#    (scp docker-compose.yml up first)
-docker compose up -d
+# 3. Apply. ⚠️ ALWAYS pass TAG — see the warning below; a bare `up -d` silently
+#    reverts the app. NEVER `docker compose pull` here either: the image is
+#    pinned and already local, and a bare pull is what issue #22 exists to
+#    prevent. (scp docker-compose.yml up first)
+TAG=<the version currently running> docker compose up -d
 
 # 4. Verify.
 docker compose ps -q db          # ID MUST have changed
+docker compose ps --format '{{.Service}} {{.Image}}'   # web still on :<version>
 docker inspect -f '{{range .Mounts}}{{.Name}}{{end}}' $(docker compose ps -q db)
 docker inspect -f '{{.HostConfig.LogConfig.Config}}' $(docker compose ps -q db)
 #    row counts identical to step 2, and /healthz 200
 
-# 5. Run `docker compose up -d` again and confirm the db container ID is
-#    UNCHANGED. That is what proves every future release is safe again.
+# 5. Run the same command again and confirm the db container ID is UNCHANGED.
+#    That is what proves every future release is safe again.
 ```
+
+> ⚠️ **NEVER run a bare `docker compose up -d` on the Droplet. Always pass
+> `TAG=<version>`.**
+>
+> `docker-compose.yml` resolves the image as `${TAG:-latest}`, and **the Droplet's
+> local `latest` tag is stale** — deploys pull the exact version tag
+> (`TAG=<v> docker compose pull web`) and never `latest`, so nothing has refreshed
+> it since it was last pulled by hand.
+>
+> This is not hypothetical. Applying the log limits on **2026-08-10**, a bare
+> `docker compose up -d` silently moved production from `:0.6.0` to `:latest` —
+> which on that box still pointed at the **`0.3.1`** image, three releases and two
+> migrations behind. The container reported `healthy` and `/healthz` returned 200
+> throughout, because old code against an additively-migrated schema runs fine.
+> Caught by comparing image IDs (`latest` = `632466328591`, `0.6.0` =
+> `e6bc2309e87a`), then corrected with `TAG=0.6.0 docker compose up -d`.
+>
+> **Verify the version after any hand-run compose command**, and prefer a check
+> on the running CODE rather than the tag — e.g. importing a module that only
+> exists in the release you expect:
+>
+> ```bash
+> docker compose ps --format '{{.Service}} {{.Image}}'
+> docker compose exec -T web python -c "import app.jobs" </dev/null   # 0.6.0+
+> ```
+
+> ⚠️ **`docker compose exec -T` reads stdin.** Inside a script piped to
+> `ssh ... bash -s`, it will swallow the remaining commands and the rest of the
+> script silently does not run. Redirect it: `docker compose exec -T … < /dev/null`.
+> Every `exec -T` in this document that appears inside a scripted sequence needs it.
 
 ⚠️ **Compose's output does not tell you whether the database was recreated.**
 Rehearsed locally on 2026-08-10: it printed only `Container budget-buddy-db-1
