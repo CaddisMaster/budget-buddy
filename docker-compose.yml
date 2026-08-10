@@ -13,6 +13,29 @@ services:
       # Bind Postgres to localhost only — never expose the DB to the public internet.
       # Docker publishes ports by bypassing ufw, so "5432:5432" = world-reachable.
       - "127.0.0.1:5432:5432"
+    # ⚠️ THIS BLOCK IS WHY THE DATABASE CONTAINER EVER GETS RECREATED (#150).
+    # Without it Docker's default json-file driver has no max-size and no
+    # max-file, so the log grows until the disk fills — and `db` is the one
+    # container that is NEVER recycled, because release.yml deliberately runs
+    # `docker compose pull web` so that shipping app code cannot restart the
+    # database (issue #22). `web` self-limits by accident: every deploy recreates
+    # it, and a new container starts a new log file.
+    #
+    # Measured before this was added: the db log had reached 46,982 bytes over
+    # 14 days (~3.3 KB/day), so the steady-state risk is remote. The real
+    # exposure is a FAULT LOOP — a crash-looping container or a repeating
+    # Postgres error writing gigabytes in days — which has no warning, because
+    # /healthz stays green until Postgres actually cannot write.
+    #
+    # ⚠️ Editing anything in this service's definition makes the next
+    # `docker compose up -d` RECREATE the database container. That is a
+    # deliberate, scheduled operation with a verified dump in hand — see
+    # RUNBOOK.md §7. Never let it happen as a side effect of a release.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
   web:
     # The Release workflow deploys by passing the exact version it just published
     # (`TAG=0.1.0 docker compose up -d`), so prod runs an immutable, traceable tag
@@ -41,5 +64,14 @@ services:
       start_period: 20s
     depends_on:
       - db
+    # Belt and braces (#150). `web` already resets its log on every deploy, so
+    # this caps the one window that matters: a crash loop between releases.
+    # Unlike the db block above, changing this is free — a release recreates
+    # this container anyway.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 volumes:
   postgres_data:
