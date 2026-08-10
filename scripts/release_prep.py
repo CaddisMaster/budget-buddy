@@ -59,8 +59,13 @@ def _normalize_version(version):
 # Deliberately requires the brackets, so "## Prior history" (no version) never
 # matches and is carried through untouched as part of whichever section it
 # trails.
+# ⚠️ The trailing class is `[ \t]*`, NOT `\s*` (#174). Under re.MULTILINE `$`
+# matches before a newline, but `\s*` is greedy and swallows it anyway — along
+# with the blank line after it. The section body was then reassembled one
+# newline short, so the new entry was the only one in the file with no blank
+# line under its heading. Keep the whitespace anchored to the line.
 _VERSION_HEADING_RE = re.compile(
-    r'^## \[(?P<version>[^\]]+)\](?:\s*-\s*(?P<date>.+?))?\s*$',
+    r'^## \[(?P<version>[^\]]+)\](?:[ \t]*-[ \t]*(?P<date>.+?))?[ \t]*$',
     re.MULTILINE,
 )
 
