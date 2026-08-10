@@ -27,6 +27,22 @@ this project uses the `0.x` versioning scheme described in
   on this server says so plainly instead of reporting as a fault — being off is a
   legitimate state, and a panel that cried wolf about it would be worth ignoring.
 
+- **`scripts/release_prep.py`** — the mechanical half of preparing a release, in
+  one command. It rolls `## [Unreleased]` under a dated heading, repairs the
+  link-reference block at the bottom of this file, and moves the version and date
+  carried by the dashboard's What's-new strip. Nothing user-facing changes.
+
+  It deliberately does **not** write prose or choose the version number; those
+  stay a human decision, and the strip's blocks are left byte-identical.
+
+  The part that earns its keep is the third check: it reports any environment
+  variable added to `.env.example` since the last release. A gated feature whose
+  variable was never set on the server deploys completely invisible — the feature
+  simply is not there, which looks identical to it being broken. That check
+  caught `FEEDBACK_GITHUB_TOKEN` by hand before `0.4.1`; doing it by hand is what
+  this removes. It reports three states rather than two, because "could not tell"
+  (no git, unknown tag) must not read as "nothing new".
+
 ## [0.5.0] - 2026-08-03
 
 ### Added
