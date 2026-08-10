@@ -95,7 +95,13 @@ jobs:
             image=false
           fi
 
-          if matches '^(sql/|scripts/migrate\.py$)'; then
+          # ci.yml is in here for the same reason the app flag carries it: a
+          # change to the migrations job changes what that job ASSERTS, so it
+          # has to run against itself. Without this a ci.yml-only pull request
+          # classifies as sql=false, every step in the job skips, and it reports
+          # SUCCESS — which is indistinguishable from having actually checked
+          # anything. That is precisely how #159 stayed invisible.
+          if matches '^(sql/|scripts/migrate\.py$|\.github/workflows/ci\.yml$)'; then
             sql=true
           else
             sql=false
@@ -165,7 +171,10 @@ jobs:
 
       - name: Load schema
         if: needs.changes.result != 'success' || needs.changes.outputs.app == 'true'
-        run: psql "postgresql://budget:budget@localhost:5432/budget" -f sql/schema.sql
+        # ON_ERROR_STOP is load-bearing: psql exits 0 on SQL errors inside a
+        # file unless it is set, so without it a half-loaded schema reports
+        # success here and surfaces as confusing failures in the suite instead.
+        run: psql "postgresql://budget:budget@localhost:5432/budget" -v ON_ERROR_STOP=1 -f sql/schema.sql
 
       # `-n auto` = one worker per runner CPU. Safe because tests/conftest.py
       # derives its TEST_PREFIX from the xdist worker id, so workers never share
@@ -192,8 +201,33 @@ jobs:
     # the numbered files are forward-only deltas, not a replayable history —
     # `users` is created only in schema.sql, and replaying from empty yields 4
     # tables of 13. So this job asserts the property that actually matters and
-    # is actually true: a database built from schema.sql accepts every pending
-    # migration cleanly, which is exactly the operation production performs.
+    # is actually true: a migration added in this pull request applies cleanly
+    # to the schema PRODUCTION would apply it to.
+    #
+    # ⚠️ Getting there requires the MERGE BASE's schema.sql, not HEAD's, and
+    # that is not a refinement — it is the whole job (#159). The obvious
+    # version of this asserted nothing at all for as long as it existed:
+    # `migrate.py --baseline` records whatever `migration_files()` finds on
+    # DISK, the pull request's new migration is on disk, so baselining recorded
+    # it as applied WITHOUT EXECUTING IT. `migrate.py` then hit its `if not
+    # pending:` branch and printed "Nothing to apply — up to date", which the
+    # idempotency step below greps for and passed on too. A migration with a
+    # syntax error went green through both.
+    #
+    # Baselining against the merge base's file list instead makes the new
+    # migration genuinely pending. Loading the merge base's schema.sql is the
+    # other half: the "reflected in schema.sql" step further down forces this
+    # pull request to carry the change in schema.sql as well, so building from
+    # HEAD's copy would apply the migration to a database that ALREADY contains
+    # what it adds — a parse-and-no-op that asserts idempotency against the
+    # post-migration schema rather than anything about a deploy.
+    #
+    # A pleasant consequence: a legitimately NON-idempotent migration is fine
+    # here, because it lands on a schema that genuinely lacks the object. This
+    # job does not quietly require every migration to be IF NOT EXISTS-guarded.
+    #
+    # HEAD's own schema.sql is not skipped — the fresh-database step below
+    # loads it with ON_ERROR_STOP=1, so a broken one still fails this job.
 
     services:
       db:
@@ -219,6 +253,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Need real history: this job checks out the MERGE BASE in a worktree
+          # to reproduce what a deploy applies the migration to. The default
+          # shallow clone has no commit to resolve.
+          fetch-depth: 0
 
       - uses: actions/setup-python@v7
         if: needs.changes.result != 'success' || needs.changes.outputs.sql == 'true'
@@ -229,10 +268,6 @@ jobs:
       - name: Install psycopg2
         if: needs.changes.result != 'success' || needs.changes.outputs.sql == 'true'
         run: pip install psycopg2-binary
-
-      - name: Build the database from schema.sql
-        if: needs.changes.result != 'success' || needs.changes.outputs.sql == 'true'
-        run: psql "postgresql://budget:budget@localhost:5432/budget" -f sql/schema.sql
 
       - name: A fresh database from schema.sql has the app role
         if: needs.changes.result != 'success' || needs.changes.outputs.sql == 'true'
@@ -310,19 +345,54 @@ jobs:
           $$;
           SQL
 
-      - name: Baseline, then apply anything newer
+      - name: Apply this pull request's migrations the way a deploy does
         if: needs.changes.result != 'success' || needs.changes.outputs.sql == 'true'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          URL: postgresql://budget:budget@localhost:5432/budget
         run: |
-          # schema.sql already contains everything up to the highest numbered
-          # migration, so baseline records them rather than re-running them.
-          python scripts/migrate.py --baseline
-          # Any migration added in this PR is NOT yet in schema.sql, so it is
-          # pending here and gets applied for real. That is the assertion.
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            # A push to main has no "before" to compare against, so the deploy
+            # simulation does not apply. Build from HEAD and baseline; nothing
+            # is pending by construction, and this run is not what gates a
+            # migration anyway — the pull request that added it was.
+            echo "Not a pull request — building from HEAD and baselining."
+            psql "$URL" -v ON_ERROR_STOP=1 -q -f sql/schema.sql
+            python scripts/migrate.py --baseline
+            python scripts/migrate.py
+            exit 0
+          fi
+
+          git fetch --no-tags origin "$BASE_REF"
+          # No `|| true` here on purpose. If the merge base cannot be resolved
+          # the honest outcome is a red job: silently falling back to HEAD is
+          # the exact vacuum this job existed in for its whole life.
+          base=$(git merge-base HEAD FETCH_HEAD)
+          echo "Merge base: $base"
+
+          git worktree add --detach ../base "$base"
+
+          # The PREVIOUS schema — what production is running right now.
+          psql "$URL" -v ON_ERROR_STOP=1 -q -f ../base/sql/schema.sql
+
+          # The PREVIOUS migration list. migrate.py derives SQL_DIR from its own
+          # location, so running the base worktree's copy baselines the base's
+          # sql/ listing without the script needing to know any of this. That is
+          # the whole trick: anything this pull request ADDS is left unrecorded,
+          # and is therefore genuinely pending below.
+          python ../base/scripts/migrate.py --baseline
+
+          # HEAD's migrations, executed for real against the pre-migration
+          # schema. This is the assertion the job's name has always claimed.
           python scripts/migrate.py
 
       - name: Runner is idempotent
         if: needs.changes.result != 'success' || needs.changes.outputs.sql == 'true'
         run: |
+          # Only meaningful because the step above genuinely applied something.
+          # While that step baselined the new migration instead of running it,
+          # this grep matched the "up to date" of a run that had done NOTHING —
+          # a second vacuous check stacked on the first (#159).
           out=$(python scripts/migrate.py)
           echo "$out"
           if ! echo "$out" | grep -q "up to date"; then
@@ -423,7 +493,8 @@ jobs:
             docker exec ci-db pg_isready -U budget >/dev/null 2>&1 && break
             sleep 2
           done
-          docker exec -i ci-db psql -U budget -d budget < sql/schema.sql
+          # ON_ERROR_STOP: psql exits 0 on SQL errors in a file without it.
+          docker exec -i ci-db psql -U budget -d budget -v ON_ERROR_STOP=1 < sql/schema.sql
 
       - name: Gunicorn boots and serves a request
         run: |
