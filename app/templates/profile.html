@@ -40,13 +40,16 @@
 {% if push_enabled %}
 <h2>Bill reminders and app updates</h2>
 <div class="card" style="max-width:480px">
-    {# #115 — this copy IS the consent record. One switch covers both kinds of
-       notification, so both are named here. If a third kind is ever added, it
-       belongs in this paragraph in the SAME change that starts sending it. #}
+    {# #115 — this copy IS the consent record. One switch covers every kind of
+       notification, so all of them are named here. A new kind belongs in this
+       paragraph in the SAME change that starts sending it — shipping the send
+       first widens an existing consent silently. The third arrived with #191. #}
     <p style="color:var(--text-muted);font-size:14px;margin-bottom:1rem">
-        Two kinds of notification, from one switch: a reminder the evening before
-        a scheduled bill or transfer is due, so there's still time to move money,
-        and a short note when Budget Buddy is updated. Turn it on once per device.
+        Three kinds of notification, from one switch: a reminder the evening before
+        a scheduled bill or transfer is due, so there's still time to move money;
+        a nudge when a bill whose amount changes has posted, so you can enter what
+        it actually came to; and a short note when Budget Buddy is updated. Turn it
+        on once per device.
         {% if push_device_count %}
         <br><strong>{{ push_device_count }}</strong> device{{ '' if push_device_count == 1 else 's' }} registered.
         {% endif %}

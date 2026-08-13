@@ -425,18 +425,25 @@ def create_goal(user_id, account_id, target_amount, target_date=None, baseline=0
 def create_schedule(user_id, account_id, amount, frequency, next_due,
                     transaction_type="expense", category_id=None,
                     anchor_day=None, second_day=None, is_active=True,
-                    end_date=None):
-    """Insert a schedule template directly (bypassing the form)."""
+                    end_date=None, is_variable_amount=False,
+                    description="seed-schedule"):
+    """Insert a schedule template directly (bypassing the form).
+
+    `description` is overridable because #191's notification quotes it, so a test
+    asserting on the payload needs a name of its own rather than the shared
+    'seed-schedule' every other test counts.
+    """
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO schedules (amount, description, category_id, account_id, "
         "transaction_type, frequency, anchor_day, second_day, next_due, end_date, "
-        "is_active, user_id) "
-        "VALUES (%s, 'seed-schedule', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+        "is_active, is_variable_amount, user_id) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
         "RETURNING id",
-        (amount, category_id, account_id, transaction_type, frequency, anchor_day,
-         second_day, next_due, end_date, is_active, user_id),
+        (amount, description, category_id, account_id, transaction_type, frequency,
+         anchor_day, second_day, next_due, end_date, is_active, is_variable_amount,
+         user_id),
     )
     sid = cur.fetchone()[0]
     conn.commit()
