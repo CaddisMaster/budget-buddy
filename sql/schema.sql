@@ -65,6 +65,10 @@ CREATE TABLE public.transactions (
     -- A DISPLAY flag, unlike is_adjustment above: a pending row is pinned to the
     -- top of History but counts normally in every figure. See sql/33.
     is_pending BOOLEAN NOT NULL DEFAULT false,
+    -- Which schedule materialized this row, if any (#191, sql/35). NULL for
+    -- everything entered by hand and for every row predating the column. The FK
+    -- is declared further down, since `schedules` is created after this table.
+    schedule_id integer,
     transfer_group_id integer,
     user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT valid_transaction_type CHECK (transaction_type IN ('expense', 'income'))
@@ -79,6 +83,9 @@ CREATE INDEX idx_transactions_user_id ON transactions (user_id);
 CREATE INDEX idx_transactions_category_id ON transactions (category_id);
 CREATE INDEX idx_transactions_account_id ON transactions (account_id);
 CREATE INDEX idx_transactions_transfer_group_id ON transactions (transfer_group_id);
+-- The daily variable-bill pass looks rows up BY schedule (#191, sql/35), and the
+-- FK's ON DELETE SET NULL scans this column too.
+CREATE INDEX transactions_schedule_idx ON transactions (schedule_id);
 
 -- ------------------------------------------------------------
 -- Budgets
@@ -134,6 +141,10 @@ CREATE TABLE public.schedules (
     next_due date NOT NULL,
     -- NULL = runs indefinitely. Finished when next_due > end_date (#32).
     end_date date,
+    -- #191 (sql/35): this bill's amount changes every time, so the row posted on
+    -- its due date carries the PREVIOUS amount and needs correcting. Opt-in per
+    -- schedule — a blanket alert would fire for fixed subscriptions too.
+    is_variable_amount boolean NOT NULL DEFAULT false,
     is_active boolean NOT NULL DEFAULT true,
     created_at timestamp without time zone DEFAULT now(),
     user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE
@@ -153,6 +164,14 @@ ALTER TABLE transactions
     FOREIGN KEY (account_id)
     REFERENCES account (account_id)
     ON DELETE RESTRICT;
+
+-- #191 (sql/35). SET NULL, never CASCADE: deleting a schedule must not delete
+-- the transactions it posted — those are real money that really moved.
+ALTER TABLE transactions
+    ADD CONSTRAINT fk_transactions_schedule
+    FOREIGN KEY (schedule_id)
+    REFERENCES schedules (id)
+    ON DELETE SET NULL;
 
 ALTER TABLE budgets
     ADD CONSTRAINT fk_budgets_category
@@ -276,8 +295,12 @@ CREATE INDEX push_subscriptions_user_idx ON public.push_subscriptions (user_id);
 CREATE TABLE public.reminder_log (
     id SERIAL PRIMARY KEY,
     user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    -- 'posted' (#191, sql/35) claims a transaction that a variable-amount
+    -- schedule just materialized; source_id is then a TRANSACTION id. It is a
+    -- separate value on purpose — 'schedule' is already claimed by the
+    -- due-tomorrow reminder for the very same occurrence.
     source character varying(10) NOT NULL
-        CHECK (source IN ('schedule', 'transfer')),
+        CHECK (source IN ('schedule', 'transfer', 'posted')),
     source_id integer NOT NULL,
     occurrence_date date NOT NULL,
     sent_at timestamp without time zone DEFAULT now(),
