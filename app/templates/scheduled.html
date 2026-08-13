@@ -67,6 +67,17 @@
         The last day this should post — for a loan's final payment or a
         membership you're cancelling. Leave blank to run indefinitely.
     </p>
+    {# #191 — opt-in per bill. Nothing about the schedule behaves differently;
+       it only decides whether the daily job says anything once it has posted. #}
+    <label style="font-weight:normal;display:flex;align-items:center;gap:0.4rem">
+        <input type="checkbox" name="is_variable_amount" value="true" style="width:auto;margin:0">
+        The amount changes every time
+    </label>
+    <p style="font-size:12px;color:var(--text-muted);margin-top:0.25rem">
+        For bills like electricity, due on the same day but never for the same
+        amount. It still posts the amount above — but if you have notifications
+        turned on, you'll get one telling you to correct it.
+    </p>
     <button type="submit" class="btn btn-primary" style="margin-top:1rem">Add schedule</button>
 </form>
 

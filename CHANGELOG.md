@@ -8,6 +8,30 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Added
+
+- **Bills whose amount changes every month can now tell you when they post.**
+  A scheduled bill posts on its due date for the amount you set up — which is
+  exactly right for a subscription, and wrong every single month for something
+  like an electricity bill, where the day is fixed but the figure never is. The
+  transaction lands carrying last month's number and nothing says so, so it sits
+  in your history being quietly wrong until you happen to notice.
+
+  A schedule can now be marked **"the amount changes every time."** Nothing about
+  the schedule behaves differently — it still posts the amount you set — but if
+  you have notifications turned on, you get one once it has posted, telling you
+  to check what it actually came to. Tapping it opens your transactions, where
+  you can correct the amount in place.
+
+  This is the same notification switch you already have on the Profile page,
+  which now names all three kinds it covers: the reminder the evening before a
+  bill is due, this nudge after one has posted, and the note when the app is
+  updated.
+
+  The alert arrives with the daily pass rather than the moment the bill posts,
+  and it is deliberately not tied to whether you happened to open the app that
+  day — a bill posted by your morning visit is still flagged that evening.
+
 ### Fixed
 
 - **A maintenance command on the server can no longer put an old version of the

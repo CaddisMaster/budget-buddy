@@ -8,7 +8,16 @@
       <option value="expense" {% if schedule.transaction_type == 'expense' %}selected{% endif %}>Expense</option>
     </select>
   </td>
-  <td><input type="number" step="0.01" name="amount" value="{{ schedule.amount }}" required style="width:6rem"></td>
+  <td>
+    <input type="number" step="0.01" name="amount" value="{{ schedule.amount }}" required style="width:6rem">
+    {# #191 — an unchecked box posts nothing, which _parse_form reads as false.
+       hx-include="closest tr" already carries it. #}
+    <label style="font-size:11px;color:var(--text-muted);font-weight:normal;margin:0.25rem 0 0;display:block">
+      <input type="checkbox" name="is_variable_amount" value="true"
+             {% if schedule.is_variable_amount %}checked{% endif %} style="width:auto;margin:0 0.25rem 0 0">
+      Amount varies
+    </label>
+  </td>
   <td><input type="text" name="description" value="{{ schedule.description or '' }}"></td>
   <td>
     <select name="category_id">

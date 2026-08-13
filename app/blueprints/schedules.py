@@ -26,7 +26,7 @@ bp = Blueprint('schedules', __name__)
 SCHEDULE_ROW_SQL = """
     SELECT s.id, s.amount, s.description, s.category_id, s.account_id,
            s.transaction_type, s.frequency, s.anchor_day, s.second_day,
-           s.next_due, s.end_date, s.is_active,
+           s.next_due, s.end_date, s.is_variable_amount, s.is_active,
            (s.end_date IS NOT NULL AND s.next_due > s.end_date) AS is_finished,
            c.name AS category_name, a.account_name
     FROM schedules s
@@ -84,12 +84,18 @@ def run_due_schedules(user_id):
             stop = min(today, end_date) if end_date is not None else today
             cur_due = next_due
             while cur_due <= stop:
+                # #191 — schedule_id is stamped on EVERY materialized row, not
+                # just a variable one. The link is what makes a posted row
+                # traceable back to the thing that posted it; the schedule's
+                # is_variable_amount flag decides only whether the daily job says
+                # anything about it. Deciding here instead would mean flipping the
+                # flag later could not see the rows already posted.
                 cursor.execute("""
                     INSERT INTO transactions
                         (amount, description, category_id, account_id,
-                         transaction_date, transaction_type, user_id)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """, (amount, desc, cat_id, acc_id, cur_due, ttype, user_id))
+                         transaction_date, transaction_type, schedule_id, user_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, (amount, desc, cat_id, acc_id, cur_due, ttype, sid, user_id))
                 cur_due = compute_next_due(
                     cur_due, freq, anchor_day=anchor_day, second_day=second_day)
             cursor.execute(
@@ -171,10 +177,16 @@ def _parse_form(form):
         except ValueError:
             errors.append('End date must be a valid date')
 
+    # #191 — a checkbox, so absent means false on every form that posts. Nothing
+    # validates it: it changes no arithmetic, only whether the daily job says
+    # anything once this schedule has posted.
+    is_variable_amount = form.get('is_variable_amount') == 'true'
+
     fields = {'amount': amount, 'description': description, 'category_id': category_id,
               'account_id': account_id, 'transaction_type': transaction_type,
               'frequency': frequency, 'anchor_day': anchor_day, 'second_day': second_day,
-              'next_due': next_due, 'end_date': end_date}
+              'next_due': next_due, 'end_date': end_date,
+              'is_variable_amount': is_variable_amount}
     return errors, fields
 
 
@@ -209,12 +221,13 @@ def scheduled():
                     INSERT INTO schedules
                         (amount, description, category_id, account_id,
                          transaction_type, frequency, anchor_day, second_day,
-                         next_due, end_date, user_id)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                         next_due, end_date, is_variable_amount, user_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                 """, (f['amount'], f['description'], f['category_id'], f['account_id'],
                       f['transaction_type'], f['frequency'], f['anchor_day'],
-                      f['second_day'], f['next_due'], f['end_date'], current_user.id))
+                      f['second_day'], f['next_due'], f['end_date'],
+                      f['is_variable_amount'], current_user.id))
                 new_id = cursor.fetchone()[0]
         except psycopg2.Error:
             current_app.logger.exception('create schedule failed')
@@ -264,12 +277,13 @@ def edit_schedule(schedule_id):
                 cursor.execute("""
                     UPDATE schedules SET amount=%s, description=%s, category_id=%s,
                         account_id=%s, transaction_type=%s, frequency=%s,
-                        anchor_day=%s, second_day=%s, next_due=%s, end_date=%s
+                        anchor_day=%s, second_day=%s, next_due=%s, end_date=%s,
+                        is_variable_amount=%s
                     WHERE id=%s AND user_id=%s
                 """, (f['amount'], f['description'], f['category_id'], f['account_id'],
                       f['transaction_type'], f['frequency'], f['anchor_day'],
                       f['second_day'], f['next_due'], f['end_date'],
-                      schedule_id, current_user.id))
+                      f['is_variable_amount'], schedule_id, current_user.id))
         except psycopg2.Error:
             current_app.logger.exception('edit schedule failed')
             return render_template('partials/_schedule_edit_row.html',

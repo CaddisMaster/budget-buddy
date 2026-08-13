@@ -266,15 +266,21 @@ def test_cli_says_so_when_push_is_unconfigured(app, monkeypatch):
 
 # --- consent ----------------------------------------------------------------
 
-def test_profile_copy_names_both_kinds_of_notification(client_a, monkeypatch):
-    """⚠️ This copy IS the consent record. One switch now sends bill reminders
-    AND release notes, so the page has to say both. Jinja fails silently, so an
-    assertion is the only thing standing between a reworded template and a
-    consent that was widened without telling anyone."""
+def test_profile_copy_names_every_kind_of_notification(client_a, monkeypatch):
+    """⚠️ This copy IS the consent record. One switch now sends bill reminders,
+    posted-bill nudges (#191) AND release notes, so the page has to say all
+    three. Jinja fails silently, so an assertion is the only thing standing
+    between a reworded template and a consent that was widened without telling
+    anyone.
+
+    Each kind is asserted separately: a single "does it mention notifications"
+    check would pass while a whole category of message went undisclosed."""
     monkeypatch.setenv("VAPID_PUBLIC_KEY", "test-public")
     monkeypatch.setenv("VAPID_PRIVATE_KEY", "test-private")
 
     html = client_a.get("/profile").get_data(as_text=True)
 
     assert "Bill reminders and app updates" in html
-    assert "when Budget Buddy is updated" in html
+    assert "the evening before" in html                      # #33
+    assert "amount changes has posted" in html               # #191
+    assert "when Budget Buddy is updated" in html            # #115

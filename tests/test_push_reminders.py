@@ -442,9 +442,10 @@ def test_materialize_runs_even_when_push_unconfigured(users, monkeypatch):
     acct = create_account(a, "mat-acct")
     create_schedule(a, acct, 30, "monthly", TODAY - timedelta(days=1))
 
-    users_done, reminders_sent = run_daily_tasks(today=TODAY)
+    users_done, reminders_sent, alerts_sent = run_daily_tasks(today=TODAY)
 
-    assert reminders_sent == 0 and sent == []      # push correctly silent
+    # Both push passes silent, and the ledger updated anyway.
+    assert reminders_sent == 0 and alerts_sent == 0 and sent == []
     assert users_done >= 1
     assert count_transactions_like(a, "seed-schedule") == 1   # ledger still updated
 

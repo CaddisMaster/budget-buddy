@@ -1,6 +1,6 @@
-"""#33 — the daily job: materialize what's due, then remind about what's next.
+"""#33 — the daily job: materialize what's due, then say what needs attention.
 
-Two responsibilities, deliberately in that order, and only the second one is
+Three responsibilities, deliberately in that order, and only the last two are
 gated on push being configured.
 
 1. MATERIALIZE. Until now, run_due_schedules()/run_due_transfers() fired only on
@@ -24,6 +24,18 @@ gated on push being configured.
    bill to the user's devices. A bill due Tuesday is most useful to know about
    on Monday evening.
 
+3. ALERT ON WHAT POSTED (#191). Some bills are due on a fixed day for a figure
+   that changes every month — electricity is the filed example — so the row that
+   posts carries LAST month's amount until somebody corrects it. Pass 2 cannot
+   serve this: it fires the evening before, quoting that same stale figure.
+
+   ⚠️ This pass reads the LEDGER rather than the schedules, which is the whole
+   design. run_due_schedules() also fires on three page-load paths, so opening
+   the app in the morning posts the bill and advances next_due — a schedule-side
+   query would then find nothing, on exactly the days the user was engaged. The
+   posted transaction is the durable evidence, and transactions.schedule_id
+   (sql/35) is what makes it traceable back to the schedule.
+
 Structured like digests.send_weekly_digests(): its own app context, no
 current_user (it runs on the scheduler thread), and per-user try/except so one
 bad row never aborts the batch.
@@ -43,6 +55,12 @@ bp = Blueprint('reminders', __name__)
 # reminder_log is keyed per occurrence, so widening this does NOT cause the same
 # bill to re-notify on each of the days it sits inside the window.
 REMINDER_LEAD_DAYS = 1
+
+# How far BACK the posted-bill pass looks (#191). More than one day so that a
+# day this job did not run is recovered rather than lost — the claim in
+# reminder_log is per transaction, so a row already alerted on stays quiet for
+# the rest of the window.
+POSTED_LOOKBACK_DAYS = 3
 
 
 def _users_with_schedules(cursor):
@@ -169,13 +187,44 @@ def _notification(item):
     }
 
 
-def send_due_reminders(*, today=None, logger=None):
-    """Push one notification per bill due within the reminder window, to every
-    device the user has registered. Idempotent per occurrence. Returns the
-    number of notifications sent. No-op when push isn't configured."""
+def _deliver(user_id, subs, payload, logger):
+    """Push one payload to every device the user has. Returns (sent, surviving
+    subscriptions).
+
+    A 404/410 means that browser install is gone for good, so the row is deleted
+    and dropped from the working list. Anything else is transient and the
+    subscription is KEPT — tomorrow's run will reach it.
+    """
+    sent = 0
+    dead = []
+    for sub in subs:
+        try:
+            pusher.send_push(sub, payload)
+            sent += 1
+        except pusher.PushGone:
+            dead.append(sub['endpoint'])
+        except pusher.PushError as e:
+            if logger:
+                logger.warning('Push failed for user %s: %s', user_id, e)
+    if dead:
+        with db_cursor(commit=True) as cursor:
+            cursor.execute(
+                "DELETE FROM push_subscriptions WHERE endpoint = ANY(%s)", (dead,))
+        subs = [s for s in subs if s['endpoint'] not in dead]
+    return sent, subs
+
+
+def _push_pass(items_for_user, payload_for, *, today, logger, name):
+    """The spine both push passes share: every user with a device, their items,
+    one claim per item, one notification per device.
+
+    Factored out when the second pass arrived (#191) rather than copied, because
+    the parts that are easy to get subtly wrong — claim BEFORE send, per-user
+    isolation, pruning dead devices mid-batch — are exactly the parts that must
+    not drift between the two.
+    """
     if not pusher.push_enabled():
         return 0
-    today = today or date.today()
 
     with db_cursor() as cursor:
         cursor.execute("SELECT DISTINCT user_id FROM push_subscriptions ORDER BY user_id")
@@ -184,7 +233,7 @@ def send_due_reminders(*, today=None, logger=None):
     sent = 0
     for user_id in user_ids:
         try:
-            items = _due_tomorrow(user_id, today)
+            items = items_for_user(user_id, today)
             if not items:
                 continue
             with db_cursor() as cursor:
@@ -194,57 +243,104 @@ def send_due_reminders(*, today=None, logger=None):
 
             for item in items:
                 # Claim first, in its own committed transaction: if the send
-                # then fails we do NOT retry it, which is the right trade for a
-                # reminder — a duplicate notification is worse than a missed one,
-                # and tomorrow's bill is stale by the next run anyway.
+                # then fails we do NOT retry it, which is the right trade here —
+                # a duplicate notification is worse than a missed one, and both
+                # of these are stale by the next run anyway.
                 with db_cursor(commit=True) as cursor:
                     if not _claim(cursor, user_id, item):
                         continue
-                payload = _notification(item)
-                dead = []
-                for sub in subs:
-                    try:
-                        pusher.send_push(sub, payload)
-                        sent += 1
-                    except pusher.PushGone:
-                        dead.append(sub['endpoint'])
-                    except pusher.PushError as e:
-                        if logger:
-                            logger.warning('Push failed for user %s: %s', user_id, e)
-                if dead:
-                    with db_cursor(commit=True) as cursor:
-                        cursor.execute(
-                            "DELETE FROM push_subscriptions WHERE endpoint = ANY(%s)",
-                            (dead,))
-                    subs = [s for s in subs if s['endpoint'] not in dead]
+                delivered, subs = _deliver(user_id, subs, payload_for(item), logger)
+                sent += delivered
         except Exception as e:  # never let one user break the batch
             if logger:
-                logger.exception('Reminders failed for user %s: %s', user_id, e)
+                logger.exception('%s failed for user %s: %s', name, user_id, e)
     return sent
 
 
-def run_daily_tasks(*, today=None):
-    """The scheduler entry point. Materialize for everyone, then remind.
+def send_due_reminders(*, today=None, logger=None):
+    """Push one notification per bill due within the reminder window, to every
+    device the user has registered. Idempotent per occurrence. Returns the
+    number of notifications sent. No-op when push isn't configured."""
+    return _push_pass(_due_tomorrow, _notification,
+                      today=today or date.today(), logger=logger,
+                      name='Reminders')
 
-    Order matters: materializing first means the reminder pass reads a ledger
-    that is already up to date. Returns (users_materialized, reminders_sent).
+
+def _posted_variable_bills(user_id, today, lookback=POSTED_LOOKBACK_DAYS):
+    """Every transaction a variable-amount schedule has posted recently, for one
+    user. Returns [{source, source_id, description, amount, due}, ...] where
+    source_id is a TRANSACTION id (see sql/35 for why the claim key differs).
+
+    This reads the LEDGER, not the schedules, and that is the whole design (#191).
+    run_due_schedules() fires on three page-load paths as well as the daily job,
+    so by the time this runs, next_due has usually already moved past the
+    occurrence — a schedule-side query would find nothing on exactly the days the
+    user opened the app. The posted row is the durable evidence that it happened.
+    """
+    with db_cursor() as cursor:
+        cursor.execute("""
+            SELECT t.id, t.description, t.amount, t.transaction_date
+            FROM transactions t
+            JOIN schedules s ON t.schedule_id = s.id AND s.user_id = t.user_id
+            WHERE t.user_id = %s
+              AND s.is_variable_amount = true
+              AND t.transaction_date > %s
+              AND t.transaction_date <= %s
+            ORDER BY t.transaction_date, t.id
+        """, (user_id, today - timedelta(days=lookback), today))
+        return [{'source': 'posted', 'source_id': tid,
+                 'description': (desc or '').strip() or 'Scheduled bill',
+                 'amount': float(amount), 'due': posted_on}
+                for tid, desc, amount, posted_on in cursor.fetchall()]
+
+
+def _posted_notification(item):
+    """The payload for "this bill posted with last month's figure"."""
+    return {
+        'title': f"{item['description']} posted — ${item['amount']:,.2f}",
+        'body': "That's the amount from last time. Check it and update it if it changed.",
+        # NOT /transactions/<id>/edit: that route returns an HTMX <tr> fragment,
+        # which is not a page a notification can open.
+        'url': '/transactions',
+    }
+
+
+def send_posted_bill_alerts(*, today=None, logger=None):
+    """Push one alert per variable-amount bill that has posted in the lookback
+    window, to every device the user has registered. Idempotent per transaction.
+    Returns the number of notifications sent. No-op when push isn't configured."""
+    return _push_pass(_posted_variable_bills, _posted_notification,
+                      today=today or date.today(), logger=logger,
+                      name='Posted-bill alerts')
+
+
+def run_daily_tasks(*, today=None):
+    """The scheduler entry point. Materialize for everyone, then notify.
+
+    Order matters: materializing first means both notification passes read a
+    ledger that is already up to date — and for the posted-bill pass that is not
+    merely tidy, it is what lets a bill posted by this very job be alerted on the
+    same run. Returns (users_materialized, reminders_sent, alerts_sent).
     """
     from app import app  # local import to avoid an import cycle at module load
     from app.jobs import DAILY, record_job_run
     today = today or date.today()
     users = materialize_all_users(logger=app.logger)
     sent = send_due_reminders(today=today, logger=app.logger)
-    summary = f'materialized {users} user(s), sent {sent} reminder(s)'
+    alerts = send_posted_bill_alerts(today=today, logger=app.logger)
+    summary = (f'materialized {users} user(s), sent {sent} reminder(s), '
+               f'{alerts} bill alert(s)')
     app.logger.info('Daily tasks: %s', summary)
     # #151 — recorded AFTER the work, so /settings reports a job that finished
     # rather than one that started. Never raises; see app/jobs.py.
     record_job_run(DAILY, summary)
-    return users, sent
+    return users, sent, alerts
 
 
 @click.command('run-daily')
 @with_appcontext
 def run_daily_command():
-    """`flask run-daily` — run the daily materialize + reminder pass now."""
-    users, sent = run_daily_tasks()
-    click.echo(f'Materialized {users} user(s); sent {sent} reminder(s).')
+    """`flask run-daily` — run the daily materialize + notify pass now."""
+    users, sent, alerts = run_daily_tasks()
+    click.echo(f'Materialized {users} user(s); sent {sent} reminder(s); '
+               f'{alerts} bill alert(s).')
