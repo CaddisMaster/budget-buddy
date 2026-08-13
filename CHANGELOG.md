@@ -8,6 +8,21 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Fixed
+
+- **A maintenance command on the server can no longer put an old version of the
+  app back into production by accident.** Deployments have always named the exact
+  version to run, but a hand-typed command that left the version out fell back to
+  a tag that nothing keeps up to date — so instead of leaving things alone, it
+  quietly swapped the running app for an older build. It happened once, in August:
+  production went back three releases, and nothing looked wrong. The site was up,
+  every health check was green, and the app worked, because the older code copes
+  with the newer database.
+
+  A command with no version now either does nothing new or refuses outright, and
+  the server records which version it is running so the answer can be read off the
+  box. Nothing about the automated deploy changes.
+
 ## [0.6.0] - 2026-08-10
 
 ### Added

@@ -237,8 +237,11 @@ services:
       - ./sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql
     ports:
       - "127.0.0.1:5432:5432"
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
   web:
-    image: ghcr.io/caddismaster/budget-buddy:${TAG:-latest}
+    image: ghcr.io/caddismaster/budget-buddy:${TAG:?TAG is not set — pass TAG=<version>, or see RUNBOOK §5}
     restart: always
     env_file:
       - .env
@@ -253,14 +256,56 @@ services:
       start_period: 20s
     depends_on:
       - db
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
 volumes:
   postgres_data:
 ```
 
-This is **byte-identical to the repository's tracked `docker-compose.yml`** as of the
-2026-07-27 cutover, which is what makes `scp`-ing it up safe. `${TAG}` is supplied by the
-deploy job so production runs an exact released version; the `latest` fallback keeps a
-hand-run `docker compose up -d` working.
+The deployed file **is** the repository's tracked `docker-compose.yml`, `scp`-ed up — that is
+what makes copying it safe. The block above is that file with its (long) comments stripped
+for reading, so check it with `diff`, not by eye:
+
+```bash
+# from a clone on the Mac
+ssh <droplet> 'cat /opt/budget-buddy/docker-compose.yml' | diff - docker-compose.yml
+```
+
+### ⚠️ `TAG` has no default, deliberately (#190)
+
+`${TAG:?…}` — there is **no `:-latest` fallback**, because that fallback was a live
+foot-gun. The Droplet's local `latest` is stale *by construction*: deploys pull the exact
+version tag and never `latest`, so nothing on the box ever refreshes it. On 2026-08-10 a
+hand-run `docker compose up -d` while applying the log limits moved production from `:0.6.0`
+back to the **`0.3.1`** image — three releases and two migrations — with **no signal**:
+container `healthy`, `/healthz` 200, uptime check green, and `docker compose ps` showing a
+tag that looks perfectly normal.
+
+Two things replace it:
+
+- **The deploy pins the version into `.env`.** `release.yml` and `rollback.yml` both rewrite
+  a single `TAG=<version>` line into `/opt/budget-buddy/.env` before anything else runs, so a
+  bare `docker compose up -d` now reproduces the running deployment instead of choosing a
+  different one — and the running version is greppable on the host:
+
+  ```bash
+  cd /opt/budget-buddy && grep '^TAG=' .env      # → TAG=0.6.0
+  ```
+
+- **A missing pin fails loudly.** If that line is ever absent — a hand-restored `.env`
+  (§8 restores one), a rebuilt server — then *every* compose command on the box, `ps` and
+  `logs` included, exits non-zero naming `TAG` rather than starting the wrong image. Supply
+  it for the one command (`TAG=0.6.0 docker compose ps`) and put the line back.
+
+An explicit `TAG=` on the command line always beats the file, which is why the automated
+deploys are authoritative and why the first deploy after this change works against an `.env`
+that has no line yet.
+
+⚠️ **`.env.example` carries a `TAG=` line for the same reason** — local dev never pulls this
+image (the override builds from source) but compose still interpolates it, so a local `.env`
+without the line breaks `./test.sh`. If you rebuild `.env` from a secret store, keep it: it
+is not a secret and nothing will restore it for you.
 
 > ⚠️ **Never `scp` `docker-compose.override.yml`.** It is tracked (so a fresh clone can
 > build locally) and replaces `image:` with a `build:` context — on the server, where there
@@ -327,13 +372,16 @@ docker inspect -f '{{.HostConfig.LogConfig.Config}}' $(docker compose ps -q db)
 #    That is what proves every future release is safe again.
 ```
 
-> ⚠️ **NEVER run a bare `docker compose up -d` on the Droplet. Always pass
-> `TAG=<version>`.**
+> ⚠️ **Pass `TAG=<version>` on any hand-run compose command.** Since #190 this is
+> **enforced, not merely advised**: the image reads `${TAG:?…}` with no default, and
+> the deploy writes the running version into `.env`, so a bare `docker compose up -d`
+> either reproduces what is already running or fails naming `TAG`. See §5.
 >
-> `docker-compose.yml` resolves the image as `${TAG:-latest}`, and **the Droplet's
-> local `latest` tag is stale** — deploys pull the exact version tag
-> (`TAG=<v> docker compose pull web`) and never `latest`, so nothing has refreshed
-> it since it was last pulled by hand.
+> The history, kept because it is why the default is gone. `docker-compose.yml` used
+> to resolve the image as `${TAG:-latest}`, and **the Droplet's local `latest` tag is
+> stale by construction** — deploys pull the exact version tag
+> (`TAG=<v> docker compose pull web`) and never `latest`, so nothing on the box ever
+> refreshes it.
 >
 > This is not hypothetical. Applying the log limits on **2026-08-10**, a bare
 > `docker compose up -d` silently moved production from `:0.6.0` to `:latest` —
@@ -533,10 +581,18 @@ Manual fallback, if Actions is unavailable — run it as `deploy`, not `root`:
 
 ```bash
 cd /opt/budget-buddy
-TAG=0.1.0 docker compose pull && TAG=0.1.0 docker compose up -d
+# `pull web`, never a bare `pull` — that also fetches postgres:16 and the
+# following `up -d` then recreates the database container (issue #22).
+TAG=0.1.0 docker compose pull web && TAG=0.1.0 docker compose up -d
+
+# Then pin it, exactly as the workflows do, so the box records what it runs
+# and a later bare `up -d` cannot change it (#190):
+touch .env.tmp && chmod 600 .env.tmp        # mode FIRST: this file holds every secret
+grep -v '^TAG=' .env > .env.tmp && printf 'TAG=%s\n' 0.1.0 >> .env.tmp && mv .env.tmp .env
 ```
 
-`TAG` pins an exact released image; omitting it falls back to `latest`.
+`TAG` pins an exact released image. Omitting it no longer falls back to `latest` — the
+command fails naming `TAG`, which is the whole of #190. See §5.
 
 ### Migrations
 
@@ -767,6 +823,10 @@ transaction is present.
    already resolving to this host.
 5. **Recreate `/opt/budget-buddy/`:** `docker-compose.yml` and `sql/` from this
    repository, `landing/` from `landing/`, and `.env` from the configs backup.
+   **Then check `.env` names a version:** `grep '^TAG=' .env` (#190). A configs
+   backup taken before that pin existed has no such line, and step 8 will fail
+   naming `TAG` rather than starting an arbitrary image — which is the designed
+   behaviour, not a fault. Add `TAG=<the version you mean to run>`.
 6. **Nginx:** write the site files from §3, symlink into `sites-enabled`,
    `nginx -t`, reload.
 7. **TLS:** `certbot --nginx -d ...` per domain. Re-read the §4 warning about
