@@ -194,6 +194,27 @@ jobs:
               "set -e
                cd /opt/budget-buddy
 
+               # 0. Pin the version this box runs into .env, FIRST — before any
+               #    other compose command, including the pg_dump below, which is
+               #    a bare \`docker compose exec\`. Since #190 the image reads
+               #    \${TAG} with NO default, so an .env missing this line makes
+               #    every compose command fail naming TAG. That is the intent: the
+               #    old \`:-latest\` fallback silently reverted production to a
+               #    stale local image. Rewritten in place, so exactly one TAG line
+               #    survives, and chmod'd before it is written — a redirect creates
+               #    the temp file at the umask default, and this file holds every
+               #    production secret.
+               #
+               #    The explicit \`TAG=\` prefixes further down are what makes THIS
+               #    deploy work against an .env that does not have the line yet; a
+               #    command-line value beats the file either way.
+               touch .env.tmp
+               chmod 600 .env.tmp
+               grep -v '^TAG=' .env > .env.tmp
+               printf 'TAG=%s\n' '${VERSION}' >> .env.tmp
+               mv .env.tmp .env
+               echo \"pinned \$(grep '^TAG=' .env)\"
+
                # 1. Back up before touching the schema. The database is the only
                #    irreplaceable artifact here, so a failed dump fails the deploy.
                source ./.env

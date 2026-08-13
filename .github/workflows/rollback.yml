@@ -62,12 +62,25 @@ jobs:
 
           # `pull web` only — a rollback must not drag the database engine along
           # with it. See release.yml.
+          #
+          # The .env pin (#190) matters MORE here than on a deploy: without it a
+          # rollback leaves the box naming the version it just rolled away from,
+          # so the next bare `docker compose up -d` quietly rolls production
+          # FORWARD again. It is also what lets the trailing bare
+          # `docker compose ps` resolve at all, now that the image has no default.
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
               "${USER_NAME}@${HOST}" \
-              "cd /opt/budget-buddy \
-               && TAG='${VERSION}' docker compose pull web \
-               && TAG='${VERSION}' docker compose up -d \
-               && docker compose ps"
+              "set -e
+               cd /opt/budget-buddy
+               touch .env.tmp
+               chmod 600 .env.tmp
+               grep -v '^TAG=' .env > .env.tmp
+               printf 'TAG=%s\n' '${VERSION}' >> .env.tmp
+               mv .env.tmp .env
+               echo \"pinned \$(grep '^TAG=' .env)\"
+               TAG='${VERSION}' docker compose pull web
+               TAG='${VERSION}' docker compose up -d
+               docker compose ps"
 
       - name: Verify the rolled-back app is healthy
         run: |
