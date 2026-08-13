@@ -36,7 +36,7 @@ app/
     push.py          # POST /push/subscribe|unsubscribe (#33) — one row per DEVICE, endpoint is the identity (globally UNIQUE, so re-subscribing upserts); validates the posted JSON, scopes every write to current_user. Profile UI gated on push_enabled()
     feedback.py      # POST /feedback (#64) — in-app bug/feature reports filed as GitHub issues via github.py. ⚠️ The repo is PUBLIC and the body carries ONLY what the user typed: no username, no account names, no balances, no request context (settled 2026-07-30). Do NOT 'improve triage' by attaching context — that is the declined feature, not an oversight. Kind resolved against a fixed allowlist (a form value must never become a label); 5/hour rate limit; form on Profile, gated on feedback_enabled()
     announce.py      # the release broadcast (#115). broadcast_release(version) pushes to EVERY row of push_subscriptions — the ONE push path deliberately NOT scoped to a user, which is why it can't live in pusher.py (no DB there), same reason reminders.py exists. Gated on push_enabled() ALONE; per-device try/except; PushGone deletes the row, a transient PushError KEEPS it. `flask announce-release --version X` CLI, run by release.yml AFTER the /healthz verify and skipped for a pre-release. ⚠️ build_release_notification(version) takes NO notes argument (#131) — the body is a FIXED line, see the gotcha. No idempotency marker: `release: published` fires once by construction (a workflow re-run is the only double-send risk, accepted)
-    reminders.py     # the DAILY job (#33). run_daily_tasks() = materialize_all_users() THEN send_due_reminders(); `flask run-daily` CLI. Materialization is UNGATED (see the scheduler gotcha); reminders gate on push_enabled(), enumerate tomorrow via main.upcoming_occurrences (so #32's end_date is honoured), and claim each occurrence in reminder_log with ON CONFLICT DO NOTHING BEFORE sending — a failed send is deliberately NOT retried (a duplicate notification is worse than a missed one)
+    reminders.py     # the DAILY job (#33). run_daily_tasks() = materialize_all_users() THEN send_due_reminders() THEN send_posted_bill_alerts() (#191), returning a 3-tuple; `flask run-daily` CLI. Both push passes share the _push_pass() spine (claim-before-send, per-user isolation, _deliver() pruning dead devices); _posted_variable_bills() reads the LEDGER via transactions.schedule_id — see the gotcha. Materialization is UNGATED (see the scheduler gotcha); reminders gate on push_enabled(), enumerate tomorrow via main.upcoming_occurrences (so #32's end_date is honoured), and claim each occurrence in reminder_log with ON CONFLICT DO NOTHING BEFORE sending — a failed send is deliberately NOT retried (a duplicate notification is worse than a missed one)
     schedules.py     # recurring income/expense schedules (Scheduled tab); run_due_schedules() + compute_initial_semimonthly_due()
     insights.py      # monthly AI digest card on the dashboard; compute_month_facts() (deterministic figures) + POST /insights/generate (narrate via ai.py, cache in insights table)
     forecasts.py     # month-ahead AI projection card (twin of insights.py); pure project_expenses() day-weighted run-rate + compute_forecast() (MTD actuals + remaining schedules) + POST /forecasts/generate
@@ -55,8 +55,8 @@ landing/             # Static landing page at seandesmet.com
 
 ## Database Tables
 
-- `transactions` — amount, description, transaction_date, category_id, account_id, transaction_type (income/expense), is_adjustment (exclude from analytics), is_transfer + transfer_group_id (transfer legs), **is_pending (#86 — a DISPLAY flag, pins the row to the top of History; excludes it from NOTHING, the opposite of is_adjustment)**, user_id, created_at. **`is_recurring`/`frequency`/`next_due`/`recur_second_day` are LEGACY** — recurrence moved to `schedules`; kept (always default) only so the History row shape is unchanged
-- `schedules` — recurring income/expense templates: amount, description, category_id, account_id, transaction_type, frequency, anchor_day + second_day (semi-monthly), next_due, **`end_date` (NULL = runs indefinitely)**, is_active, user_id, created_at. **FINISHED ⇔ `end_date IS NOT NULL AND next_due > end_date`** — deliberately NOT `end_date < today` (a schedule ending the 15th whose next_due is the 1st still owes that occurrence on the 10th), and runner-independent, since next_due only moves forward and never past what was materialized. **Not a ledger row** — `run_due_schedules()` materializes a plain transaction on each due date (going forward, no back-fill) and advances `next_due`
+- `transactions` — amount, description, transaction_date, category_id, account_id, transaction_type (income/expense), is_adjustment (exclude from analytics), is_transfer + transfer_group_id (transfer legs), **is_pending (#86 — a DISPLAY flag, pins the row to the top of History; excludes it from NOTHING, the opposite of is_adjustment)**, **schedule_id (#191 — which schedule materialized this row; NULL for hand-entered rows and everything predating sql/35, `ON DELETE SET NULL` so deleting a schedule never deletes the money it posted)**, user_id, created_at. **`is_recurring`/`frequency`/`next_due`/`recur_second_day` are LEGACY** — recurrence moved to `schedules`; kept (always default) only so the History row shape is unchanged
+- `schedules` — recurring income/expense templates: amount, description, category_id, account_id, transaction_type, frequency, anchor_day + second_day (semi-monthly), next_due, **`end_date` (NULL = runs indefinitely)**, **`is_variable_amount` (#191 — opt-in per bill; changes NOTHING about how it posts, only whether the daily job alerts once it HAS posted)**, is_active, user_id, created_at. **FINISHED ⇔ `end_date IS NOT NULL AND next_due > end_date`** — deliberately NOT `end_date < today` (a schedule ending the 15th whose next_due is the 1st still owes that occurrence on the 10th), and runner-independent, since next_due only moves forward and never past what was materialized. **Not a ledger row** — `run_due_schedules()` materializes a plain transaction on each due date (going forward, no back-fill) and advances `next_due`
 - `transfer_schedules` — recurring **transfer** templates (the transfer twin of `schedules`): amount, description, **from_account_id + to_account_id** (no category), frequency, anchor_day + second_day, next_due, **`end_date` (same semantics as `schedules`)**, is_active, user_id, created_at. Separate table (a transfer needs two accounts). `run_due_transfers()` (transfers.py) materializes a **paired transfer** (linked expense+income legs sharing one `transfer_group_id`, both `is_transfer=true`) per due date, looping to catch up. Reuses `compute_next_due()`/`compute_initial_semimonthly_due()`, all six frequencies
 - `insights` — cached monthly AI narration, one row per user per month: year, month, content (JSON `{summary, tips[]}`), model, user_id, created_at; **UNIQUE(user_id, year, month)** upsert. **Stores only the narrative** — figures are recomputed each load (`compute_month_facts()`), never persisted
 - `forecasts` — cached month-ahead projection, **identical shape to `insights`** (separate table, not a `kind` column). Narrative only; figures recomputed by `compute_forecast()`
@@ -64,7 +64,7 @@ landing/             # Static landing page at seandesmet.com
 - `agent_runs` — cached Money-agent weekly runs: user_id, **period_start (the week's Sunday, via `helpers.most_recent_sunday` — same boundary as `last_digest_sent_on`)**, content (JSON `{summary, findings:[{title, detail, evidence}], tools_used}`), model, created_at; **UNIQUE(user_id, period_start)** upsert. Stores only the narrative + cited evidence text — no figures are trusted from it
 - `job_runs` — when each scheduled job last **finished** (#151): job_name (**UNIQUE**), last_run_at, summary (free text for a human — *"materialized 3 user(s), sent 1 reminder(s)"*; nothing parses it and nothing should start to). **ONE ROW PER JOB, UPSERTED** — not append-only: the panel asks "when did this last finish", which is one fact per job (`agent_runs` is the upsert precedent; `reminder_log` is append-only because there every occurrence is a distinct claim that must not be lost). ⚠️ **NO `user_id`, deliberately** — these jobs run for everyone at once, so "which user did the daily pass belong to" has no answer. With `push_subscriptions` (per DEVICE) it is one of only two non-user-keyed shapes; this one is per JOB. Written on completion, **never on dispatch**
 - `push_subscriptions` — one row per **DEVICE** (#33): user_id, `endpoint` (**globally UNIQUE** — it is the push service's URL for that browser install, so re-subscribing upserts and a different user subscribing on the same browser MOVES the row to them, which is correct), p256dh, auth, created_at. A user may have several
-- `reminder_log` — the reminder idempotency marker (#33): user_id, `source` ('schedule' | 'transfer'), `source_id`, `occurrence_date`, sent_at; **UNIQUE(user_id, source, source_id, occurrence_date)**. Keyed per **OCCURRENCE**, not a per-day column on `users` — a date marker only holds while the lead time is exactly 1 day; widen the window and the same bill re-notifies daily. The row IS the lock (claimed with `ON CONFLICT DO NOTHING`), so it survives the container restart a deploy causes. `source_id` addresses two tables, so it is deliberately **not** an FK — orphaned markers are inert
+- `reminder_log` — the reminder idempotency marker (#33): user_id, `source` ('schedule' | 'transfer' | **'posted'** — the last is #191's claim, where `source_id` is a TRANSACTION id), `source_id`, `occurrence_date`, sent_at; **UNIQUE(user_id, source, source_id, occurrence_date)**. Keyed per **OCCURRENCE**, not a per-day column on `users` — a date marker only holds while the lead time is exactly 1 day; widen the window and the same bill re-notifies daily. The row IS the lock (claimed with `ON CONFLICT DO NOTHING`), so it survives the container restart a deploy causes. `source_id` addresses two tables, so it is deliberately **not** an FK — orphaned markers are inert
 - `categories` — id, name, description, **kind ('expense' | 'income', default 'expense')**, user_id. Kind drives which category LISTS a surface offers (cockpit/review/Auto-Categorize = expense-kind only; forms group both kinds in optgroups; quick-add parse sees all) and Ask's `total_for_category` sums by it — transaction rollups still filter on the transaction's own `transaction_type`
 - `budgets` — id, category_id, amount (one **monthly** amount per category — overrides only; no row = fall back to the suggested average), user_id, created_at; UNIQUE(user_id, category_id)
 - `budget_history` — **append-only** log of budget changes: category_id (FK **CASCADE**, not RESTRICT), amount (**NULL = cleared**), changed_at, user_id. Written by `record_budget_change()` at set/clear/review-apply. **Nothing reads it yet** — it exists because history can't be backfilled; a future budget-report upgrade grades past months against the amount in effect then
@@ -163,8 +163,21 @@ landing/             # Static landing page at seandesmet.com
   variable names* are all absent from the response. `ENABLE_DIGEST_SCHEDULER` is
   deliberately its own line, not a fifth row: it is not a credential and its jobs each
   carry their own gate.
-- ⚠️ **NEVER run a bare `docker compose up -d` on the Droplet — always `TAG=<version>`** (#190,
-  observed in prod 2026-08-10). Compose resolves the app image as `${TAG:-latest}`, and the
+- ⚠️ **`${TAG}` has NO DEFAULT, and the deploy pins it into the Droplet's `.env`** (#190, PR #193).
+  Two halves, both load-bearing: `docker-compose.yml` reads `${TAG:?…}` so a command naming no
+  version **fails naming the variable** instead of choosing an image, and `release.yml` +
+  `rollback.yml` rewrite one `TAG=<version>` line into `/opt/budget-buddy/.env` so a bare
+  `up -d` reproduces the running deployment (`grep '^TAG=' .env` reads it off the host). Pinning
+  alone was rejected: a hand-restored `.env` re-arms the trap silently. ⚠️ **Compose interpolates
+  every file BEFORE merging**, so the mandatory variable fires **locally too**, even though
+  `docker-compose.override.yml` replaces the image with a source build — hence a `TAG=` line in
+  `.env.example` and in the local `.env`, where the value is meaningless but the line must exist.
+  Check states with `docker compose config`, a **pure parse that needs no daemon**. In the deploy
+  the pin goes **first** (the pre-deploy `pg_dump` is itself a bare `docker compose exec`) and is
+  `chmod 600`'d **before** the redirect. `tests/test_deploy_pinning.py` states the property — any
+  `:-` default at all fails it.
+- ⚠️ **Historical (the reason the default is gone): a bare `docker compose up -d` reverted prod**
+  (#190, observed 2026-08-10). Compose resolves the app image as `${TAG:-latest}`, and the
   Droplet's local `latest` is **stale by construction**: deploys pull the exact version tag and
   never `latest`, so nothing refreshes it. A bare `up -d` while applying the log limits moved
   production from `:0.6.0` to the **`0.3.1`** image — three releases and two migrations back —
@@ -192,6 +205,22 @@ landing/             # Static landing page at seandesmet.com
   when it happens: the tables look complete and the restore has **not** succeeded. `PUBLIC` is a
   pseudo-role and must never be created. ⚠️ Do not read a piped `psql`'s success from `$?` — that
   is the pipe's last command; this is exactly how the first rehearsal was misreported as passing.
+- ⚠️ **The variable-bill alert reads the LEDGER, never the schedules** (#191, PR #195).
+  `reminders.send_posted_bill_alerts()` asks *"which transactions did a variable-amount schedule
+  post recently"* via `transactions.schedule_id`, not *"which schedules were due today"*. The
+  latter is the obvious build and it is **wrong**: `run_due_schedules()` fires on three page-load
+  paths as well as the 18:00 job, so opening the app in the morning posts the bill and advances
+  `next_due`, leaving the evening job nothing to see — the alert would go silent on exactly the
+  days the user was engaged. `test_a_bill_posted_by_a_page_load_is_still_alerted` is the net and
+  asserts the intermediate state (`next_due > today`). Three coupled decisions: **`schedule_id` is
+  stamped on EVERY materialized row**, not just variable ones (so ticking the flag later can still
+  see what posted); the claim is `reminder_log.source='posted'` with a **transaction** id, never
+  `'schedule'` (already held by the due-tomorrow reminder for the same occurrence); and the
+  3-day lookback is safe only because the claim is per row. `is_pending` was considered as the
+  in-app half and **rejected** — do not widen it. The payload links `/transactions`, deliberately
+  not `/transactions/<id>/edit` (an HTMX `<tr>` fragment is not a page a notification can open).
+  Both push passes share the `_push_pass()` spine: claim-before-send, per-user isolation and dead
+  device pruning must not drift between them.
 - **Amount validation:** every form amount goes through `helpers.parse_positive_amount()` — `float('nan')` passes a plain `<= 0` check and Postgres stores NaN in numeric, poisoning every SUM(). Never hand-roll `float(x); if x <= 0`
 - **Param validation:** same rule for query/form params — `?month` → `parse_month_param()`, `?page` → `parse_page_param()`, posted FK ids → `parse_int_param()`. A raw string into a psycopg2 `%s` against an int column raises (= 500)
 - **Write-side FK ownership:** when a form posts a `category_id`/`account_id`, validate it belongs to the user *before* the INSERT/UPDATE — `validate_category_account()` in transactions.py, folded into the route's validation-error path. Used by transaction new/edit, schedule create/edit, bulk edit, cleanup apply
@@ -226,7 +255,7 @@ landing/             # Static landing page at seandesmet.com
   the Profile copy names both. A third kind of notification must be added to that
   paragraph **in the same change that starts sending it** — shipping the send first
   widens an existing consent silently.
-  `test_profile_copy_names_both_kinds_of_notification` is the net (Jinja fails silent).
+  `test_profile_copy_names_every_kind_of_notification` is the net (Jinja fails silent), and it asserts each kind SEPARATELY — one "does it mention notifications" check would pass while a whole category went undisclosed. Three kinds today: due-tomorrow reminder (#33), posted variable bill (#191), release note (#115).
 - **Cache-bust is automatic:** the stylesheet `?v=` is `css_v` (startup md5 of style.css) — nobody bumps a number. base.html AND login.html (which doesn't extend base) both read it. ⚠️ **Local dev consequence:** the source is now bind-mounted, and `css_v` is computed ONCE at import — so editing `style.css` changes nothing until `docker compose restart web` (~2s). Python and template edits ARE live. A CSS change that "does nothing" is this, not a broken mount
 - **Local dev runs bind-mounted with live reload** (`docker-compose.override.yml`, local-only — the Droplet has no override, so production gets none of it): `.:/app` over the image's `COPY`, gunicorn `--reload`, and `TEMPLATES_AUTO_RELOAD=1`. **Both reload mechanisms are needed** — `--reload` watches Python modules only, so without the env var (read in `app/__init__.py`) an edited template reaches the container and is silently ignored, which looks exactly like the mount failing. Anonymous volumes mask `/app/.venv`, `/app/.ruff_cache` and `/app/.pytest_cache`: a bind mount ignores `.dockerignore`, and `.venv` holds macOS-native wheels that are wrong for Linux
 - ⚠️ **THE DEV CONTAINER AND THE SHIPPED IMAGE HOLD DIFFERENT FILES, and the bind mount hides
@@ -256,27 +285,66 @@ landing/             # Static landing page at seandesmet.com
 
 ## Current Status
 
-### On `main`, NOT released — the operational backlog, cleared (2026-08-10, second session)
+### On `main`, NOT released — the `0.7.0` backlog, cleared (2026-08-13)
 
-**Prod still runs `0.6.0`, and that is correct: there is nothing to release.** Five PRs merged
-after the `0.6.0` cut, closing **#160, #159, #153, #150**. Tests **843 → 875**. No migration.
+**Prod runs `0.6.0`; `main` is now genuinely ahead of it.** Three PRs merged, closing **#190** and
+**#191** — the last two open issues on the milestone, which now stands at **12 closed / 0 open**.
+Tests **875 → 906**. **One additive migration** (`sql/35_variable_bills.sql`). No new env vars.
 
-⚠️ **`main` contains ZERO `app/` changes since `v0.6.0`**, and `## [Unreleased]` in
-`CHANGELOG.md` is **empty**. A release would build an image byte-identical to the running one,
-deploy it, and fire a "check out what's new" notification about nothing. **Every effective change
-is already in place**: the log limits were applied to the Droplet by hand (below),
-`restore_check.py` runs from the maintainer's machine, `schema.sql` is inert on an existing
-database, and the rest is CI and docs. Do not cut a release to "ship" this.
+⚠️ **Unlike the 2026-08-10 block below, there IS something to release now.** `#191` is a
+user-facing feature and `## [Unreleased]` carries an `### Added` and a `### Fixed`, so `0.7.0` is
+an honest MINOR. What a release still needs: the **What's-new strip** (a human writes the prose;
+`scripts/release_prep.py` does the mechanical half) and the usual gate. Not cut — Sean's call.
+
+⚠️ **#190's fix is merged but NOT APPLIED TO PRODUCTION**, and merging cannot apply it: the
+Droplet holds an `scp`-ed copy of `docker-compose.yml`. **Order is load-bearing** — the `.env`
+line must land BEFORE the new compose file, or every compose command on the box fails in between:
+
+```bash
+cd /opt/budget-buddy && printf 'TAG=0.6.0\n' >> .env && grep '^TAG=' .env   # 1. pin first
+scp docker-compose.yml <droplet>:/opt/budget-buddy/                          # 2. then the file
+docker compose ps --format '{{.Service}} {{.Image}}'                         # 3a. still :0.6.0
+mv .env .env.bak && docker compose config; mv .env.bak .env                  # 3b. MUST fail
+```
+
+Until 3b fails naming `TAG`, this fix is **unverified in production** — the deploy workflows pass
+`TAG=` explicitly either way, so a green release proves nothing about it.
+
+- **PR #194 — `sql/35_variable_bills.sql`**, standing alone. `schedules.is_variable_amount`,
+  `transactions.schedule_id` (nullable, `ON DELETE SET NULL`, indexed), and `reminder_log.source`
+  gaining `'posted'`; mirrored into `schema.sql`. Verified against a throwaway `postgres:16`: it
+  applies to **main's** `schema.sql`, is re-runnable, and a migrated database is identical to a
+  fresh one — 130 columns, 54 constraints, every index diffed. ⚠️ The first constraint diff was a
+  **false green** (both sides errored on a `"char"` cast, so `diff` compared two empty files);
+  print the line count next to the verdict.
+- **PR #193 / #190 — the `${TAG}` trap is now enforced, not documented.** See the two gotchas
+  below. Both `release.yml` and `rollback.yml` pin the version into `.env`; `rollback.yml` needs
+  it *more* (without it a rollback leaves the box naming the version it rolled away from, so the
+  next bare `up -d` rolls production forward again). Also fixed: `RUNBOOK.md` §6's manual fallback
+  carried a bare `docker compose pull`, the exact thing issue #22 exists to prevent.
+- **PR #195 / #191 — a push alert when a variable-amount bill posts.** See the gotcha below for
+  why it reads the ledger rather than the schedules. `gotcha-auditor` on the branch: no violations.
 
 ⚠️ **Standing instruction (Sean, 2026-08-10): do not send a release notification for a release
 with no user-facing change.** The only built-in lever is marking the GitHub Release as a
 pre-release — `release.yml` gates the announce step on `github.event.release.prerelease == false`
 — but that also suppresses the `:latest` update, so it is a misuse with side effects. Usually the
-right answer is that there is nothing to release.
+right answer is that there is nothing to release. (`0.7.0` is **not** that case.)
 
-⚠️ **The `0.7.0` milestone only stays honest if a feature lands in it.** Under `VERSIONING.md`
-(`0.MINOR` = features, `0.MINOR.PATCH` = fixes) a release carrying none of the former is a
-**patch**. **#191** is what makes it a genuine minor.
+### On `main`, NOT released — the operational backlog, cleared (2026-08-10, second session)
+
+⚠️ **Superseded by the block above** — the "there is nothing to release" conclusion held only
+until #191 landed. Kept for the five PRs it describes.
+
+Five PRs merged after the `0.6.0` cut, closing **#160, #159, #153, #150**. Tests **843 → 875**.
+No migration.
+
+⚠️ At the time, **`main` contained ZERO `app/` changes since `v0.6.0`** and `## [Unreleased]` was
+**empty**. A release would have built an image byte-identical to the running one, deployed it, and
+fired a "check out what's new" notification about nothing. **Every effective change was already in
+place**: the log limits were applied to the Droplet by hand (below), `restore_check.py` runs from
+the maintainer's machine, `schema.sql` is inert on an existing database, and the rest is CI and
+docs. Do not cut a release to "ship" that.
 
 - **PR #185 / #160 — `sql/schema.sql` never carried the `budget_app` role.** A fresh database
   plus `--baseline` recorded `30_app_role.sql` as applied while the role did not exist. The block
@@ -920,9 +988,9 @@ worker as everything else in that group. That is the only way to stop two worker
 daily job for everybody — so one worker's call also processes every other worker's users, and
 its `ON CONFLICT DO NOTHING` claim in `reminder_log` means the neighbour then delivers through
 the **wrong process's mocked seam**. ⚠️ **`TEST_PREFIX` cannot help here** — it isolates *rows*,
-and this is contention over a global *operation*. Four files drive such a sweep
-(`test_push_reminders.py`, `test_job_runs.py`, `test_digest.py`, `test_money_agent.py`) plus
-the broadcast in `test_release_announce.py`; all carry the group.
+and this is contention over a global *operation*. FIVE files drive such a sweep
+(`test_push_reminders.py`, `test_job_runs.py`, `test_digest.py`, `test_money_agent.py`,
+`test_variable_bills.py`) plus the broadcast in `test_release_announce.py`; all carry the group.
 
 What still holds: the suite's content assertions are the only net for Jinja's
 silent-empty-string failure mode, so a global change (a cursor-factory flip, a template-wide
@@ -939,11 +1007,13 @@ install cost ~1.5s and total per-invocation overhead ~2.9s, cut to ~0.8s by #70.
 predicted to "roughly halve" the run; it actually cut it by ~12×, because the suite is
 IO/DB-bound rather than CPU-bound and parallelises far better than a CPU-bound suite would.
 
-**875 tests in `tests/`** (measured 2026-08-10; 5 of them skip on the last day of a month — `test_forecast.py`'s date guards, and 1 more skips *inside the shipped image* — see the `.dockerignore` gotcha). ⚠️ **Recount rather than trusting this number** — it has now been wrong three times (757 against a true 762 on 2026-08-03, 783 against a true 806 on 2026-08-04, 806 against a true 843 on 2026-08-10), so the drift is real and the month-end skips do not explain it. Cross-cutting patterns: **no real API calls anywhere** — every
+**906 tests in `tests/`** (measured 2026-08-13; 5 of them skip on the last day of a month — `test_forecast.py`'s date guards, and 1 more skips *inside the shipped image* — see the `.dockerignore` gotcha). ⚠️ **Recount rather than trusting this number** — it has now been wrong three times (757 against a true 762 on 2026-08-03, 783 against a true 806 on 2026-08-04, 806 against a true 843 on 2026-08-10), so the drift is real and the month-end skips do not explain it. Cross-cutting patterns: **no real API calls anywhere** — every
 `ai.py::_call_*_model` seam (and `mailer.py::_call_resend`) is monkeypatched with canned
 `SimpleNamespace` responses; every feature file asserts **user isolation**; route tests assert
 anon → 302. What each file covers:
 
+- `test_variable_bills.py` — #191 end to end via the mocked `pusher._call_webpush` seam: the link column (stamped on materialization, NULL for hand-entered rows, surviving a schedule delete), which rows the pass selects (variable only, the 3-day window, per-user scoping), the payload, sending (idempotent per transaction, the `push_enabled()` gate claiming nothing, isolation, `PushGone` deletes vs `PushError` keeps), the daily job, and the form round-trip. ⚠️ **`test_a_bill_posted_by_a_page_load_is_still_alerted` is the load-bearing one** — it materializes the way a page load does, asserts `next_due` has already moved past today, and only then runs the job; it is the test that fails under the rejected schedule-side design. Carries `@pytest.mark.xdist_group("scheduler_sweep")` and builds every endpoint from `TEST_PREFIX`. ⚠️ Known to FAIL without the feature, not merely to pass with it: removing the one-line `schedule_id` stamp turns 11 of its 23 red
+- `test_deploy_pinning.py` — #190: the compose image ref has **no `:-` default of any kind** (the property, not the string) and errors naming `TAG`; `.env.example` carries a `TAG=` line; both workflows rewrite the pin, `chmod 600` **before** the write, and the release pins **before** its first compose command. ⚠️ Every test SKIPS when the file it reads is absent, naming `.dockerignore` — `docker-compose*.yml` and `.env.*` are genuinely excluded from the shipped image (#176). Verified red against the pre-fix compose file
 - `test_model_constants.py` — #140: which model each beat runs on, **and the request
   parameters the Sonnet 5 move made load-bearing**. Beyond the two constant scenarios it
   pins `max_tokens >= 4096` and the explicit `effort` at both Sonnet seams, so a later
