@@ -920,6 +920,18 @@ whose full detail lives in the archived repo's tags and release notes.
 ## Testing
 
 Run with **`./test.sh`** (args pass through to pytest, e.g. `./test.sh -k semimonthly`).
+
+▶️ **If a tmux `work` session is running, prefer `runtests` over `./test.sh`** (same
+arguments). It sends the run to the **visible** `tests` window, waits, and prints the
+result — so the human can watch a 56-second run live instead of waiting on an agent to
+report it afterwards. Two things it does that a bare `./test.sh` cannot: it resolves the
+target **pane by repo root** (pane numbers renumber on every split, so `tests.1` is not
+reliably the same project tomorrow), and it **refuses to start a second suite** while one
+is in flight, which the `TEST_PREFIX` note below explains is a real corruption rather than
+mere contention. `--no-wait` fires and returns. ⚠️ It lives in `~/.local/bin`, NOT as the
+`.bashrc` function of the same name in `tmux-helper.sh` — a sourced function is invisible
+to a non-interactive shell, which is exactly what an agent's tool calls use, and that is
+why every agent-run suite went to the agent's own scrollback until 2026-08-14.
 It runs in a throwaway `web` container on prod's Python 3.14 — no local venv;
 `requirements-dev.txt` adds just `pytest`. Needs the dev `db` container up (route/isolation
 tests hit it). Also runs in **GitHub Actions CI** on every push/PR (`.github/workflows/ci.yml`,
