@@ -289,8 +289,15 @@ landing/             # Static landing page at seandesmet.com
 ### On `main`, NOT released — the `0.7.0` backlog, cleared (2026-08-13)
 
 **Prod runs `0.6.0`; `main` is now genuinely ahead of it.** Three PRs merged, closing **#190** and
-**#191** — the last two open issues on the milestone, which now stands at **12 closed / 0 open**.
-Tests **875 → 906**. **One additive migration** (`sql/35_variable_bills.sql`). No new env vars.
+**#191**. Tests **875 → 906**. **One additive migration** (`sql/35_variable_bills.sql`). No new env
+vars.
+
+⚠️ **The `0.7.0` milestone is no longer empty — #203 was added to it on 2026-08-14** and now
+**blocks closing it**. Recount with `gh issue list --milestone 0.7.0` rather than trusting any
+figure here. #203 is a defect in `scripts/release_prep.py`: `roll_changelog()` appends one extra
+trailing newline to `CHANGELOG.md` on **every** run, and it compounds (measured: 2 → 3 → 4 → 5 → 6
+across four release cycles). Cosmetic, but it is in the tool used to cut the release it is blocking,
+so fix it before running the prep rather than after.
 
 ⚠️ **Unlike the 2026-08-10 block below, there IS something to release now.** `#191` is a
 user-facing feature and `## [Unreleased]` carries an `### Added` and a `### Fixed`, so `0.7.0` is
@@ -1277,6 +1284,29 @@ trip caught a wrong SPEC, not wrong code**: the orchestrator's replacement tests
 worker would have stayed red rather than producing something convincing — which is the entire
 argument for this shape, demonstrated in about ninety seconds. **`sweeper` is now the only agent
 never run.**
+
+⚠️ **The second `test-first` outing (2026-08-14) was a MIS-SIZING, and the agents were not the
+problem.** Two ran in parallel, one per worktree, on two small throwaway issues. Both produced
+correct code first pass with zero round trips, neither claimed the tests passed, and both reported
+scope creep they had **declined** (one wanted to factor a shared helper out of a function five
+other tests pin — correctly refused). And it was still the wrong call: **~195k tokens of agent
+context for 22 and 51 lines of code**, with prompts longer than what came back. The rule that
+should have stopped it is already above — *if the prompt approaches the length of the work, don't
+delegate* — and it was broken in the act of demonstrating it. **Sizing heuristic, use it alongside
+the verification rule rather than instead of it: delegate when READING the files is the expensive
+part, not when writing is.** Verification cost alone does not discriminate here — checking a
+20-line diff is cheap, so that rule says yes while the economics say no; both tests must pass.
+⚠️ Running the two in **parallel bought nothing** (both finished in ~90s) and cannot help anyway:
+the two branches queue for the suite regardless, because `TEST_PREFIX` separates xdist workers
+within one run and not two runs from each other.
+
+⚠️ **An agent working in a `git worktree` cannot run the suite at all** — `.env` is gitignored so
+`worktree add` never copies it, `test.sh` does `cd "$(dirname "$0")"` so compose runs in the
+worktree under a *different project name*, and `${TAG:?}` (#190) then refuses outright. This costs
+nothing, because `test-first` has no Bash either way — but it means the orchestrator runs every
+test. To test a branch that is live in a worktree, `git` refuses a normal checkout and a **detached**
+one is the way in: `git checkout --detach <branch>` in the main clone, run, `git checkout main`.
+⚠️ Commit in the worktree first — the bench sees the commit, not the worktree's working files.
 
 ⚠️ **The two executors are tool-constrained; the two reporters are only PROMPT-constrained.**
 `sweeper` and `test-first` have no Bash, so "you cannot run tests or commit" is structurally
