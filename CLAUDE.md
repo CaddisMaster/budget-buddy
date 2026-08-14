@@ -921,17 +921,30 @@ whose full detail lives in the archived repo's tags and release notes.
 
 Run with **`./test.sh`** (args pass through to pytest, e.g. `./test.sh -k semimonthly`).
 
+⚠️ **`test.sh` REFUSES TO RUN while another run is in flight** (#206) — an advisory
+`flock` on fd 9, taken before anything expensive and never released, so it survives the
+final `exec docker compose …` and the kernel drops it when the run ends (including a
+`kill -9`, which a marker file would not). This is the guard that actually holds, because
+`test.sh` is the one place **every** path goes through. Set `TEST_SH_LOCKFILE` to override
+the path; a machine with no `flock(1)` warns and continues rather than refusing.
+
 ▶️ **If a tmux `work` session is running, prefer `runtests` over `./test.sh`** (same
 arguments). It sends the run to the **visible** `tests` window, waits, and prints the
 result — so the human can watch a 56-second run live instead of waiting on an agent to
-report it afterwards. Two things it does that a bare `./test.sh` cannot: it resolves the
-target **pane by repo root** (pane numbers renumber on every split, so `tests.1` is not
-reliably the same project tomorrow), and it **refuses to start a second suite** while one
-is in flight, which the `TEST_PREFIX` note below explains is a real corruption rather than
-mere contention. `--no-wait` fires and returns. ⚠️ It lives in `~/.local/bin`, NOT as the
-`.bashrc` function of the same name in `tmux-helper.sh` — a sourced function is invisible
-to a non-interactive shell, which is exactly what an agent's tool calls use, and that is
-why every agent-run suite went to the agent's own scrollback until 2026-08-14.
+report it afterwards. It also resolves the target **pane by repo root**, since pane numbers
+renumber on every split and `tests.1` is not reliably the same project tomorrow.
+`--no-wait` fires and returns.
+
+⚠️ **`runtests`' own "already running" check is PARTIAL and is not the guard** — it reads
+one pane's `pane_current_command`, the very check this file elsewhere says proves nothing,
+so it is blind to a bare `./test.sh` from an agent's shell and to a run in any other pane.
+It is a fast, friendly refusal; the `flock` above is the one that holds. The rule is
+therefore *always use `runtests`*, not *`runtests` protects you*. ⚠️ It lives in
+`~/.local/bin` and is **machine-local — a fresh clone does not have it**; check with
+`type runtests` and fall back to `./test.sh`. It is deliberately NOT the `.bashrc` function
+of the same name in `tmux-helper.sh`: a sourced function is invisible to a non-interactive
+shell, which is exactly what an agent's tool calls use, and that is why every agent-run
+suite went to the agent's own scrollback until 2026-08-14.
 It runs in a throwaway `web` container on prod's Python 3.14 — no local venv;
 `requirements-dev.txt` adds just `pytest`. Needs the dev `db` container up (route/isolation
 tests hit it). Also runs in **GitHub Actions CI** on every push/PR (`.github/workflows/ci.yml`,

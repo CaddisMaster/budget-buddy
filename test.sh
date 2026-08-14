@@ -65,6 +65,52 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# ─── One run at a time (#206) ────────────────────────────────────────────────
+#
+# ⚠️ TWO CONCURRENT RUNS CORRUPT EACH OTHER. `conftest.py` builds TEST_PREFIX
+# from PYTEST_XDIST_WORKER, which separates workers WITHIN one run and not two
+# runs from each other: both spawn gw0..gw9, get identical prefixes, and create
+# and tear down the same users. Measured at 424 errors + 1 failure when the
+# prefix was briefly hardcoded — and it reads as flakiness, not as contention,
+# which is what makes it expensive to diagnose.
+#
+# The guard lives HERE because this is the one place every path already goes
+# through — an agent's tool call, a terminal, and `runtests` all invoke this
+# script. `runtests` has its own check, but it reads a tmux pane's foreground
+# process, so a bare `./test.sh` from an agent's shell is invisible to it.
+#
+# ⚠️ An ADVISORY lock on a descriptor, deliberately not a marker file. A
+# "does the lock file exist" check survives `kill -9` and wedges every later
+# run, which is the failure that gets a guard deleted rather than fixed. The
+# kernel drops this one when the holder dies, whatever killed it — so there is
+# nothing to clean up and no trap to forget.
+#
+# ⚠️ It is taken on fd 9 and NEVER released. This script ends in
+# `exec docker compose …`, which replaces the shell; an open descriptor survives
+# `exec`, so the lock is held for the exec'd process's whole life. Releasing it
+# here would guard the setup and nothing else.
+#
+# The path is in /tmp rather than the repo so it is never committed. Note this
+# means a run started INSIDE a container has its own /tmp and cannot see a
+# host-side run — in practice every real run is host-side, and the dev stack is
+# what they contend for.
+LOCKFILE="${TEST_SH_LOCKFILE:-/tmp/budget-buddy-test-sh.lock}"
+
+if command -v flock > /dev/null 2>&1; then
+  exec 9> "$LOCKFILE"
+  if ! flock -n 9; then
+    echo "✗ A suite run is already in progress (lock: $LOCKFILE)." >&2
+    echo "  Two runs share one database and tear down each other's rows." >&2
+    echo "  Watch the running one, or wait for it to finish." >&2
+    exit 1
+  fi
+else
+  # BSD/macOS has no flock(1). Warn rather than refuse: an unguarded run is the
+  # status quo everywhere this script has ever run, and failing here would make
+  # the guard worse than its absence.
+  echo "⚠ flock not found — cannot check for a concurrent run; continuing." >&2
+fi
+
 # Default to a BOUNDED worker count, unless the caller specified their own -n.
 # See the header for why this is 10 and not `auto`. Matched as a prefix so `-n0`,
 # `-n 4` and `-nauto` are all recognised.
