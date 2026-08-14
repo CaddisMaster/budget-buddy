@@ -273,7 +273,8 @@ landing/             # Static landing page at seandesmet.com
   (`SECRET_KEY` is required or `app/__init__.py` raises at import). A test that must read such
   a file **skips** when it is absent, naming `.dockerignore` — failing would assert the image is
   wrong when it is right
-- **`.venv/` is EDITOR-ONLY** — it exists so the language server can resolve `flask`/`psycopg2`/`pytest`; nothing is ever run from it and the app and tests stay in containers. VS Code auto-discovers it in the workspace root, so **no `.vscode/` config is committed** and none is needed. It must be **Python 3.14** (Homebrew): the Mac's system 3.9 cannot evaluate `app/ai.py`'s `str | None` annotations and reports working code as broken. Gitignored (both `venv/` and `.venv/`) and in `.dockerignore`
+- **`.venv/` is EDITOR-ONLY** — it exists so the language server can resolve `flask`/`psycopg2`/`pytest`; nothing is ever run from it and the app and tests stay in containers. VS Code auto-discovers it in the workspace root, so **no `.vscode/` config is committed** and none is needed. It needs a Python new enough to parse `app/ai.py`'s `str | None` annotations, or the language server reports working code as broken — **on macOS that means installing 3.14 (Homebrew), because the system Python is 3.9**; on Ubuntu 24.04 the system 3.12 is already fine. Matching prod's 3.14 exactly is optional polish. Gitignored (both `venv/` and `.venv/`) and in `.dockerignore`
+- ⚠️ **On Linux, bind-mounted file ownership is LITERAL — `.env` at mode 600 crash-loops the app.** Docker Desktop translates UIDs across its file sharing on macOS, so a secrets file owned by your host user "just works" there. A Linux bind mount does no such thing: the host user is typically uid `1000` and the image's `appuser` is uid **`10001`**, so the container cannot read its own config and gunicorn dies at import with `PermissionError: [Errno 13] Permission denied: '/app/.env'`. The obvious fix — `chmod 644` — makes a file holding `ANTHROPIC_API_KEY` world-readable. Grant exactly the one uid instead: `setfacl -m u:10001:r .env` (needs the `acl` package; check with `getfacl -p .env`). ⚠️ This applies to **any** new secret file mounted into a container, not just `.env`
 - ⚠️ **There is deliberately NO dev container** (#80, removed 2026-07-28). One was added in #76 and removed two PRs later: it shipped broken twice, needed `git`/`procps`/`curl` in the image's `dev` stage purely for the editor, and split the workflow because it has no Docker inside it. The `.venv` fixes the editor on its own with no maintenance. **Do not re-add one** without a reason that the venv does not already cover. If a remote/container editor setup is ever revisited, the trap that bit #78 is worth knowing: VS Code resolves **workspace** settings ABOVE **remote** ones, so a `python.defaultInterpreterPath` in `.vscode/settings.json` silently overrides a devcontainer's own value
 - **Security headers + cookies** (`app/__init__.py`): one `@app.after_request` sets X-Frame-Options/X-Content-Type-Options/CSP `frame-ancestors 'none'`/Referrer-Policy (+ HSTS in prod). Cookies are `HttpOnly` + `SameSite=Lax`; **`Secure` + HSTS gated on `COOKIE_SECURE`** (Droplet-only) so local HTTP dev + tests still work. CSP is `frame-ancestors` only — a full policy would break the inline scripts
 - Flask-Limiter: 60 req/min/IP, in-memory storage (single Gunicorn worker)
@@ -324,6 +325,13 @@ Until 3b fails naming `TAG`, this fix is **unverified in production** — the de
   carried a bare `docker compose pull`, the exact thing issue #22 exists to prevent.
 - **PR #195 / #191 — a push alert when a variable-amount bill posts.** See the gotcha below for
   why it reads the ledger rather than the schedules. `gotcha-auditor` on the branch: no violations.
+- **PR #198 / #197 — `docker compose down -v` is no longer denied** in `.claude/settings.json`.
+  Local development moved into an isolated Linux VM on 2026-08-13/14, so the dev database is
+  reproducible (`seed_dev.py`, or a dump via `restore_check.py`) and the deny bought nothing.
+  ⚠️ **The `git push --force` denies deliberately STAYED** — an isolated dev box bounds the
+  filesystem and the credentials, not the remote, so a force-push still reaches GitHub. Do not
+  "finish the job" by relaxing those too. `Read(./.env)` also stays; it is about keeping secrets
+  out of transcripts, which isolation does not affect.
 
 ⚠️ **Standing instruction (Sean, 2026-08-10): do not send a release notification for a release
 with no user-facing change.** The only built-in lever is marking the GitHub Release as a
