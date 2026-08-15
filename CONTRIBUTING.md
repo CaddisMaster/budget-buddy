@@ -87,36 +87,46 @@ dataset.
 The same seed and the same day always produce the same data, so a bug found
 against seeded data can be reproduced on another machine.
 
-### Set up your editor
+### Set up your editor (optional)
 
-The application's dependencies live inside the Docker image, so out of the box
-your editor's language server cannot resolve a single one of them — every
-`import flask`, `import psycopg2` and `from app.db import ...` shows as
+**Only do this if you run an editor with a language server.** The maintainer's
+own setup no longer has one — development happens in a terminal driving tmux
+over SSH, with diffs reviewed in `gitui` — so this step is genuinely optional
+rather than merely skippable.
+
+If you do run one: the application's dependencies live inside the Docker image,
+so out of the box the language server cannot resolve a single one of them —
+every `import flask`, `import psycopg2` and `from app.db import ...` shows as
 unresolved, with no autocomplete and no go-to-definition.
 
-Create a local virtual environment for the editor to read:
+Create a local virtual environment for it to read:
 
 ```bash
-brew install python@3.14          # the Mac's system 3.9 is too old — see below
-python3.14 -m venv .venv
+python3.14 -m venv .venv          # on macOS: brew install python@3.14 first
 .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 ```
 
-VS Code auto-discovers a `.venv` in the workspace root, so there is nothing to
-configure and no editor settings are committed.
+Most editors auto-discover a `.venv` in the workspace root, so there is nothing
+to configure — and **no editor settings of any kind are committed here**.
 
 **Nothing is ever run from this environment** — the app and the tests still run
 in containers. It exists purely so the language server has real code to read,
 and it is gitignored and excluded from the image.
 
-It must be **3.14**, matching production. The Mac ships 3.9.6, which cannot
-evaluate the `str | None` annotations in `app/ai.py` — a 3.9 environment reports
-working code as broken.
+Prefer **3.14**, matching production. The floor is a Python that can evaluate
+the `str | None` annotations in `app/ai.py`: macOS ships 3.9.6, which cannot,
+and reports working code as broken. Ubuntu 24.04's system 3.12 is already fine.
+
+> **An empty, root-owned `.venv/` is not a virtualenv.** `docker-compose.override.yml`
+> masks `/app/.venv` with an anonymous volume, and because the source is
+> bind-mounted, Docker creates that host directory to mount over. It reappears
+> after every `up`, whether or not you ever made an environment.
 
 There is deliberately **no dev container**. One was tried and removed: it needed
 editor tooling baked into the image, had no Docker inside it (so `docker
 compose` and the `verify` skill had to move to a separate terminal anyway), and
-fixed nothing the virtual environment above does not already fix.
+fixed nothing the virtual environment above does not already fix — which, with
+no editor in the loop at all, is now nothing at all.
 
 ### What is live, and what needs a restart
 
