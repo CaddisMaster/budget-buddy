@@ -273,9 +273,29 @@ landing/             # Static landing page at seandesmet.com
   (`SECRET_KEY` is required or `app/__init__.py` raises at import). A test that must read such
   a file **skips** when it is absent, naming `.dockerignore` — failing would assert the image is
   wrong when it is right
-- **`.venv/` is EDITOR-ONLY** — it exists so the language server can resolve `flask`/`psycopg2`/`pytest`; nothing is ever run from it and the app and tests stay in containers. VS Code auto-discovers it in the workspace root, so **no `.vscode/` config is committed** and none is needed. It needs a Python new enough to parse `app/ai.py`'s `str | None` annotations, or the language server reports working code as broken — **on macOS that means installing 3.14 (Homebrew), because the system Python is 3.9**; on Ubuntu 24.04 the system 3.12 is already fine. Matching prod's 3.14 exactly is optional polish. Gitignored (both `venv/` and `.venv/`) and in `.dockerignore`
+- **`.venv/` is EDITOR-ONLY, and OPTIONAL — there is no editor in the maintainer's loop any more** (2026-08-14). It exists so a language server can resolve `flask`/`psycopg2`/`pytest`; **nothing is ever run from it** and the app and tests stay in containers. Create it only if you actually run one: `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt`. It needs a Python new enough to parse `app/ai.py`'s `str | None` annotations, or the language server reports working code as broken — **on macOS that means installing 3.14 (Homebrew), because the system Python is 3.9**; on Ubuntu 24.04 the system 3.12 is already fine. Matching prod's 3.14 exactly is optional polish. Gitignored (both `venv/` and `.venv/`) and in `.dockerignore`; **no `.vscode/` config is committed** and none ever was. ⚠️ **A root-owned EMPTY `.venv/` in the repo root is not a virtualenv** — `docker-compose.override.yml` masks `/app/.venv` with an anonymous volume, and a bind mount makes Docker create the host directory to mount over. Deleting it does nothing; it reappears on the next `up`. That is the state on the dev VM today, where no venv was ever created
 - ⚠️ **On Linux, bind-mounted file ownership is LITERAL — `.env` at mode 600 crash-loops the app.** Docker Desktop translates UIDs across its file sharing on macOS, so a secrets file owned by your host user "just works" there. A Linux bind mount does no such thing: the host user is typically uid `1000` and the image's `appuser` is uid **`10001`**, so the container cannot read its own config and gunicorn dies at import with `PermissionError: [Errno 13] Permission denied: '/app/.env'`. The obvious fix — `chmod 644` — makes a file holding `ANTHROPIC_API_KEY` world-readable. Grant exactly the one uid instead: `setfacl -m u:10001:r .env` (needs the `acl` package; check with `getfacl -p .env`). ⚠️ This applies to **any** new secret file mounted into a container, not just `.env`
-- ⚠️ **There is deliberately NO dev container** (#80, removed 2026-07-28). One was added in #76 and removed two PRs later: it shipped broken twice, needed `git`/`procps`/`curl` in the image's `dev` stage purely for the editor, and split the workflow because it has no Docker inside it. The `.venv` fixes the editor on its own with no maintenance. **Do not re-add one** without a reason that the venv does not already cover. If a remote/container editor setup is ever revisited, the trap that bit #78 is worth knowing: VS Code resolves **workspace** settings ABOVE **remote** ones, so a `python.defaultInterpreterPath` in `.vscode/settings.json` silently overrides a devcontainer's own value
+- ⚠️ **There is deliberately NO dev container** (#80, removed 2026-07-28). One was added in #76 and removed two PRs later: it shipped broken twice, needed `git`/`procps`/`curl` in the image's `dev` stage purely for the editor, and split the workflow because it has no Docker inside it. The `.venv` fixes the editor on its own with no maintenance. **Do not re-add one** without a reason that the venv does not already cover — and as of 2026-08-14 the case is *weaker still*, because there is no GUI editor in the loop at all (see the dev front end below), so the one job a dev container was doing has no consumer. ⚠️ The trap this bullet used to carry — VS Code resolving **workspace** settings above **remote** ones, which bit #78 — is now **moot rather than solved**, and is recorded here only so it is not re-derived if a remote/container editor setup is ever revisited
+- ⚠️ **The dev front end is a TERMINAL + tmux, not an editor** (2026-08-14). Development runs
+  inside the isolated Linux VM; the Mac is a terminal emulator driving a **tmux session over
+  SSH**, and diff review happens in `gitui` inside that session. There is no GUI editor and no
+  language server anywhere in the loop — which is why the `.venv` above is optional and why the
+  dev-container case is dead. The session is one command centre spanning both repos: every
+  window is split with **budget-buddy on the LEFT**, the other project on the right, across
+  `agent` / `logs` / `tests` / `git` / `db` / `shell` windows plus a VM-wide `ops` window. The
+  `tests` window is the one `runtests` targets — see Testing.
+- ⚠️ **THE RECIPE PERSISTS; THE RUNNING STATE DOES NOT.** A dropped SSH link, a closed lid, a
+  quit terminal or a sleeping Mac all leave the session alive on the VM — re-attaching lands
+  you back in it with agents still running, and that is the entire reason tmux is in the
+  picture. **A VM shutdown or reboot kills the tmux server and every pane with it**: there is no
+  `resurrect`/`continuum` plugin on that box, so claude conversations, scrollback and psql
+  sessions are gone for good. The *layout* is then rebuilt identically from a helper function on
+  the VM, which is exactly why the layout was moved into a script — a hand-built arrangement was
+  lost to a shutdown on 2026-08-14 and could not be restored, because it existed only in the
+  tmux server's memory. **If you rearrange panes interactively and want to keep them, change the
+  helper too.** ⚠️ None of those dotfiles are in THIS repo (they are maintainer-local, kept in a
+  private infra directory), so a rebuild of the VM restores the workflow only as far as that
+  copy is current.
 - **Security headers + cookies** (`app/__init__.py`): one `@app.after_request` sets X-Frame-Options/X-Content-Type-Options/CSP `frame-ancestors 'none'`/Referrer-Policy (+ HSTS in prod). Cookies are `HttpOnly` + `SameSite=Lax`; **`Secure` + HSTS gated on `COOKIE_SECURE`** (Droplet-only) so local HTTP dev + tests still work. CSP is `frame-ancestors` only — a full policy would break the inline scripts
 - Flask-Limiter: 60 req/min/IP, in-memory storage (single Gunicorn worker)
 - Templates read rows by **attribute** (`t.amount`, `account.credit_limit`); row partials reuse the list query's row shape. The three remaining `[0]` indexes in templates are Python lists (flash messages, top_categories, remaining_items), not rows
@@ -941,10 +961,20 @@ so it is blind to a bare `./test.sh` from an agent's shell and to a run in any o
 It is a fast, friendly refusal; the `flock` above is the one that holds. The rule is
 therefore *always use `runtests`*, not *`runtests` protects you*. ⚠️ It lives in
 `~/.local/bin` and is **machine-local — a fresh clone does not have it**; check with
-`type runtests` and fall back to `./test.sh`. It is deliberately NOT the `.bashrc` function
-of the same name in `tmux-helper.sh`: a sourced function is invisible to a non-interactive
-shell, which is exactly what an agent's tool calls use, and that is why every agent-run
-suite went to the agent's own scrollback until 2026-08-14.
+`type -a runtests` and fall back to `./test.sh`.
+
+⚠️ **`type -a`, never bare `type`** (corrected 2026-08-14 evening). A `runtests()` **shell
+function** used to sit in `tmux-helper.sh` alongside the script, and this file previously
+called it harmless on the grounds that a sourced function is invisible to the
+non-interactive shell an agent's tool calls use. That was only half the picture: a function
+**shadows** a PATH script, so *Sean typing `runtests`* got the function while only the agent
+got the script — and the function targeted `-t tests`, the **window**. Fine while that
+window had one pane; wrong once the workspace layout gave it one pane per repo, because it
+then lands in whichever pane is *active*. `runtests` typed from the other project could run
+**Budget Buddy's suite and look green**. The function has been **deleted** (backup
+`~/.tmux-helper.sh.bak-pre-runtests-removal`), so `runtests` now resolves to the script
+alone. Bare `type` prints only the first match and so was structurally incapable of showing
+the conflict it was recommended for.
 It runs in a throwaway `web` container on prod's Python 3.14 — no local venv;
 `requirements-dev.txt` adds just `pytest`. Needs the dev `db` container up (route/isolation
 tests hit it). Also runs in **GitHub Actions CI** on every push/PR (`.github/workflows/ci.yml`,
