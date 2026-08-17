@@ -199,6 +199,73 @@ def test_a_missing_link_ref_for_an_earlier_release_is_added_back():
             "v0.4.1...v0.5.0") in rolled
 
 
+# ── Trailing newlines (#203) ─────────────────────────────────────────────────
+#
+# `_LINK_REF_RE` ends in `\s*$`, and `\s*` matches newlines — so on the LAST ref
+# line in the file it swallows the file's trailing newlines into the captured
+# text. `roll_changelog` preserves the oldest version's ref verbatim, then adds
+# one more newline of its own, so the tail grows by one every single run.
+#
+# ⚠️ These assert the END of the file only. The spacing BETWEEN entries is
+# pinned by test_the_new_entry_is_spaced_like_the_ones_already_in_the_file,
+# which exists because #174 was exactly a whitespace regression here.
+
+def _trailing_newlines(text):
+    return len(text) - len(text.rstrip("\n"))
+
+
+def test_rolling_does_not_add_a_trailing_blank_line():
+    """A file ending in a single newline after its last link reference should
+    still end in a single newline after rolling."""
+    tidy = CHANGELOG.rstrip("\n") + "\n"
+    rolled = release_prep.roll_changelog(tidy, "0.6.0", RELEASE_DATE)
+    assert _trailing_newlines(rolled) == 1
+
+
+def test_repeated_releases_do_not_accumulate_blank_lines():
+    """The defect compounds — 2 → 3 → 4 → 5 → 6 across four cycles measured
+    against the real file. Refill `[Unreleased]` between rolls the way a real
+    cycle does, so each iteration is a genuine release rather than a refusal."""
+    refill = "## [Unreleased]\n\n### Added\n\n- A new thing.\n"
+    current = CHANGELOG.rstrip("\n") + "\n"
+    counts = []
+    for version in ("0.6.0", "0.7.0", "0.8.0", "0.9.0"):
+        current = release_prep.roll_changelog(current, version, RELEASE_DATE)
+        counts.append(_trailing_newlines(current))
+        current = current.replace("## [Unreleased]\n", refill, 1)
+    assert counts == [1, 1, 1, 1], f"tail grew across cycles: {counts}"
+
+
+def test_a_file_already_carrying_extra_blank_lines_is_not_made_worse():
+    """Rolling a file that already ends in several blank lines must not add
+    another — the tool stops the growth rather than perpetuating it."""
+    padded = CHANGELOG.rstrip("\n") + "\n\n\n\n"
+    rolled = release_prep.roll_changelog(padded, "0.6.0", RELEASE_DATE)
+    assert _trailing_newlines(rolled) <= _trailing_newlines(padded)
+
+
+def test_the_rest_of_the_roll_is_unchanged_apart_from_the_final_newlines():
+    """The fix must touch the end of the file and nothing else: the dated
+    heading, the moved content and the link-reference block stay byte-identical
+    to what a differently-padded input produces."""
+    tidy = CHANGELOG.rstrip("\n") + "\n"
+    padded = CHANGELOG.rstrip("\n") + "\n\n\n\n"
+    a = release_prep.roll_changelog(tidy, "0.6.0", RELEASE_DATE)
+    b = release_prep.roll_changelog(padded, "0.6.0", RELEASE_DATE)
+    assert a.rstrip("\n") == b.rstrip("\n")
+
+
+def test_the_real_changelog_does_not_grow_a_newline():
+    """⚠️ Against the REAL file, which is where this was found. The fixture
+    above is trimmed, and a fix that satisfies it without handling the real
+    file's tail would be useless on the day the release is cut."""
+    real = (release_prep.__file__.rsplit("/scripts/", 1)[0] + "/CHANGELOG.md")
+    with open(real, encoding="utf-8") as fh:
+        text = fh.read()
+    rolled = release_prep.roll_changelog(text, "0.7.0", RELEASE_DATE)
+    assert _trailing_newlines(rolled) == 1
+
+
 # ── Refusals ─────────────────────────────────────────────────────────────────
 
 def test_an_empty_unreleased_section_refuses():
