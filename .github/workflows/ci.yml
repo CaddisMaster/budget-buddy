@@ -87,9 +87,24 @@ jobs:
             app=false
           fi
 
-          # Only a change to the SHIPPED runtime justifies paying for a second,
-          # in-image run of the same suite.
-          if matches '^(Dockerfile$|requirements.*\.txt$)'; then
+          # A second, in-image run of the same suite is justified by a change to
+          # the SHIPPED runtime — and by a change to the TESTS, because the whole
+          # point of that run is that the image is not the dev container.
+          #
+          # ⚠️ `tests/` is in here because leaving it out made this class of
+          # failure invisible until AFTER merge, twice (#176, then #218). The dev
+          # bind mount serves files `.dockerignore` strips, so a test that reads
+          # one passes locally and on the PR, then fails on the push to main —
+          # green everywhere a human looks before merging. That is exactly the
+          # "too NARROW" failure the app filter's comment above warns about; the
+          # app filter already counts `tests/` for the same reason.
+          #
+          # ⚠️ ci.yml is in here for the reason the sql filter carries it: a
+          # change to THIS classifier changes what runs, so it has to run against
+          # itself. Without it, the pull request that edits this line cannot
+          # exercise the step it is editing, and reports SUCCESS having checked
+          # nothing.
+          if matches '^(Dockerfile$|requirements.*\.txt$|tests/|\.github/workflows/ci\.yml$)'; then
             image=true
           else
             image=false
