@@ -273,29 +273,26 @@ landing/             # Static landing page at seandesmet.com
   (`SECRET_KEY` is required or `app/__init__.py` raises at import). A test that must read such
   a file **skips** when it is absent, naming `.dockerignore` — failing would assert the image is
   wrong when it is right
-- **`.venv/` is EDITOR-ONLY, and OPTIONAL — there is no editor in the maintainer's loop any more** (2026-08-14). It exists so a language server can resolve `flask`/`psycopg2`/`pytest`; **nothing is ever run from it** and the app and tests stay in containers. Create it only if you actually run one: `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt`. It needs a Python new enough to parse `app/ai.py`'s `str | None` annotations, or the language server reports working code as broken — **on macOS that means installing 3.14 (Homebrew), because the system Python is 3.9**; on Ubuntu 24.04 the system 3.12 is already fine. Matching prod's 3.14 exactly is optional polish. Gitignored (both `venv/` and `.venv/`) and in `.dockerignore`; **no `.vscode/` config is committed** and none ever was. ⚠️ **A root-owned EMPTY `.venv/` in the repo root is not a virtualenv** — `docker-compose.override.yml` masks `/app/.venv` with an anonymous volume, and a bind mount makes Docker create the host directory to mount over. Deleting it does nothing; it reappears on the next `up`. That is the state on the dev VM today, where no venv was ever created
+- **`.venv/` is EDITOR-ONLY — it exists for the language server, and nothing is ever run from it** (2026-08-17: an editor is back in the loop, so it is wanted again rather than optional). It lets the editor resolve `flask`/`psycopg2`/`pytest`; the app and tests stay in containers. Create it **on the machine the language server runs on** — with Remote-SSH that is the **dev VM, not the Mac**: `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt`. It needs a Python new enough to parse `app/ai.py`'s `str | None` annotations, or the language server reports working code as broken — on Ubuntu 24.04 the system 3.12 is already fine (on macOS it would mean installing 3.14 via Homebrew, since the system Python is 3.9). Matching prod's 3.14 exactly is optional polish. Gitignored (both `venv/` and `.venv/`) and in `.dockerignore`; **no `.vscode/` config is committed** and none ever was. ⚠️ **A root-owned EMPTY `.venv/` in the repo root is not a virtualenv** — `docker-compose.override.yml` masks `/app/.venv` with an anonymous volume, and a bind mount makes Docker create the host directory to mount over. Deleting it does nothing; it reappears on the next `up`. That is the state on the dev VM as of 2026-08-17, where no venv has ever actually been created
 - ⚠️ **On Linux, bind-mounted file ownership is LITERAL — `.env` at mode 600 crash-loops the app.** Docker Desktop translates UIDs across its file sharing on macOS, so a secrets file owned by your host user "just works" there. A Linux bind mount does no such thing: the host user is typically uid `1000` and the image's `appuser` is uid **`10001`**, so the container cannot read its own config and gunicorn dies at import with `PermissionError: [Errno 13] Permission denied: '/app/.env'`. The obvious fix — `chmod 644` — makes a file holding `ANTHROPIC_API_KEY` world-readable. Grant exactly the one uid instead: `setfacl -m u:10001:r .env` (needs the `acl` package; check with `getfacl -p .env`). ⚠️ This applies to **any** new secret file mounted into a container, not just `.env`
-- ⚠️ **There is deliberately NO dev container** (#80, removed 2026-07-28). One was added in #76 and removed two PRs later: it shipped broken twice, needed `git`/`procps`/`curl` in the image's `dev` stage purely for the editor, and split the workflow because it has no Docker inside it. The `.venv` fixes the editor on its own with no maintenance. **Do not re-add one** without a reason that the venv does not already cover — and as of 2026-08-14 the case is *weaker still*, because there is no GUI editor in the loop at all (see the dev front end below), so the one job a dev container was doing has no consumer. ⚠️ The trap this bullet used to carry — VS Code resolving **workspace** settings above **remote** ones, which bit #78 — is now **moot rather than solved**, and is recorded here only so it is not re-derived if a remote/container editor setup is ever revisited
-- ⚠️ **The dev front end is a TERMINAL + tmux, not an editor** (2026-08-14). Development runs
-  inside the isolated Linux VM; the Mac is a terminal emulator driving a **tmux session over
-  SSH**, and diff review happens in `gitui` inside that session. There is no GUI editor and no
-  language server anywhere in the loop — which is why the `.venv` above is optional and why the
-  dev-container case is dead. The session is one command centre spanning both repos: every
-  window is split with **budget-buddy on the LEFT**, the other project on the right, across
-  `agent` / `logs` / `tests` / `git` / `db` / `shell` windows plus a VM-wide `ops` window. The
-  `tests` window is the one `runtests` targets — see Testing.
-- ⚠️ **THE RECIPE PERSISTS; THE RUNNING STATE DOES NOT.** A dropped SSH link, a closed lid, a
-  quit terminal or a sleeping Mac all leave the session alive on the VM — re-attaching lands
-  you back in it with agents still running, and that is the entire reason tmux is in the
-  picture. **A VM shutdown or reboot kills the tmux server and every pane with it**: there is no
-  `resurrect`/`continuum` plugin on that box, so claude conversations, scrollback and psql
-  sessions are gone for good. The *layout* is then rebuilt identically from a helper function on
-  the VM, which is exactly why the layout was moved into a script — a hand-built arrangement was
-  lost to a shutdown on 2026-08-14 and could not be restored, because it existed only in the
-  tmux server's memory. **If you rearrange panes interactively and want to keep them, change the
-  helper too.** ⚠️ None of those dotfiles are in THIS repo (they are maintainer-local, kept in a
-  private infra directory), so a rebuild of the VM restores the workflow only as far as that
-  copy is current.
+- ⚠️ **There is deliberately NO dev container** (#80, removed 2026-07-28). One was added in #76 and removed two PRs later: it shipped broken twice, needed `git`/`procps`/`curl` in the image's `dev` stage purely for the editor, and split the workflow because it has no Docker inside it. The `.venv` fixes the editor on its own with no maintenance. **Do not re-add one** without a reason that the venv does not already cover. ⚠️ **The trap this bullet carries is LIVE again as of 2026-08-17** (it was briefly moot while there was no editor at all): VS Code resolves **workspace** settings above **remote** ones, which is what bit #78 — a setting you believe you set on the remote can be silently overridden by one committed or cached in the workspace. Check which scope a setting actually resolved in before concluding the remote is misconfigured
+- ⚠️ **The dev front end is VS Code on the Mac, driving the isolated Linux VM over Remote-SSH**
+  (2026-08-17, replacing the Ghostty + tmux arrangement that ran 2026-08-14 → 17). Development
+  still happens **in the VM** — the Mac is a thin client and the repo, the containers and the
+  agents all live on the far side of the SSH link. What changed is only the front end. ⚠️ **This
+  re-arms one isolation risk**: VS Code's `remote.SSH.enableAgentForwarding` **defaults to
+  `true`**, which would forward the Mac's SSH agent into the VM — and that agent holds the key
+  that opens production, which the VM is deliberately not allowed to reach. Set it to `false`.
+  See `CLAUDE.local.md` for the isolation rule it protects.
+- ⚠️ **NOTHING SURVIVES A DROPPED CONNECTION any more** (2026-08-17). tmux was retired along with
+  the terminal front end, and it was the only thing making the VM's running state outlive the
+  link to it. A dropped SSH link, a closed lid, a sleeping Mac or a quit VS Code now **kills
+  every process started from that session** — a running agent, a long `docker compose` command,
+  an open `psql`. This is a deliberate trade (the workflow is simpler and there is one less
+  machine-local dotfile to keep current), not an oversight, but it changes how long-running work
+  should be started: **anything that must outlive the connection needs `nohup`/`setsid` or a
+  systemd unit, chosen explicitly.** A VM reboot was always fatal to running state; the change is
+  that an ordinary disconnect now is too.
 - **Security headers + cookies** (`app/__init__.py`): one `@app.after_request` sets X-Frame-Options/X-Content-Type-Options/CSP `frame-ancestors 'none'`/Referrer-Policy (+ HSTS in prod). Cookies are `HttpOnly` + `SameSite=Lax`; **`Secure` + HSTS gated on `COOKIE_SECURE`** (Droplet-only) so local HTTP dev + tests still work. CSP is `frame-ancestors` only — a full policy would break the inline scripts
 - Flask-Limiter: 60 req/min/IP, in-memory storage (single Gunicorn worker)
 - Templates read rows by **attribute** (`t.amount`, `account.credit_limit`); row partials reuse the list query's row shape. The three remaining `[0]` indexes in templates are Python lists (flash messages, top_categories, remaining_items), not rows
@@ -319,10 +316,10 @@ trailing newline to `CHANGELOG.md` on **every** run, and it compounds (measured:
 across four release cycles). Cosmetic, but it is in the tool used to cut the release it is blocking,
 so fix it before running the prep rather than after.
 
-⚠️ **Unlike the 2026-08-10 block below, there IS something to release now.** `#191` is a
-user-facing feature and `## [Unreleased]` carries an `### Added` and a `### Fixed`, so `0.7.0` is
-an honest MINOR. What a release still needs: the **What's-new strip** (a human writes the prose;
-`scripts/release_prep.py` does the mechanical half) and the usual gate. Not cut — Sean's call.
+⚠️ **There IS something to release.** `#191` is a user-facing feature and `## [Unreleased]` carries
+an `### Added` and a `### Fixed`, so `0.7.0` is an honest MINOR. What a release still needs: the
+**What's-new strip** (a human writes the prose; `scripts/release_prep.py` does the mechanical half)
+and the usual gate. Not cut — Sean's call.
 
 ⚠️ **#190's fix is merged but NOT APPLIED TO PRODUCTION**, and merging cannot apply it: the
 Droplet holds an `scp`-ed copy of `docker-compose.yml`. **Order is load-bearing** — the `.env`
@@ -336,7 +333,8 @@ mv .env .env.bak && docker compose config; mv .env.bak .env                  # 3
 ```
 
 Until 3b fails naming `TAG`, this fix is **unverified in production** — the deploy workflows pass
-`TAG=` explicitly either way, so a green release proves nothing about it.
+`TAG=` explicitly either way, so a green release proves nothing about it. ⚠️ This runs **from a Mac
+terminal**, not from the dev VM — see `CLAUDE.local.md` for why the Droplet is unreachable there.
 
 - **PR #194 — `sql/35_variable_bills.sql`**, standing alone. `schedules.is_variable_amount`,
   `transactions.schedule_id` (nullable, `ON DELETE SET NULL`, indexed), and `reminder_log.source`
@@ -345,13 +343,13 @@ Until 3b fails naming `TAG`, this fix is **unverified in production** — the de
   fresh one — 130 columns, 54 constraints, every index diffed. ⚠️ The first constraint diff was a
   **false green** (both sides errored on a `"char"` cast, so `diff` compared two empty files);
   print the line count next to the verdict.
-- **PR #193 / #190 — the `${TAG}` trap is now enforced, not documented.** See the two gotchas
-  below. Both `release.yml` and `rollback.yml` pin the version into `.env`; `rollback.yml` needs
-  it *more* (without it a rollback leaves the box naming the version it rolled away from, so the
+- **PR #193 / #190 — the `${TAG}` trap is now enforced, not documented.** See the Key Gotchas.
+  Both `release.yml` and `rollback.yml` pin the version into `.env`; `rollback.yml` needs it
+  *more* (without it a rollback leaves the box naming the version it rolled away from, so the
   next bare `up -d` rolls production forward again). Also fixed: `RUNBOOK.md` §6's manual fallback
   carried a bare `docker compose pull`, the exact thing issue #22 exists to prevent.
-- **PR #195 / #191 — a push alert when a variable-amount bill posts.** See the gotcha below for
-  why it reads the ledger rather than the schedules. `gotcha-auditor` on the branch: no violations.
+- **PR #195 / #191 — a push alert when a variable-amount bill posts.** See the gotcha for why it
+  reads the ledger rather than the schedules. `gotcha-auditor` on the branch: no violations.
 - **PR #198 / #197 — `docker compose down -v` is no longer denied** in `.claude/settings.json`.
   Local development moved into an isolated Linux VM on 2026-08-13/14, so the dev database is
   reproducible (`seed_dev.py`, or a dump via `restore_check.py`) and the deny bought nothing.
@@ -360,576 +358,127 @@ Until 3b fails naming `TAG`, this fix is **unverified in production** — the de
   "finish the job" by relaxing those too. `Read(./.env)` also stays; it is about keeping secrets
   out of transcripts, which isolation does not affect.
 
-⚠️ **Standing instruction (Sean, 2026-08-10): do not send a release notification for a release
-with no user-facing change.** The only built-in lever is marking the GitHub Release as a
-pre-release — `release.yml` gates the announce step on `github.event.release.prerelease == false`
-— but that also suppresses the `:latest` update, so it is a misuse with side effects. Usually the
-right answer is that there is nothing to release. (`0.7.0` is **not** that case.)
-
-### On `main`, NOT released — the operational backlog, cleared (2026-08-10, second session)
-
-⚠️ **Superseded by the block above** — the "there is nothing to release" conclusion held only
-until #191 landed. Kept for the five PRs it describes.
-
-Five PRs merged after the `0.6.0` cut, closing **#160, #159, #153, #150**. Tests **843 → 875**.
-No migration.
-
-⚠️ At the time, **`main` contained ZERO `app/` changes since `v0.6.0`** and `## [Unreleased]` was
-**empty**. A release would have built an image byte-identical to the running one, deployed it, and
-fired a "check out what's new" notification about nothing. **Every effective change was already in
-place**: the log limits were applied to the Droplet by hand (below), `restore_check.py` runs from
-the maintainer's machine, `schema.sql` is inert on an existing database, and the rest is CI and
-docs. Do not cut a release to "ship" that.
-
-- **PR #185 / #160 — `sql/schema.sql` never carried the `budget_app` role.** A fresh database
-  plus `--baseline` recorded `30_app_role.sql` as applied while the role did not exist. The block
-  is ported verbatim from the migration and **must stay last in the file**. The migration itself
-  is unchanged — it remains the path for an *existing* deployment. ⚠️ The real exposure was
-  `RUNBOOK.md` §8: it restores `.env` (carrying `DB_APP_USER=budget_app`) and never set the
-  role's password, so a rebuild produced an app that could not connect. Fixed, along with the
-  missing `--baseline` step.
-- **PR #186 / #159 — the `migrations` CI job now actually applies the migration.** It had
-  asserted nothing since it was written. See the Testing section; the fix baselines against the
-  **merge base's** file list and builds from the merge base's `schema.sql`, needing no change to
-  `migrate.py` (`SQL_DIR` derives from the script's own location, so the base worktree's copy
-  does it). Also: the `changes` classifier now sets `sql=true` for `ci.yml` itself, and all three
-  `psql -f schema.sql` loads carry `ON_ERROR_STOP=1` (psql exits 0 on SQL errors without it).
-- **PR #187 / #153 — the restore was rehearsed for the first time, and it works.** All **14**
-  retained dumps restore cleanly. New `scripts/restore_check.py`. See the two-roles gotcha.
-- **PR #188 / #150 — container log caps**, `10m × 3` on both services. ✅ **Applied to the
-  Droplet 2026-08-10** with a verified dump in hand: db container recreated, volume re-attached,
-  row counts identical (`6 users / 341 transactions`) before and after, `/healthz` 200 over TLS,
-  APScheduler alive, and a second `up -d` left the db container ID unchanged.
-- **PR #189 — the `${TAG:-latest}` warning**, written because applying the above hit it. See the
-  gotcha; the sequence added in #188 had the defect itself.
-
-⚠️ **Every guard involved in this session was already broken or vacuous, and all were green** —
-the migrations job, the path filter that would have run it, the missing `ON_ERROR_STOP`, the
-drift check that structurally could not see `sql/30`, and a documented restore procedure whose
+⚠️ **The operational backlog cleared on 2026-08-10** (five PRs, closing #160, #159, #153, #150;
+tests 843 → 875; no migration) and every effective change was already in place, so **there was
+nothing to release** at that point — the log limits were applied to the Droplet by hand,
+`restore_check.py` runs from the maintainer's machine, `schema.sql` is inert on an existing
+database, and the rest was CI and docs. That conclusion held only until #191 landed. The durable
+lesson from that session: **every guard involved was already broken or vacuous, and all were
+green** — the migrations job, the path filter that would have run it, a missing `ON_ERROR_STOP`,
+a drift check that structurally could not see `sql/30`, and a documented restore procedure whose
 "throwaway database" command targeted the *development* database. None of it was visible from a
 dashboard; all of it was visible from running the thing and checking the exit code.
 
-### Shipped: `0.6.0` (2026-08-10) — background jobs you can check on, and release prep that runs itself
-
-**Prod runs `ghcr.io/caddismaster/budget-buddy:0.6.0`.** Tests **806 → 843**. One additive
-migration (`sql/34_job_runs.sql`), applied automatically before the image pull. No new env vars.
-
-✅ **Deploy verified independently of the workflow.** `/healthz` 200 over valid TLS; the running
-image is tagged `:0.6.0` (not `:latest`); the `db` container was **not** recreated (up 9 days
-against web's 58 seconds, so `pull web` held); the pre-deploy dump is timestamped *before* web
-restarted; `34_job_runs.sql` is recorded in `schema_migrations`; and — the check that proves the
-new **code** rather than the metadata — `from app.jobs import record_job_run, load_job_runs,
-summarize_job_runs` imports in the running container, a module that did not exist in the `0.5.0`
-image. `flask announce-release` reported **"Announced 0.6.0 to 3 device(s)."**
-
-⚠️ **The app logs NOTHING when the scheduler starts** (`app/__init__.py` just calls
-`_scheduler.start()`), so `docker compose logs web | grep -i scheduler` returns nothing whether
-or not it started — an empty grep is not evidence. What discriminates is the **thread**:
-
-```bash
-docker compose exec -T web sh -c \
-  'for p in /proc/[0-9]*; do for t in $p/task/*; do cat $t/comm 2>/dev/null; done; done | sort | uniq -c | sort -rn'
-# → an "APScheduler" line means it is genuinely alive
-```
-
-Confirmed on this deploy. This is #151's own distinction — *the switch was set* vs *the job is
-running* — applied to the deploy itself.
-
-⚠️ **`job_runs` is EMPTY immediately after a deploy**, so the new panel reads **NEVER** for every
-job until the daily pass fires (18:00 America/New_York). That is correct, but the first sight of
-a brand-new panel reading NEVER looks exactly like a fault. Do not report it as one.
-
-The bundle (`### Added` only, so MINOR not PATCH):
-
-- **PR #155 — the `job_runs` table.** One additive migration, `sql/34_job_runs.sql`,
-  standing alone in its own commit. Applies **BEFORE** the image pull, which
-  `release.yml` already does automatically.
-- **PR #156 / #151 — "when did each background job last actually run" on /settings.**
-  New `app/jobs.py`; `/settings` gains a line per job with an overdue badge. See the
-  scheduler-visibility gotcha.
-- **PR #173 / #154 — `scripts/release_prep.py`**, which prepared this very release. Built
-  **test-first** (the agent's first outing). Two follow-up fixes found by *using* it:
-  **#175 / #174** (a greedy `\s*$` ate the blank line under the new heading) and
-  **#177 / #176** (see the in-image gotcha — it was blocking every future dependency bump).
-- **PR #170 — `pywebpush` 2.3.0 → 2.4.0.** Verified beyond the green ticks: the in-image
-  suite genuinely ran (`842 passed, 1 skipped` on Python 3.14.7), and every keyword
-  `app/pusher.py` passes still exists in 2.4.0's signature. ⚠️ **Real push delivery is
-  unproven** — the suite stubs `_call_webpush` by design. **This release's own notification
-  is the check.**
-- **PR #158 / #157 — the xdist `loadgroup` fix.** Test-only; see the Testing section.
-- **PRs #162 / #161, #166 / #163, #169 / #168, #172 / #171 — the worker agents and the
-  committed `.claude/` harness.** No `app/` change.
-
-⚠️ **`css_v` CANNOT verify this deploy** — the CSS is unchanged since `v0.5.0`, so prod's
-value will match the already-verified `44ef4f4a…` and prove nothing. The strongest check
-is `from app.jobs import record_job_run, load_job_runs, summarize_job_runs` inside the
-running container: that module did not exist in the `0.5.0` image, so the import is a fact
-about the running code rather than about metadata. The image tag (`:0.6.0`, not `:latest`)
-is the secondary check. **No new env vars** — `.env.example` is unchanged, so there is
-nothing to set on the Droplet first.
-
-✅ The What's-new strip blocker from #165 is **cleared** — the strip reads `v0.6.0` with one
-block for the job-runs panel, confirmed *rendered* at `localhost:5001` before merge and present
-in the deployed template after.
-
-⚠️ **`pywebpush` 2.4.0's real delivery is confirmed only as far as the SEND.** The release
-notification reached three devices without raising, which is more than the suite can say (it
-stubs `_call_webpush` by design) — but whether it *appeared* still needs a human looking at a
-phone, exactly as with #133.
-
-### Shipped: `0.5.0` (2026-08-03) — smarter categorization, and Settings tells you what's on
-
-**Prod runs `ghcr.io/caddismaster/budget-buddy:0.5.0`.** Tests **763 → 783**.
-**No migration and no new env var**, so the deploy was a straight image pull with no
-manual SQL step in either order.
-
-- **PR #143 / #139 — an admin-only integration-status table on `/settings`.** The one
-  `### Added` in the bundle, which is why this was `0.5.0` and not `0.4.2`. See the
-  integration-status gotcha. ✅ **First prod outing reports all five configured**, which
-  also confirms the `FEEDBACK_GITHUB_TOKEN` set for `0.4.1` is still plausible-length.
-- **PR #142 / #140 — the two Sonnet beats moved to `claude-sonnet-5`.** See the Sonnet 5
-  gotcha for why it was not a string swap. ✅ **Live-verified before merge**, the only
-  gate that counts: a real Auto-Categorize scan returned 50 parsed suggestions for 50
-  rows, and a real agent run terminated through `submit_findings` on turn 2 of 12 using
-  four data tools, peak usage 4053 in / 423 out. No truncation on either.
-- **PR #135 / #133 — the release notification stops saying "Budget Buddy" twice.**
-  ✅ **CONFIRMED ON A REAL DEVICE** (Sean, 2026-08-03) — the long-standing "structurally
-  unverifiable until it ships" caveat is CLOSED and should not be re-raised. The
-  notification fired as part of this deploy and read correctly.
-- **PRs #138 / #137 / #136 — Dependabot's weekly Monday run.** `anthropic`
-  0.120.0 → 0.120.2 and `resend` 2.34.0 → 2.35.0; `docker/login-action` 3 → 4 (exercised
-  by this very deploy); `actions/checkout` 4 → 7 in `claude-triage.yml`, the last file
-  still on v4. ⚠️ **Nothing in CI executes `claude-triage.yml`**, so that green tick still
-  proves nothing about triage — the next issue opened naturally is the free verification.
-  Risk is low rather than unknown: a bare `actions/checkout` with no inputs on
-  `ubuntu-latest`, already proven eight times in `ci.yml`.
-
-✅ **Deploy verified independently of the workflow**, and this time the `css_v` trick
-actually discriminated: prod moved `24978b6a` → **`44ef4f4a`**, matching the md5 of
-`style.css` on `main`. ⚠️ **That check only works when the release CHANGED the CSS** — it
-proved nothing for `0.4.1`, which touched none. Check `git diff <lastTag>..HEAD -- app/static/style.css`
-before relying on it. Also confirmed: the running image is tagged `:0.5.0` (not `:latest`),
-the `db` container was **not** recreated (started 2026-07-31 against web's 2026-08-03, so
-`pull web` held), the pre-deploy dump is timestamped *before* web restarted, and
-`from app.blueprints.admin import integration_status` imports in the running container — a
-module that did not exist in the previous image. `flask announce-release` reported
-**"Announced 0.5.0 to 3 device(s)."**
-
-Both issues filed on 2026-08-03 were **built and shipped the same day** (PRs #142 and
-#143), so the backlog is empty again apart from the date-parked #36.
-
-Three candidates were checked and **deliberately NOT filed** — recorded so they are not
-re-proposed: Flask-Login's 345 deprecation warnings (**0.6.3 is the latest release**, so
-there is nothing to bump to and the issue would be unworkable); a second latent xdist
-race (schema checked — `push_subscriptions.endpoint` really is the only globally-unique
-non-user-scoped column besides `users.username`, so #128's claim holds); and #36's
-trigger date (**verified**, not assumed — `budget_history` has been written since the
-v10.x era, not since `0.3.0`, so the six-complete-month window genuinely closes ~Dec 2026).
-
-### Shipped: `0.4.1` (2026-07-31) — feedback, release notifications, Python 3.14
-
-⚠️ **Historical — superseded by `0.5.0` (above).** Prod no longer runs this tag.
-Tests **723 → 757**. No migration.
-
-- **PR #120 / #64 — in-app bug reports and feature suggestions**, via the
-  `app/github.py` seam. ✅ **`FEEDBACK_GITHUB_TOKEN` is now set on the Droplet** and
-  verified end to end: the first report submitted through the form filed **#133**
-  with `enhancement` + `from-app`. Until that token existed the UI was simply absent,
-  which is the designed state and indistinguishable from breakage — see the env-var
-  gotcha below.
-- **PR #126 / #115 — a push notification when a release is cut** (`app/blueprints/announce.py`).
-- **PR #132 / #131 — the notification body is a FIXED line**, reversing #115's
-  "text comes from the Release notes" before it ever deployed. See below.
-- **PR #121 / #8 — the image moved Python 3.11 → 3.14.**
-- **PR #129 / #128 — xdist endpoint isolation** (test-only). See the testing gotcha.
-
-⚠️ **`v0.4.0` was tagged and WITHDRAWN, never deployed.** It reached the approval gate
-and was cancelled there — the deploy job never started, so the Droplet never received
-it and no notification was sent (verified: container uptime unchanged, no new
-pre-deploy dump). The tag and Release still exist, retitled "withdrawn, superseded by
-v0.4.1"; cut tags are never rewritten. `0.4.1` carries the identical bundle plus #132.
-**Do not treat `0.4.0` as a shipped version.**
-
-⚠️ **`github.event.release.body` is FROZEN at trigger time.** Editing a Release's notes
-does not change an in-flight run, and re-running replays the original payload (editing
-fires `edited`, not `published`). Combined with the announce logic living inside the
-already-built image, **there is no way to change a release's notification after
-publishing** — it takes a new version. This is what forced the 0.4.0 withdrawal.
-
-⚠️ **Cancelling a release run is safe ONLY at the approval gate.** `release.yml`'s
-warning against cancelling in flight is about the deploy job; while the run is
-*waiting*, nothing has touched the host. Confirm with container uptime + the absence of
-a new `backups/pre-deploy-*` dump (the deploy takes one FIRST).
-
-⚠️ **`css_v` could not verify this deploy** — the trick used for `0.2.0`/`0.3.x`
-compares prod's `css_v` to the md5 of `style.css` on `main`, and `0.4.1` changed no CSS,
-so it matched the previous release and proved nothing. What discriminates: the running
-image tag (`docker compose ps --format "{{.Image}}"` → `:0.4.1`, not `:latest`), and
-**importing a module that did not exist in the previous image**
-(`from app.github import feedback_enabled` → True). The latter is the strongest — it is
-a fact about the running code, not metadata.
-
-⚠️ **#8's real gate was #7, and it worked exactly as designed.** The in-image suite
-step ran and reported `Python 3.14.6` / `741 passed, 5 skipped` — i.e. the tests
-executed on the runtime being *shipped*, not the one being replaced. When reviewing
-any future base-image bump, **check the step actually ran** rather than hitting the
-`ci.yml` "Shipped runtime unchanged" skip branch: a skipped step and a passing step
-look identical on the summary page.
-
-⚠️ **Three findings from the 3.14 work, so they are not re-derived:**
-
-- **`--only-binary=:all:` is stricter than reality.** It fails on `http-ece` (a
-  `pywebpush` dependency) — but **identically on 3.11**. It is pure-Python and has
-  never published a wheel; it builds from sdist with no compiler. So #8's acceptance
-  criterion "every dependency installs from a prebuilt wheel" has never literally
-  been true on either runtime. **Always run the same probe against the CURRENT
-  runtime before calling a result a regression.**
-- **A warning-count explosion can be one warning.** The suite emits **345 warnings on
-  3.14 against 7 on 3.11**, and every one is `flask_login/login_manager.py:488`
-  calling the deprecated `datetime.utcnow()`, fired once per login. Count **distinct
-  messages** before reacting. It is third-party; `utcnow()` is slated for removal, so
-  a future runtime bump could turn it into a real break in a pinned dependency.
-- **Dependabot's ignore state is NOT in `.github/dependabot.yml`** (there is no
-  `ignore` block). It lives inside Dependabot and is cleared by commenting
-  `@dependabot unignore python` on the original PR — done on **PR #2**.
-
-⚠️ **Two PRs that both add a `## [Unreleased]` entry WILL conflict in `CHANGELOG.md`.**
-#120 and #121 did; the second needed `git rebase origin/main` after the first
-squash-merged. Expect it whenever a session runs two PRs in parallel — it is not a
-sign either branch is wrong.
-
-### Shipped: `0.3.1` (2026-07-31) — the colour-collision fix
-
-**Prod runs `ghcr.io/caddismaster/budget-buddy:0.3.1`.** A patch on `0.3.0`, cut hours
-later: the doughnut was **still drawing two slices the same colour in production**
-("Monthly Bills" and "Food & Dining", both orange).
-
-⚠️ **This was a shipped defect that had been identified, filed as #111, judged low-risk and
-released anyway.** The judgement was wrong on evidence already in hand — the issue itself
-recorded that the dev slot map "already reaches 10", and a real account has more categories
-than the seeded one. **The collision was the expected outcome above eight categories, not a
-rare edge case.** If a known defect's trigger condition is "the user has more than N of
-something", check what N is on the real account before calling it unlikely.
-
-`assign_series_slots()` (`main.py`, pure, applied per view after the fold) gives every drawn
-row a slot no other drawn row is using. Creation order remains the **preference**, so a
-category keeps its familiar hue and only a genuine collider moves.
-
-⚠️ **This deliberately REVERSES #83's rule that "colour must be a pure function of the
-category, never of the set drawn."** That rule cannot coexist with "no duplicates": a fixed
-per-category assignment cannot keep an arbitrary 6-subset distinct from 8 hues once the user
-has more than 8 categories. What makes reversing it safe is the **#108 fold** — at most 6
-real slices against 8 hues guarantees a free slot, which was NOT true when #83 rejected
-probing. The fold changed the arithmetic that justified the original rule.
-Cost, accepted: a category that collides in one month's top six but not another's can differ
-in colour between those two views. Only an actual collision triggers it.
-
-The shared `CATEGORY_SLOTS` map is **gone** — each row carries its own `slot`, because the
-expense and income views are assigned independently (their union can exceed the palette
-while neither view alone does). Tests 717 → 723.
-
-### Shipped: `0.3.0` (2026-07-31)
-
-Released and deployed 2026-07-31; **superseded hours later by `0.3.1`** (above). `main` is level with the release; **nothing is merged-but-undeployed.**
-
-The bundle was four blocks that had accumulated since `0.2.0` — the triaged backlog
-(#104–107), the doughnut fold (#110), automated issue triage (#85–99) and the dev tooling
-pass (#73–81). Only the first two are user-facing, which is why the What's-new strip
-carries three blocks and not ten. Release prep was **#112 / PR #113**; **the `.whatsnew`
-strip is the only version string in app code** — there is no version constant in Python,
-so a release touches exactly two files plus the notes.
-
-**One additive migration** (`sql/33_pending_transactions.sql`) applied automatically before
-the image pull, which is the correct order for an additive change.
-
-Deploy verified independently of the workflow, the same way `0.2.0` was: `/healthz` returns
-`{"database":"ok","status":"ok"}` over valid TLS, and — the check that actually proves the
-new **image** is live rather than merely that the app is up — **prod's `css_v` equals the
-md5 of `style.css` on `main`** (`24978b6a`), with `--series-other` present in both mode
-blocks of the served stylesheet. `css_v` is computed at startup from the file contents, so
-it cannot match unless the running container holds this commit's CSS. Worth reusing.
-
-⚠️ **Process notes from this release, worth not repeating:**
-
-- **A PR merged out from under an in-flight session.** PR #113 was merged while a follow-up
-  commit was being pushed to its branch; the commit landed on the branch but never reached
-  `main`, and the symptom — PR head frozen at the older SHA while the branch ref moved on —
-  reads exactly like GitHub lag. It is not. **`gh pr view --json state` distinguishes them
-  in one call**; ten minutes went into waiting for a sync that was never coming. The fix is
-  a fresh branch off `main` and a new PR (#116).
-- The squash-merge of #110 also meant a stacked branch had to be **rebased** onto `main`
-  (`git rebase --onto origin/main <old-base>`), not merely retargeted — retargeting alone
-  left the squashed commits showing as unmerged and the PR diff carrying six files.
-- **CI only triggers on PRs targeting `main`** (`ci.yml`: `pull_request: branches: [main]`),
-  so a stacked PR shows "no checks reported" and looks broken when it is merely unrunnable.
-
-### Shipped in `0.3.0` — the doughnut fold (2026-07-30)
-
-**PR #110** closing **#108**: the category doughnut now draws the **top six
-categories + one neutral "Other"** — seven segments max, both pill-toggle views.
-Tests **706 → 717**. One `### Changed` changelog entry. No migration.
-
-- `fold_chart_tail()` (`main.py`, pure, alongside the occurrence walkers) runs in
-  the **payload builder, never the SQL rollup** — budgets/insights/forecasts/CSV
-  and the hero figures keep complete per-category figures, and the card total
-  (derived from `cash_flow`) is structurally unmovable.
-- ⚠️ **The folded slice is coloured off an `is_other` FLAG, never its label.** A
-  user may own a real category *named* "Other"; label-matching would grey out that
-  real category AND pull the wrong slot for the synthetic one. New
-  `--series-other` token in BOTH mode blocks of `style.css` — achromatic on
-  purpose, and deliberately **not** named `--series-9`, because the stylesheet test
-  counts `--series-<digit>` to catch a duplicate hex. Don't loosen that regex.
-- ⚠️ **#108's own claim that the fold "fixes the wrap too" is WRONG**, and was
-  corrected rather than implemented. See **#111** below. That is now four issues
-  running (#87, #83, #86, #108) whose specified approach was wrong on contact —
-  treat a filed approach as a hypothesis, and check it before building it.
-- Tie-flake caught in review: the pre-existing slot test seeded seven categories at
-  `10.00` each, so once six of seven are drawn, "which six" fell to SQL
-  tie-breaking. It now seeds distinct descending amounts.
-
-✅ **The rendered chart has been checked in a browser (Sean, 2026-07-31)** — the
-long-running "nobody has actually looked at it" caveat from #83 is CLOSED, and should not
-be re-filed. Also verified without a browser: token names byte-identical between template
-and served stylesheet, and the fold checked against the real dev dashboard end to end
-(7 segments, payload sum matching `SUM(amount)` exactly).
-
-### Shipped in `0.3.0` — the triaged backlog (2026-07-29)
-
-Four PRs closing three issues: **#104** (#83 doughnut colours), **#105** (#87 CSV
-`Kind` column), **#106** (the `is_pending` migration, standing alone), **#107**
-(#86 Pending transactions). Tests **668 → 706**. Two `### Fixed` changelog
-entries and one `### Added`.
-
-**One additive migration, `sql/33_pending_transactions.sql`** — applies BEFORE
-the image pull, which `release.yml` already does automatically.
-
-All three issues had a specified approach that was **wrong on contact**, and the
-corrections are the durable part:
-
-- **#87** — the issue said the export should exclude transfers/adjustments like
-  the analytics do. Wrong peer: the export's filter list is byte-identical to
-  `_load_history()`'s because it is a download of the **History view**.
-  Excluding them would break "download what you see". A derived `Kind` column
-  (`transfer`/`adjustment`/**blank**) was added instead; rows are unchanged.
-- **#83** — the recommended probe-for-a-free-slot was rejected: it makes a colour
-  depend on which *other* categories are on screen, and the `?month` filter
-  changes exactly that, so switching months could repaint a survivor. Colours now
-  come from **creation order** (`ORDER BY id`), which is collision-free *and*
-  immovable. See the two gotchas below.
-- **#86** — see the ⚠️ pin gotcha below; it is the one place a natural-looking
-  one-line change ships a silent bug.
-
-⚠️ **A doughnut cannot carry seven distinguishable slices, and #83 does not fix
-that.** Validated with a real CVD/contrast checker: only ~4 hues clear all-pairs
-separation, and at 8 the worst pair is red↔orange at ΔE 7.1 against a floor of
-15 — which is *literally* #83's original "two slices read as oranges" complaint.
-The collision fix removes identical hex (the acute bug) but #83's own acceptance
-criterion is **not fully met and cannot be by any palette**. Do not "fix" it by
-adding a ninth hue. ✅ **Addressed in #110** (2026-07-30) by folding to top-6 +
-"Other" — see the block above.
-
-### Shipped in `0.3.0` — automated issue triage (2026-07-29)
-
-Six PRs (#85, #89, #92, #95, #97, #99) closing #84, #88, #91, #94, #96, #98.
-**No app code changed** — every one touched `.github/workflows/claude-triage.yml`
-and nothing else, so all six carried `skip-changelog` and there is no
-`CHANGELOG.md` entry. See "Automated issue triage" below for how it works.
-
-⚠️ **When you file an issue from a session, add the `skip-triage` label.** It is
-the whole convention: measured on 2026-07-29, auto-reviewing session-written
-issues produced two comments nobody read (~$1 of subscription budget), while all
-three genuinely useful runs were dispatched deliberately. A dispatch ignores the
-label on purpose — hand-written issues are the ones most worth a second read.
-
-### Shipped in `0.3.0` — developer tooling pass (2026-07-28)
-
-Five PRs closing seven issues, **all tooling, zero user-facing change**. Sitting under
-`## [Unreleased]` in `CHANGELOG.md` at the time; shipped in `0.3.0`.
-
-- **#69 / PR #73** — `scripts/seed_dev.py`, a synthetic 6-month dev dataset from one command.
-- **#70 / PR #74** — `Dockerfile` gained a `dev` stage; `test.sh` execs into the running
-  container instead of building a throwaway one and reinstalling pytest.
-- **#71 / PR #75** — `pytest-xdist`, `-n auto` by default. **204s → 17.2s**, tests 635 → 668.
-- **#76 / PR #77** — `.venv` for the editor + source bind mount with live reload.
-- **#78 / PR #79**, then **#80 / PR #81** — a dev container was added, broke twice, and was
-  removed. The venv, bind mount and reload all stayed.
-
-Also closed without code: **#72** (Codespaces — premise didn't hold, see the `.venv` note above)
-and **#60** (`test.sh`'s unquoted `$*`, fixed as a side effect of #70 and verified before
-closing).
-
-⚠️ **The local dev database was wiped and reseeded** from `seed_dev.py` — the old hand-built
-demo data is gone deliberately. Reseed with
-`docker compose exec web python scripts/seed_dev.py --username sean`.
-
-### Shipped: `0.2.0` (2026-07-28)
-
-⚠️ **Historical — superseded by `0.3.0` (see above).** Released, deployed and verified
-2026-07-28; prod no longer runs this tag. The first FEATURE release under the rebuilt envelope (`0.1.0` was a baseline
-snapshot), and the first end-to-end exercise of issue → PR → Release → approval gate →
-automated deploy carrying real behaviour.
-
-Four PRs closing six issues: **#59** (#34 Ask dark mode + #35 logout confirm), **#61** (#32
-schedule end dates), **#62** (#33 push reminders + daily server-side materialization), **#63**
-(#58 release prep). Tests 579 → 635. Two additive migrations (`sql/31`, `sql/32`) applied
-automatically before the image pull.
-
-Deploy verified independently of the workflow: `schema_migrations` carries both files, the
-pre-deploy dump is timestamped BEFORE them, the `db` container was NOT recreated (up 24h vs
-web's 23s — `pull web` held), `/healthz` 200 over TLS, and `sw.js` serves `bb-static-v3` with
-the push handlers. **Push delivery confirmed on the actual phone** — the one claim no test can
-make.
-
-Open and deliberately NOT being worked: **#52**, transient Docker Hub pull failures in CI —
-record-and-watch. The one observed error was a *timeout*, not a `429`, so the obvious fix
-(authenticate to Docker Hub) may not even apply; the trigger to act is a second occurrence WITH
-its verbatim error. ⚠️ Do not "fix" it by switching buildx to the `docker` driver — `type=gha`
-caching requires `docker-container`.
-
-### ✅ Repository reboot — COMPLETE (2026-07-26 → 27)
-
-⚠️ **Historical.** Kept because it explains why this repo starts at `0.1.0` with no earlier
-tags, and why several conventions exist. The freeze it describes is OVER — feature work is
-normal, and `0.2.0` shipped on 2026-07-28.
-
-The app is mature and unchanged; the *envelope* around it was rebuilt
-— issue→PR workflow, CI+CD in Actions, ghcr instead of Docker Hub, versioning reset to `0.x`.
-**Golden rule during the move (now lifted): new envelope, same contents.** The only
-sanctioned code changes were the non-root Dockerfile, a `/healthz` endpoint, and the `ruff`
-formatting backlog. Everything else becomes an issue for `0.2.0`.
-
-Where it stands:
-
-- ✅ **Phase 1** — fresh repo, clean initial commit, verified runnable from a bare clone
-  (`cp .env.example .env` → `docker compose up --build` → `./test.sh` green, 565 passing).
-  Secret scanning + push protection ON. Old repo renamed `budget-buddy-archive` with a banner.
-- ✅ **Phase 2** — README/CHANGELOG/CONTRIBUTING/VERSIONING/LICENSE/RUNBOOK, issue+PR templates,
-  dependabot, CODEOWNERS.
-- ✅ **Phase 3** — `lint` (ruff) + `docker-build` (boots the image, asserts `appuser`) added to
-  CI; branch protection ON with three required checks.
-- ✅ **Phase 4.5** — `/healthz`, `/admin/backup` hardened, least-privilege `budget_app` DB role.
-- ✅ **Phase 4 (2026-07-27)** — Actions CD: `release.yml` + `rollback.yml`, a non-root `deploy`
-  user, and the stack moved `/root/budget-buddy` → **`/opt/budget-buddy`** (a non-root user
-  cannot own anything under `/root`; that move also closed a world-readable prod `.env`).
-  Rehearsed end-to-end twice with throwaway pre-releases.
-- ✅ **Phase 6 (2026-07-27)** — Droplet compose repointed at ghcr, **`v0.1.0` released,
-  deployed and prod-verified**, legacy deploy scripts retired. The post-deploy `/healthz`
-  check and a full rollback round-trip (`0.1.0` → `0.0.2-cd-test` → `0.1.0`) both pass, closing
-  the two Phase 4 items that were blocked.
-- ✅ **Phase 5/7 (2026-07-27)** — migration automation (`scripts/migrate.py`, tracked in
-  `schema_migrations`, prod baselined) + issue migration and archiving. ⚠️ The numbered `sql/`
-  files are **NOT replayable** — `schema.sql` is the only fresh-DB artifact, which is why
-  `--baseline` exists.
-
-Docker Hub stopped being the source of truth at the cutover, and its images were retired as a
-fallback on 2026-07-28. **All eight phases are done and feature work is normal** — `0.1.0` was the baseline
-snapshot, `0.2.0` (above) the first release to carry features through the same pipeline.
-
-The pipeline is fully proven end-to-end: the post-deploy `/healthz` check passes, and a full
-rollback round-trip (`0.1.0` → `0.0.2-cd-test` → `0.1.0`) succeeded, as did the manifest guard
-rejecting a nonexistent version **before** any SSH. The two rehearsal images are retained in
-ghcr as rollback targets.
-
-Smoke aside carried over: POSTing `/insights/generate` without the form's year/month caches the
-CURRENT month, not the last complete one — the UI always sends them; only bites hand-rolled
-requests.
-
-**Roadmap** — the issue tracker is authoritative; **recount from `gh issue list` rather than
-trusting any figure written here.** **`0.2.0`, `0.3.0`, `0.4.1` and `0.5.0` are all CLOSED and
-shipped** (see above), and **`0.6.0` shipped and was verified on 2026-08-10**. As of the **end of
-2026-08-10** the operational backlog is **empty** — #160, #159, #153 and #150 all closed that
-afternoon (see the block at the top of Current Status). The workable backlog is now
-**#191** (a push notification when a variable-amount bill posts — the first issue filed through
-the in-app form since #133) and **#190** (the `${TAG:-latest}` trap, found by hitting it in
-production), both on `0.7.0`. **#36 remains the only date-parked one** (~Dec 2026) and correctly
-carries **no milestone** — abandoned or calendar-gated scope is not part of any release.
-
-⚠️ **#191 has one real design fork to settle before any code, and the obvious answer is wrong.**
-Notifying from the daily job would mostly **not fire**: `run_due_schedules()` is called from three
-page-load paths (`main.py`, `transactions.py`, `schedules.py`) as well as the 18:00 job, so opening
-the app at any point during the day materializes the bill and advances `next_due`, leaving the
-evening job nothing to notice. Hooking materialization instead would put a push send on the request
-path, which nothing in the app does today. The likely way through is having the daily job
-**enumerate past occurrences** (the `_advance_past`/`upcoming_occurrences` walkers already have the
-shape) and claim them in `reminder_log` under a **new `source`** — `'schedule'` is already taken by
-the due-tomorrow reminder for the same occurrence. It also needs a standalone migration and, per
-the consent gotcha, the `profile.html` copy updated **in the same change**.
-
-✅ Closed on 2026-08-10: **#154** (automate release prep → `scripts/release_prep.py`, PR #173)
-and **#165** (the `0.6.0` prep, PR #178), plus three found by doing the work — **#171** (the
-`.claude/README.md` agent list), **#174** (the changelog heading spacing) and **#176** (the
-in-image test trap). ⚠️ **The last two were defects in the release-prep tool found by USING it,
-not by testing it** — its suite was green throughout. That is the argument for a tool's first
-outing being a real one.
-
-⚠️ **The backlog was refilled by reading for EVIDENCE rather than brainstorming** — every
-candidate had to point at something already written down or already gone wrong. That is also
-why three were rejected outright and recorded as rejected (see the `0.5.0` block), and why
-#160/#159/#164 exist at all: each came out of a diff or an agent report, not a wishlist.
-
-✅ **#140 is CLOSED** (PR #142, shipped in `0.5.0`) — the two Sonnet
-beats run on `claude-sonnet-5`. Its cost premise did **not** survive contact: intro pricing
-is not reliably cheaper once adaptive thinking (billed as output) and a ~30% tokenizer are
-in play, so the move stands on capability. Do not re-file it as a cost win.
-
-✅ **#139 is CLOSED** (PR #143, shipped in `0.5.0`) — the integration
-panel. ⚠️ Its Gherkin named `/admin/settings`; the real route is **`/settings`**. The
-behaviour was right, the path was wrong — a reminder to check a filed path against
-`url_for`/the blueprint rather than trusting the issue.
-
-✅ **#64 is CLOSED** (PR #120, 2026-07-31) — in-app bug/feature reporting, built exactly to the
-privacy design settled on 2026-07-30. Do not re-open the privacy question. Two deviations from
-the issue's own wording were made deliberately and are worth keeping: the env var is
-**`FEEDBACK_GITHUB_TOKEN`**, not `GITHUB_TOKEN` (a magic name in Actions), and the HTTP call
-uses **stdlib `urllib`**, not `requests` (undeclared, only transitively present via
-`pywebpush`).
-
-✅ **#8 is CLOSED** (PR #121, shipped in `0.4.1`) — the image runs Python 3.14. See the three
-findings recorded in the `0.4.1` block.
-
-✅ **#52 is CLOSED** (2026-07-31) as a one-off flake, per its own second acceptance scenario:
-**44 CI runs since the flake with `docker-build` green in every one**, and no Docker Hub pull
-failure of any kind. The observed error was a connection *timeout*, not a `429`, so
-authenticating to Docker Hub would not have addressed it. ⚠️ If it ever recurs, candidate fix
-**C** (pin buildx to the `docker` driver) still **does not work** — `type=gha` caching requires
-`docker-container`.
-
-✅ **#115 is CLOSED** (PR #126, shipped in `0.4.1`) — a push notification when a release is cut,
-**confirmed delivered to the actual phone**, which is the one claim no test can make. Its three
-resolved forks: **(1) one subscription, reworded copy** — shipped in the same PR as the broadcast,
-per the consent gotcha above; **(2) every subscriber**, matching `send_due_reminders`;
-**(3) NO idempotency marker** (Sean) — `release: published` fires once by construction, so a
-workflow re-run is the only double-send risk and one duplicate notification is the accepted cost.
-That decision is what kept it to one PR with no migration.
-
-⚠️ **#115's "the summary text comes from the Release notes body" was REVERSED by #131** (PR #132,
-same day, before it ever deployed) — the body is now a fixed line. Do not restore it from the
-issue's history; see the fixed-body gotcha for why the reversal *deletes* the injection surface
-rather than guarding it.
-
-✅ **#133 is CLOSED** (PR #135, shipped in `0.5.0`) — the first issue
-filed through the in-app form, and it was about a line the app does not emit. Fixed by
-dropping the app name from **our** title plus the requested `.` → `!`; see the
-notification-title gotcha above for the full reasoning and the accepted desktop cost.
-✅ **Verified on a real device when `0.5.0` shipped** (Sean, 2026-08-03) — the
-"cannot be verified until the next release" caveat is DISCHARGED; do not re-raise it.
-This did **not** reopen #131.
-
-✅ **#111 is CLOSED** (fixed in `0.3.1`) — a category past the eighth created used to wrap
-onto an earlier one's colour. See the slot gotcha above; the fix reverses #83's
-set-independence rule, deliberately.
-
-Parked with triggers: **#36** budget-report-v2-reads-history (~Dec 2026, when the 6-mo window
-sits fully inside logged history) — now the ONLY date-triggered item, since #8 and #52 both
-closed on 2026-07-31. ⚠️ **#37 (the unscheduled-backlog holding pen) was CLOSED 2026-07-31** as
-not-planned — it held four undesigned ideas (a tabbed AI panel, spending flags, sinking funds,
-what-if simulator, tags) and its own body already required each to get its own issue with Gherkin
-criteria before any code. The ideas and the standing rejection of *net worth over time* remain
-readable in the closed issue; **do not re-open it as a bucket.** **Settled in `0.2.0`, do not re-open as a question:** the
-#33 design fork — whether the daily job also runs the due-runners server-side — was decided YES
-(Sean, 2026-07-28), against a recommendation to keep #33 read-only; the materialization now
-happens daily for every user. Off the list: net worth over time (redundant with the
-net-balance-trend chart). **CSV import remains dropped for good.**
+### Standing decisions — settled, do not re-open
+
+- **Do not send a release notification for a release with no user-facing change** (Sean,
+  2026-08-10). The only built-in lever is marking the GitHub Release as a pre-release —
+  `release.yml` gates the announce step on `prerelease == false` — but that also suppresses the
+  `:latest` update, so it is a misuse with side effects. Usually the right answer is that there
+  is nothing to release.
+- **#64's privacy design** (in-app feedback carries only what the user typed) — settled
+  2026-07-30, do not re-open. Two deliberate deviations from the issue's own wording are worth
+  keeping: the env var is **`FEEDBACK_GITHUB_TOKEN`**, not `GITHUB_TOKEN` (a magic name in
+  Actions), and the HTTP call uses **stdlib `urllib`**, not `requests`.
+- **#115's "the summary text comes from the Release notes body" was REVERSED by #131** (same day,
+  before it ever deployed). Do not restore it from the issue's history — see the fixed-body
+  gotcha for why the reversal *deletes* the injection surface rather than guarding it.
+- **#133 is verified on a real device** (Sean, 2026-08-03). The "cannot be verified until the next
+  release" caveat is DISCHARGED; do not re-raise it. It did **not** reopen #131.
+- **#140 (Sonnet 5) stands on capability, not cost.** Intro pricing is not reliably cheaper once
+  adaptive thinking (billed as output) and a ~30% tokenizer are in play. Do not re-file it as a
+  cost win.
+- **#111/#83 — the "colour is a pure function of the category" rule is deliberately reversed.**
+  See the slot gotcha; it is safe only because the #108 fold caps the chart at 6 real slices.
+- **#52 is closed as a one-off flake.** If it ever recurs, candidate fix **C** (pin buildx to the
+  `docker` driver) still **does not work** — `type=gha` caching requires `docker-container`.
+- **#37 (the unscheduled-backlog holding pen) was closed not-planned.** Its ideas and the standing
+  rejection of *net worth over time* remain readable in the closed issue; **do not re-open it as a
+  bucket.** Off the list for good: net worth over time (redundant with the net-balance-trend
+  chart) and **CSV import**.
+- **#33's design fork was decided YES** (Sean, 2026-07-28), against a recommendation to keep it
+  read-only: the daily job also runs the due-runners server-side, for every user.
+- **Three candidates checked and deliberately NOT filed** (2026-08-03): Flask-Login's 345
+  deprecation warnings (**0.6.3 is the latest release**, so there is nothing to bump to); a second
+  latent xdist race (schema checked — `push_subscriptions.endpoint` really is the only
+  globally-unique non-user-scoped column besides `users.username`); and #36's trigger date
+  (verified, not assumed).
+
+**Parked with a trigger:** **#36** budget-report-v2-reads-history (~Dec 2026, when the 6-month
+window sits fully inside logged history). The **only** date-parked item, and it correctly carries
+**no milestone** — calendar-gated scope is not part of any release.
+
+**Roadmap:** the issue tracker is authoritative — **recount from `gh issue list` rather than
+trusting any figure written here.**
+
+### Release history — the reusable lessons
+
+⚠️ `CHANGELOG.md` is the durable per-change record and the GitHub Releases carry the ship notes.
+What is kept here is only what a future session would otherwise re-derive.
+
+- **`0.6.0` (2026-08-10) — prod runs `ghcr.io/caddismaster/budget-buddy:0.6.0`.** Background jobs
+  you can check on (`app/jobs.py`, the `/settings` panel) plus `scripts/release_prep.py`. One
+  additive migration (`sql/34_job_runs.sql`). Verification lessons, all reusable: **the app logs
+  NOTHING when the scheduler starts**, so an empty `logs | grep -i scheduler` is not evidence —
+  what discriminates is the **thread**, `docker compose exec -T web sh -c 'for p in /proc/[0-9]*;
+  do for t in $p/task/*; do cat $t/comm 2>/dev/null; done; done | sort | uniq -c | sort -rn'`
+  showing an `APScheduler` line. **`job_runs` is EMPTY immediately after a deploy**, so the panel
+  reads NEVER for every job until the daily pass fires — correct, but the first sight of a new
+  panel reading NEVER looks exactly like a fault; do not report it as one. And **`pywebpush`
+  2.4.0's real delivery is confirmed only as far as the SEND** — the suite stubs `_call_webpush`
+  by design, so whether a notification *appeared* still needs a human looking at a phone.
+- **`0.5.0` (2026-08-03)** — the Sonnet 5 move and the integration-status panel. ⚠️ **The `css_v`
+  deploy check only works when the release CHANGED the CSS** — it proved nothing for `0.4.1`.
+  Check `git diff <lastTag>..HEAD -- app/static/style.css` before relying on it. The strongest
+  check is **importing a module that did not exist in the previous image**, which is a fact about
+  the running code rather than about metadata.
+- **`0.4.1` (2026-07-31)** — feedback, release notifications, Python 3.14. ⚠️ **`v0.4.0` was
+  tagged and WITHDRAWN at the approval gate, never deployed** — do not treat it as a shipped
+  version, and there is deliberately **no `0.4.0` milestone**. Three things that forced or
+  followed from it: **`github.event.release.body` is FROZEN at trigger time** (editing the notes
+  does not change an in-flight run, and re-running replays the original payload), so combined
+  with the announce logic living inside the already-built image **there is no way to change a
+  release's notification after publishing** — it takes a new version; **cancelling a release run
+  is safe ONLY at the approval gate** (confirm with container uptime + the absence of a new
+  `backups/pre-deploy-*` dump); and **two PRs that both add a `## [Unreleased]` entry WILL
+  conflict in `CHANGELOG.md`**, which is not a sign either branch is wrong. Three findings from
+  the 3.14 work: `--only-binary=:all:` fails on `http-ece` **identically on 3.11**, so always run
+  the same probe against the CURRENT runtime before calling a result a regression; **a
+  warning-count explosion can be one warning** (345 vs 7, every one `flask_login`'s deprecated
+  `datetime.utcnow()`) so count **distinct messages** before reacting; and **Dependabot's ignore
+  state is not in `.github/dependabot.yml`** — it lives inside Dependabot and is cleared by
+  commenting `@dependabot unignore python` on the original PR.
+- **`0.3.1` (2026-07-31)** — the colour-collision fix, cut hours after `0.3.0`. ⚠️ **This was a
+  shipped defect that had been identified, filed, judged low-risk and released anyway** — and the
+  judgement was wrong on evidence already in hand. **If a known defect's trigger condition is
+  "the user has more than N of something", check what N is on the real account before calling it
+  unlikely.**
+- **`0.3.0` (2026-07-31)** — the triaged backlog, the doughnut fold, automated issue triage and
+  the dev-tooling pass. Process notes worth not repeating: **a PR merged out from under an
+  in-flight session**, whose symptom (PR head frozen while the branch ref moves on) reads exactly
+  like GitHub lag — **`gh pr view --json state` distinguishes them in one call**; a squash-merge
+  means a stacked branch must be **rebased** (`git rebase --onto origin/main <old-base>`), not
+  merely retargeted; and **CI only triggers on PRs targeting `main`**, so a stacked PR shows "no
+  checks reported" and looks broken when it is merely unrunnable. ⚠️ **Four issues running (#87,
+  #83, #86, #108) had a specified approach that was wrong on contact with the code** — treat a
+  filed approach as a hypothesis and check it before building it. Also: the local dev database was
+  wiped and reseeded from `seed_dev.py`, so the old hand-built demo data is gone deliberately
+  (`docker compose exec web python scripts/seed_dev.py --username sean`).
+- **`0.2.0` (2026-07-28)** — the first FEATURE release under the rebuilt envelope, and the first
+  end-to-end exercise of issue → PR → Release → approval gate → automated deploy carrying real
+  behaviour. **Push delivery was confirmed on the actual phone** — the one claim no test can make.
+- **`0.1.0` (2026-07-27) — the repository reboot.** Kept because it explains why this repo starts
+  at `0.1.0` with no earlier tags and why several conventions exist: the app was mature and
+  unchanged, and the *envelope* around it was rebuilt — issue→PR workflow, CI+CD in Actions, ghcr
+  instead of Docker Hub, a non-root image, `/healthz`, a least-privilege `budget_app` DB role, a
+  non-root `deploy` user, and the stack moved `/root/budget-buddy` → **`/opt/budget-buddy`**.
+  ⚠️ **The numbered `sql/` files are NOT replayable** — `schema.sql` is the only fresh-DB
+  artifact, which is why `--baseline` exists. Docker Hub stopped being the source of truth at the
+  cutover and its images were retired 2026-07-28; if ghcr is ever unreachable, **roll forward
+  rather than back**. The retired `deploy.sh`/`promote.sh` remain in git history
+  (`git show v0.1.0:deploy.sh`). Smoke aside carried over: POSTing `/insights/generate` without
+  the form's year/month caches the CURRENT month, not the last complete one — the UI always sends
+  them, so it only bites hand-rolled requests.
 
 ### Release ledger
 
@@ -948,33 +497,11 @@ final `exec docker compose …` and the kernel drops it when the run ends (inclu
 `test.sh` is the one place **every** path goes through. Set `TEST_SH_LOCKFILE` to override
 the path; a machine with no `flock(1)` warns and continues rather than refusing.
 
-▶️ **If a tmux `work` session is running, prefer `runtests` over `./test.sh`** (same
-arguments). It sends the run to the **visible** `tests` window, waits, and prints the
-result — so the human can watch a 56-second run live instead of waiting on an agent to
-report it afterwards. It also resolves the target **pane by repo root**, since pane numbers
-renumber on every split and `tests.1` is not reliably the same project tomorrow.
-`--no-wait` fires and returns.
+⚠️ **`runtests` is GONE** (2026-08-17). It was a machine-local wrapper that sent the suite to a
+visible tmux pane; tmux was retired with the terminal front end, so **`./test.sh` is the only
+path** and a stale `runtests` on `PATH` should be deleted rather than repaired. The `flock` above
+is unaffected — it always was the guard that actually held, and it lives in `test.sh` itself.
 
-⚠️ **`runtests`' own "already running" check is PARTIAL and is not the guard** — it reads
-one pane's `pane_current_command`, the very check this file elsewhere says proves nothing,
-so it is blind to a bare `./test.sh` from an agent's shell and to a run in any other pane.
-It is a fast, friendly refusal; the `flock` above is the one that holds. The rule is
-therefore *always use `runtests`*, not *`runtests` protects you*. ⚠️ It lives in
-`~/.local/bin` and is **machine-local — a fresh clone does not have it**; check with
-`type -a runtests` and fall back to `./test.sh`.
-
-⚠️ **`type -a`, never bare `type`** (corrected 2026-08-14 evening). A `runtests()` **shell
-function** used to sit in `tmux-helper.sh` alongside the script, and this file previously
-called it harmless on the grounds that a sourced function is invisible to the
-non-interactive shell an agent's tool calls use. That was only half the picture: a function
-**shadows** a PATH script, so *Sean typing `runtests`* got the function while only the agent
-got the script — and the function targeted `-t tests`, the **window**. Fine while that
-window had one pane; wrong once the workspace layout gave it one pane per repo, because it
-then lands in whichever pane is *active*. `runtests` typed from the other project could run
-**Budget Buddy's suite and look green**. The function has been **deleted** (backup
-`~/.tmux-helper.sh.bak-pre-runtests-removal`), so `runtests` now resolves to the script
-alone. Bare `type` prints only the first match and so was structurally incapable of showing
-the conflict it was recommended for.
 It runs in a throwaway `web` container on prod's Python 3.14 — no local venv;
 `requirements-dev.txt` adds just `pytest`. Needs the dev `db` container up (route/isolation
 tests hit it). Also runs in **GitHub Actions CI** on every push/PR (`.github/workflows/ci.yml`,
@@ -1077,7 +604,7 @@ install cost ~1.5s and total per-invocation overhead ~2.9s, cut to ~0.8s by #70.
 predicted to "roughly halve" the run; it actually cut it by ~12×, because the suite is
 IO/DB-bound rather than CPU-bound and parallelises far better than a CPU-bound suite would.
 
-**906 tests in `tests/`** (measured 2026-08-13; 5 of them skip on the last day of a month — `test_forecast.py`'s date guards, and 1 more skips *inside the shipped image* — see the `.dockerignore` gotcha). ⚠️ **Recount rather than trusting this number** — it has now been wrong three times (757 against a true 762 on 2026-08-03, 783 against a true 806 on 2026-08-04, 806 against a true 843 on 2026-08-10), so the drift is real and the month-end skips do not explain it. Cross-cutting patterns: **no real API calls anywhere** — every
+**912 tests in `tests/`** (measured 2026-08-17; 5 of them skip on the last day of a month — `test_forecast.py`'s date guards, and 1 more skips *inside the shipped image* — see the `.dockerignore` gotcha). ⚠️ **Recount rather than trusting this number** — it has now been wrong four times (757 against a true 762 on 2026-08-03, 783 against a true 806 on 2026-08-04, 806 against a true 843 on 2026-08-10, 906 against a true 912 on 2026-08-17), so the drift is real and the month-end skips do not explain it. Cross-cutting patterns: **no real API calls anywhere** — every
 `ai.py::_call_*_model` seam (and `mailer.py::_call_resend`) is monkeypatched with canned
 `SimpleNamespace` responses; every feature file asserts **user isolation**; route tests assert
 anon → 302. What each file covers:
