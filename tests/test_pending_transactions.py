@@ -15,6 +15,7 @@ AFTER the page is fetched, never as an `is_pending DESC` prefix on the SQL, beca
 the running-balance walk seeds itself from "every filtered row older than this
 page" using that same ORDER BY. The balance tests below are what guard that.
 """
+import re
 from datetime import date, timedelta
 
 from app.db import get_db_connection
@@ -171,6 +172,92 @@ def test_pinning_does_not_override_the_month_filter(client_a, users):
     body = client_a.get(f"/transactions?month={date.today().strftime('%Y-%m')}").data.decode()
     assert f'id="txn-{tid}"' not in body
     assert "$99.00" not in body
+
+
+# --- pinning reaches page 1, not just the current page (#210) -----------------
+#
+# The pin used to be page-SCOPED: it sorted the 25 rows already fetched, so a
+# pending row 40 days back sat at the top of page 2 and was never visible on
+# page 1. The premise recorded on 2026-07-29 — "a pending row is entered when
+# the charge happens, so at 25 rows a page it is on page 1 in practice" — does
+# not survive a real account, which is what #210 reported.
+
+def test_a_pending_row_beyond_page_one_is_pinned_to_page_one(client_a, users):
+    """The reproduction from #210: 30 newer rows push a 40-day-old pending
+    charge onto page 2, where the old page-scoped pin left it."""
+    a = users["a"]
+    today = date.today()
+    old = create_transaction(a["id"], a["account_id"], 1.00,
+                             today - timedelta(days=40), category_id=a["category_id"])
+    _mark_pending(old)
+    for i in range(30):
+        create_transaction(a["id"], a["account_id"], 10.00 + i,
+                           today - timedelta(days=i), category_id=a["category_id"])
+
+    body = client_a.get("/transactions").data.decode()
+    assert f'id="txn-{old}"' in body, "pending row is not on page 1"
+
+
+def test_the_pinned_row_is_the_first_row_on_page_one(client_a, users):
+    a = users["a"]
+    today = date.today()
+    old = create_transaction(a["id"], a["account_id"], 1.00,
+                             today - timedelta(days=40), category_id=a["category_id"])
+    _mark_pending(old)
+    for i in range(30):
+        create_transaction(a["id"], a["account_id"], 10.00 + i,
+                           today - timedelta(days=i), category_id=a["category_id"])
+
+    body = client_a.get("/transactions").data.decode()
+    # ⚠️ Match row ids only — a bare 'id="txn-' also matches the tbody's
+    # id="txn-rows", which precedes every row and would make this vacuous.
+    first_row = re.search(r'id="txn-\d+"', body)
+    assert first_row, "no transaction rows rendered"
+    assert first_row.group(0) == f'id="txn-{old}"'
+
+
+def test_a_pinned_row_is_not_repeated_on_its_natural_page(client_a, users):
+    """Pinned to page 1 means shown ONCE. A row that appears both pinned and in
+    its date position would double-count to the reader."""
+    a = users["a"]
+    today = date.today()
+    old = create_transaction(a["id"], a["account_id"], 1.00,
+                             today - timedelta(days=40), category_id=a["category_id"])
+    _mark_pending(old)
+    for i in range(30):
+        create_transaction(a["id"], a["account_id"], 10.00 + i,
+                           today - timedelta(days=i), category_id=a["category_id"])
+
+    page1 = client_a.get("/transactions").data.decode()
+    page2 = client_a.get("/transactions?page=2").data.decode()
+    assert page1.count(f'id="txn-{old}"') == 1
+    assert f'id="txn-{old}"' not in page2, "pending row shown twice across pages"
+
+
+def test_pinning_to_page_one_does_not_change_posted_balances(client_a, users):
+    """⚠️ The guard for #210's change. Lifting a pending row onto page 1 happens
+    at RENDER time, after the balance walk — so every posted row's balance must
+    be byte-identical to what it was when the same row was posted, exactly as
+    test_posted_balances_are_unchanged_by_a_pending_row asserts within one page.
+    If the lift were done by excluding pending rows from the query, the walk
+    would lose their amounts and this breaks."""
+    a = users["a"]
+    today = date.today()
+    old = create_transaction(a["id"], a["account_id"], 7.00,
+                             today - timedelta(days=40), category_id=a["category_id"])
+    for i in range(30):
+        create_transaction(a["id"], a["account_id"], 10.00 + i,
+                           today - timedelta(days=i), category_id=a["category_id"])
+
+    posted_page1 = client_a.get("/transactions").data.decode()
+    posted_cells = re.findall(r'<td class="c-bal [^"]*">([^<]+)</td>', posted_page1)
+
+    _mark_pending(old)
+    pinned_page1 = client_a.get("/transactions").data.decode()
+    pinned_cells = re.findall(r'<td class="c-bal [^"]*">([^<]+)</td>', pinned_page1)
+
+    assert posted_cells, "no balance cells rendered — the assertion would be vacuous"
+    assert posted_cells == pinned_cells, "a posted balance moved when a sibling was pinned"
 
 
 # --- the running balance ------------------------------------------------------

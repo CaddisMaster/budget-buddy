@@ -34,6 +34,16 @@ this project uses the `0.x` versioning scheme described in
 
 ### Fixed
 
+- **Pending transactions now stay at the top of your history, however far back
+  they are.** A pending charge is pinned to the top of the list so it can't be
+  forgotten before you correct the amount — but the pinning only ever applied to
+  the page you happened to be looking at. Once you had more than a page of newer
+  transactions, an older pending charge quietly sat at the top of page three or
+  four instead, which is exactly where you would never look for it. Every pending
+  transaction now appears together at the top of the first page, and only there,
+  so nothing is shown twice. Balances are unaffected — a pending amount still
+  counts towards every figure exactly as it did.
+
 - **A maintenance command on the server can no longer put an old version of the
   app back into production by accident.** Deployments have always named the exact
   version to run, but a hand-typed command that left the version out fell back to
