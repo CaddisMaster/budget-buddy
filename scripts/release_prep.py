@@ -83,12 +83,21 @@ _GITHUB_REPO_RE = re.compile(r'(https://github\.com/[^/]+/[^/]+)')
 
 def _extract_link_refs(text):
     """Pull every link-reference line out of `text`, returning the remaining
-    text (refs removed) and a dict of version/key -> the original, full ref
-    line — kept verbatim so the oldest entry (which is not a compare link,
-    see roll_changelog) can be preserved untouched."""
+    text (refs removed) and a dict of version/key -> the ref line itself —
+    kept verbatim so the oldest entry (which is not a compare link, see
+    roll_changelog) can be preserved untouched.
+
+    ⚠️ The captured line is `.rstrip()`ed (#203). `_LINK_REF_RE` ends in
+    `\\s*$` and `\\s*` matches newlines, so on the LAST ref line in the file
+    the match swallows the file's trailing newlines. `roll_changelog`
+    preserves the oldest ref verbatim and then adds a newline of its own, so
+    without this the tail grew by one on EVERY run — measured 2 → 3 → 4 → 5 →
+    6 across four release cycles. Stripping here rather than at the point of
+    use keeps `refs` meaning "the ref line", not "the ref line plus whatever
+    whitespace happened to follow it"."""
     refs = {}
     for m in _LINK_REF_RE.finditer(text):
-        refs[m.group('key')] = m.group(0)
+        refs[m.group('key')] = m.group(0).rstrip()
     cleaned = _LINK_REF_RE.sub('', text)
     return cleaned, refs
 
