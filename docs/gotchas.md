@@ -27,11 +27,17 @@
   `is_pending DESC` prefix on either does not merely reorder the display, it redefines
   which rows count as older, and the balance breaks for the pinned rows AND every row
   beneath them — invisible until pagination or a filter is active. Both queries and the
-  walk are byte-identical to pre-#86; only the finished list is sorted, relying on
-  `list.sort` being **stable** to keep both groups date-descending. Consequence accepted
-  deliberately: **the pin is page-scoped** (a pending row 100 rows deep pins to the top of
-  page 4). `test_pending_transactions.py::test_posted_balances_are_unchanged_by_a_pending_row`
-  is the net
+  walk are byte-identical to pre-#86; only the finished list is rearranged.
+  ⚠️ **Pending rows are also never EXCLUDED from the paged query** for the same reason —
+  they must stay in the walk, because a pending row counts normally in every figure. Every
+  rearrangement happens strictly *after* the walk, which is what makes it safe.
+  ⚠️ **The pin was page-scoped until #210 and is now page-1-scoped** (2026-08-17): page 1
+  runs a second query for *every* pending row matching the filters and prepends them, and
+  later pages render none, so each appears exactly once. The old behaviour rested on a
+  premise that did not survive a real account — "a pending row is entered when the charge
+  happens, so it is on page 1 in practice" — and a 40-day-old hold sat on page 4 unseen.
+  `test_pending_transactions.py::test_posted_balances_are_unchanged_by_a_pending_row` and
+  `::test_pinning_to_page_one_does_not_change_posted_balances` are the net
 - **`is_pending` is a DISPLAY flag and the exact OPPOSITE of `is_adjustment`** despite the
   identical type/default: it excludes a row from **nothing** (dashboard, budgets, insights,
   forecasts, running balance all count it — the money did leave the account). Do **not** add

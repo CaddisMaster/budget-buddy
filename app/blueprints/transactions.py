@@ -320,25 +320,47 @@ def _load_history(user_id, selected_month, search, page, per_page=PER_PAGE):
             running_balance -= t.amount
         transactions_with_balance.append(HistoryRow(*t, running_balance))
     transactions_with_balance.reverse()
-    # Pin pending rows to the top (#86). Sorted HERE, in Python, and deliberately
-    # NOT as an `is_pending DESC` prefix on the ORDER BY above.
+    # Pin pending rows to the top of PAGE 1 (#86, widened by #210).
     #
-    # Both queries above are ordered by date, and the seed query defines "older
-    # than this page" as "further down that same ordering" (it repeats the ORDER
-    # BY with OFFSET offset+per_page). Prefixing either one would not merely
-    # reorder the display — it would redefine which rows count as older, so the
-    # balance would be wrong for the pinned rows AND for every row beneath them.
-    # Sorting the finished list leaves the walk untouched.
+    # ⚠️ The pin happens HERE, in Python, and deliberately NOT as an
+    # `is_pending DESC` prefix on the ORDER BY above. Both queries above are
+    # ordered by date, and the seed query defines "older than this page" as
+    # "further down that same ordering" (it repeats the ORDER BY with OFFSET
+    # offset+per_page). Prefixing either one would not merely reorder the
+    # display — it would redefine which rows count as older, so the balance
+    # would be wrong for the pinned rows AND for every row beneath them.
     #
-    # The pin is therefore scoped to the page being viewed: a pending row 100
-    # rows deep pins to the top of page 4, not page 1. Accepted — a pending row
-    # is entered when the charge happens, so at 25 rows a page it is on page 1 in
-    # practice (settled, Sean, 2026-07-29).
+    # ⚠️ The same reasoning is why pending rows are NOT excluded from the paged
+    # query: they must stay in the walk, because a pending row counts normally
+    # in every figure (settled 2026-07-29). Everything below happens AFTER the
+    # walk, so no posted row's balance can move.
     #
-    # list.sort is STABLE, which is what keeps both groups in date-descending
-    # order internally. A sort that wasn't would scramble the posted rows.
-    transactions_with_balance.sort(key=lambda t: t.is_pending, reverse=True)
-    return transactions_with_balance, total, total_pages
+    # #210: the pin used to be page-SCOPED — it sorted only the rows already
+    # fetched, so a pending charge 40 days back sat at the top of page 4 and was
+    # never seen from page 1. The premise that justified that ("a pending row is
+    # entered when the charge happens, so it is on page 1 in practice") does not
+    # hold once more than a page of newer rows exists. Page 1 now shows EVERY
+    # pending row, and later pages show none — so each appears exactly once.
+    pending_rows = []
+    if page == 1:
+        with db_cursor() as cursor:
+            cursor.execute(f"""
+                SELECT t.id, t.amount, t.description, c.name AS category_name, a.account_name,
+                    t.transaction_date, t.transaction_type,
+                    t.is_recurring, t.frequency, t.is_adjustment,
+                    t.is_transfer, t.transfer_group_id, t.is_pending
+                FROM transactions t
+                LEFT JOIN categories c ON t.category_id = c.id
+                LEFT JOIN account a ON t.account_id = a.account_id
+                {where_clause} AND t.is_pending
+                ORDER BY t.transaction_date DESC, t.id DESC
+            """, params)
+            # running_balance is None because the template renders an em dash for
+            # a pending row and never reads it — a pinned row is out of date
+            # order, so a balance in that cell would read as wrong.
+            pending_rows = [HistoryRow(*r, None) for r in cursor.fetchall()]
+    posted_rows = [t for t in transactions_with_balance if not t.is_pending]
+    return pending_rows + posted_rows, total, total_pages
 
 
 def render_history_tbody():
