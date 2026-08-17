@@ -89,10 +89,11 @@ against seeded data can be reproduced on another machine.
 
 ### Set up your editor (optional)
 
-**Only do this if you run an editor with a language server.** The maintainer's
-own setup no longer has one — development happens in a terminal driving tmux
-over SSH, with diffs reviewed in `gitui` — so this step is genuinely optional
-rather than merely skippable.
+**Only do this if you run an editor with a language server.** Nothing in the app
+or the test suite depends on it — the code runs in containers either way — so
+this step is genuinely optional rather than merely skippable. Note that the venv
+belongs on whichever machine the language server runs on, which for a remote or
+SSH-based setup is the development host rather than your laptop.
 
 If you do run one: the application's dependencies live inside the Docker image,
 so out of the box the language server cannot resolve a single one of them —

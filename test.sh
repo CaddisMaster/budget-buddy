@@ -75,9 +75,10 @@ cd "$(dirname "$0")"
 # which is what makes it expensive to diagnose.
 #
 # The guard lives HERE because this is the one place every path already goes
-# through — an agent's tool call, a terminal, and `runtests` all invoke this
-# script. `runtests` has its own check, but it reads a tmux pane's foreground
-# process, so a bare `./test.sh` from an agent's shell is invisible to it.
+# through — an agent's tool call and a terminal both invoke this script. Any
+# wrapper that inspects the terminal instead (a pane's foreground process, a
+# window title) is blind to a bare `./test.sh` from an agent's shell, which is
+# why the guard is not in one.
 #
 # ⚠️ An ADVISORY lock on a descriptor, deliberately not a marker file. A
 # "does the lock file exist" check survives `kill -9` and wedges every later
