@@ -258,11 +258,24 @@ def test_the_rest_of_the_roll_is_unchanged_apart_from_the_final_newlines():
 def test_the_real_changelog_does_not_grow_a_newline():
     """⚠️ Against the REAL file, which is where this was found. The fixture
     above is trimmed, and a fix that satisfies it without handling the real
-    file's tail would be useless on the day the release is cut."""
+    file's tail would be useless on the day the release is cut.
+
+    ⚠️ Only the file's TAIL is under test, so both inputs that change on every
+    release are neutralised: `[Unreleased]` is seeded (it is empty immediately
+    after a release is cut, which would raise "nothing to release"), and the
+    version rolled is one that can never already exist. The first cut of this
+    test pinned the real 0.7.0 and went red the moment 0.7.0 was rolled —
+    a test that fails on release day is worse than no test."""
     real = (release_prep.__file__.rsplit("/scripts/", 1)[0] + "/CHANGELOG.md")
     with open(real, encoding="utf-8") as fh:
         text = fh.read()
-    rolled = release_prep.roll_changelog(text, "0.7.0", RELEASE_DATE)
+    seeded = text.replace(
+        "## [Unreleased]\n",
+        "## [Unreleased]\n\n### Added\n\n- Seeded by the test.\n",
+        1,
+    )
+    assert "### Added" in seeded, "seeding failed — the heading shape moved"
+    rolled = release_prep.roll_changelog(seeded, "99.0.0", RELEASE_DATE)
     assert _trailing_newlines(rolled) == 1
 
 

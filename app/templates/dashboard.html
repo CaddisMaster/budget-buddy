@@ -16,10 +16,10 @@
    test red. Say "weekly money check", as the v10.15.0 strip did. (This comment
    deliberately avoids the literal too — a Jinja comment never renders, but it
    would still show up in a grep and read as a violation.) #}
-<div class="card whatsnew" id="whatsnew" data-version="v0.6.0" hidden>
+<div class="card whatsnew" id="whatsnew" data-version="v0.7.0" hidden>
   <div class="whatsnew-head">
-    <strong>What's new in v0.6.0</strong>
-    <span class="recurring-badge">2026-08-10</span>
+    <strong>What's new in v0.7.0</strong>
+    <span class="recurring-badge">2026-08-17</span>
     <span class="whatsnew-actions">
       <button type="button" class="btn btn-sm" id="whatsnew-toggle">Details</button>
       <button type="button" class="btn btn-sm" id="whatsnew-dismiss" aria-label="Dismiss">&#10005;</button>
@@ -27,18 +27,31 @@
   </div>
   <div class="whatsnew-body" hidden>
     <div class="whatsnew-block">
-      <strong>Settings now says when the scheduled work last ran</strong>
+      <strong>Bills whose amount changes can now tell you when they post</strong>
       <ul class="whatsnew-list">
-        <li><strong>Some things happen without you:</strong> once a day Budget Buddy creates
-            the transactions for your recurring bills and paychecks &mdash; whether or not
-            anyone opens the app.</li>
-        <li><strong>Settings now shows when that last finished,</strong> and what it did
-            &mdash; not just whether it was switched on. Those are not the same thing: if it
-            ever stopped, every page would still load and your recurring transactions would
-            simply stop appearing.</li>
-        <li><strong>Overdue is flagged, off is not:</strong> a job that has not run recently
-            enough is marked, while one that is deliberately turned off says so plainly
-            instead of looking like a fault.</li>
+        <li><strong>Some bills are the same every month; some are not.</strong> A subscription
+            is the same figure each time, but electricity or water lands on a fixed day for a
+            different amount &mdash; so the transaction Budget Buddy creates for you arrives
+            carrying last month's number.</li>
+        <li><strong>A schedule can now be marked &ldquo;the amount changes every time.&rdquo;</strong>
+            It still posts the amount you set up, but once it has, you get a notification
+            telling you to check what it actually came to.</li>
+        <li><strong>Tapping it takes you straight there,</strong> to your transactions, where
+            you can correct the amount in place rather than hunting for it.</li>
+      </ul>
+    </div>
+    <div class="whatsnew-block">
+      <strong>Pending transactions stay at the top of your history</strong>
+      <ul class="whatsnew-list">
+        <li><strong>A pending charge is pinned to the top</strong> &mdash; a fuel pump that
+            authorises a pound, a hotel hold &mdash; so you can&rsquo;t forget to correct it
+            once the real figure lands.</li>
+        <li><strong>That pinning used to apply only to the page you were on.</strong> Once you
+            had more than a page of newer transactions, an older pending charge quietly sat at
+            the top of page three instead, which is exactly where you would never look.</li>
+        <li><strong>They now appear together at the top of the first page,</strong> and only
+            there, so nothing is listed twice. Your balances are unchanged &mdash; a pending
+            amount still counts towards every figure exactly as it did.</li>
       </ul>
     </div>
   </div>
