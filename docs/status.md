@@ -5,71 +5,34 @@
 
 ## Current Status
 
-### On `main`, NOT released — the `0.7.0` backlog, cleared (2026-08-13)
+### On `main` — level with production (2026-08-17)
 
-**Prod runs `0.6.0`; `main` is now genuinely ahead of it.** Three PRs merged, closing **#190** and
-**#191**. Tests **875 → 906**. **One additive migration** (`sql/35_variable_bills.sql`). No new env
-vars.
+**Prod runs `0.7.0`, shipped and verified.** `main` carries nothing unreleased beyond the docs
+commit recording this session. The `0.7.0` milestone is **closed** (19 issues); **no milestone
+is open**, so the next cycle needs one created. **#36 is the only open issue** — date-parked to
+~Dec 2026, correctly carrying no milestone.
 
-⚠️ **The `0.7.0` milestone is no longer empty — #203 was added to it on 2026-08-14** and now
-**blocks closing it**. Recount with `gh issue list --milestone 0.7.0` rather than trusting any
-figure here. #203 is a defect in `scripts/release_prep.py`: `roll_changelog()` appends one extra
-trailing newline to `CHANGELOG.md` on **every** run, and it compounds (measured: 2 → 3 → 4 → 5 → 6
-across four release cycles). Cosmetic, but it is in the tool used to cut the release it is blocking,
-so fix it before running the prep rather than after.
+Tests **921** (measured 2026-08-17; `910 passed, 11 skipped` inside the shipped image — two
+legitimately different numbers, see `docs/testing.md`).
 
-⚠️ **There IS something to release.** `#191` is a user-facing feature and `## [Unreleased]` carries
-an `### Added` and a `### Fixed`, so `0.7.0` is an honest MINOR. What a release still needs: the
-**What's-new strip** (a human writes the prose; `scripts/release_prep.py` does the mechanical half)
-and the usual gate. Not cut — Sean's call.
+⚠️ **Loose ends, none blocking:**
 
-⚠️ **#190's fix is merged but NOT APPLIED TO PRODUCTION**, and merging cannot apply it: the
-Droplet holds an `scp`-ed copy of `docker-compose.yml`. **Order is load-bearing** — the `.env`
-line must land BEFORE the new compose file, or every compose command on the box fails in between:
+- **Nothing on the public surface distinguishes deployed versions.** `app/static/` did not change
+  between `0.6.0` and `0.7.0`, so `css_v` could not verify the deploy and neither could anything
+  else reachable without logging in. Decide the verification handle **before** cutting next time;
+  a version string on `/healthz` would end this class of doubt permanently and does not exist.
+- **The `workflow` token scope is now persistently granted** (needed to push `ci.yml` for #218).
+  It was previously withheld on purpose. Either revoke it after workflow work or drop that
+  rationale from the notes — do not leave a claimed protection that no longer holds.
+- **`docs/status.md` is no longer auto-loaded.** `CLAUDE.md` was split on 2026-08-17 and keeps
+  only a pointer, so this file is *more* likely to go unread and stale than before, not less.
 
-```bash
-cd /opt/budget-buddy && printf 'TAG=0.6.0\n' >> .env && grep '^TAG=' .env   # 1. pin first
-scp docker-compose.yml <droplet>:/opt/budget-buddy/                          # 2. then the file
-docker compose ps --format '{{.Service}} {{.Image}}'                         # 3a. still :0.6.0
-mv .env .env.bak && docker compose config; mv .env.bak .env                  # 3b. MUST fail
-```
-
-Until 3b fails naming `TAG`, this fix is **unverified in production** — the deploy workflows pass
-`TAG=` explicitly either way, so a green release proves nothing about it. ⚠️ This runs **from a Mac
-terminal**, not from the dev VM — see `CLAUDE.local.md` for why the Droplet is unreachable there.
-
-- **PR #194 — `sql/35_variable_bills.sql`**, standing alone. `schedules.is_variable_amount`,
-  `transactions.schedule_id` (nullable, `ON DELETE SET NULL`, indexed), and `reminder_log.source`
-  gaining `'posted'`; mirrored into `schema.sql`. Verified against a throwaway `postgres:16`: it
-  applies to **main's** `schema.sql`, is re-runnable, and a migrated database is identical to a
-  fresh one — 130 columns, 54 constraints, every index diffed. ⚠️ The first constraint diff was a
-  **false green** (both sides errored on a `"char"` cast, so `diff` compared two empty files);
-  print the line count next to the verdict.
-- **PR #193 / #190 — the `${TAG}` trap is now enforced, not documented.** See the Key Gotchas.
-  Both `release.yml` and `rollback.yml` pin the version into `.env`; `rollback.yml` needs it
-  *more* (without it a rollback leaves the box naming the version it rolled away from, so the
-  next bare `up -d` rolls production forward again). Also fixed: `RUNBOOK.md` §6's manual fallback
-  carried a bare `docker compose pull`, the exact thing issue #22 exists to prevent.
-- **PR #195 / #191 — a push alert when a variable-amount bill posts.** See the gotcha for why it
-  reads the ledger rather than the schedules. `gotcha-auditor` on the branch: no violations.
-- **PR #198 / #197 — `docker compose down -v` is no longer denied** in `.claude/settings.json`.
-  Local development moved into an isolated Linux VM on 2026-08-13/14, so the dev database is
-  reproducible (`seed_dev.py`, or a dump via `restore_check.py`) and the deny bought nothing.
-  ⚠️ **The `git push --force` denies deliberately STAYED** — an isolated dev box bounds the
-  filesystem and the credentials, not the remote, so a force-push still reaches GitHub. Do not
-  "finish the job" by relaxing those too. `Read(./.env)` also stays; it is about keeping secrets
-  out of transcripts, which isolation does not affect.
-
-⚠️ **The operational backlog cleared on 2026-08-10** (five PRs, closing #160, #159, #153, #150;
-tests 843 → 875; no migration) and every effective change was already in place, so **there was
-nothing to release** at that point — the log limits were applied to the Droplet by hand,
-`restore_check.py` runs from the maintainer's machine, `schema.sql` is inert on an existing
-database, and the rest was CI and docs. That conclusion held only until #191 landed. The durable
-lesson from that session: **every guard involved was already broken or vacuous, and all were
-green** — the migrations job, the path filter that would have run it, a missing `ON_ERROR_STOP`,
-a drift check that structurally could not see `sql/30`, and a documented restore procedure whose
-"throwaway database" command targeted the *development* database. None of it was visible from a
-dashboard; all of it was visible from running the thing and checking the exit code.
+**Applied to production this session:** #190's `${TAG}` fix, which had been merged-but-unapplied
+since 2026-08-13. The ordering resolved itself — `release.yml` step 0 writes the `.env` pin
+before any other compose command, so the `scp` of the new compose file became safe afterwards
+rather than needing a hand-typed pin first. ⚠️ The sequence previously recorded here started
+with `printf 'TAG=0.6.0' >> .env`; following that *after* a deploy would append a second `TAG=`
+line. Check `grep -c '^TAG=' .env` is exactly 1.
 
 ### Standing decisions — settled, do not re-open
 
@@ -118,7 +81,24 @@ trusting any figure written here.**
 ⚠️ `CHANGELOG.md` is the durable per-change record and the GitHub Releases carry the ship notes.
 What is kept here is only what a future session would otherwise re-derive.
 
-- **`0.6.0` (2026-08-10) — prod runs `ghcr.io/caddismaster/budget-buddy:0.6.0`.** Background jobs
+- **`0.7.0` (2026-08-17) — prod runs `ghcr.io/caddismaster/budget-buddy:0.7.0`.** Variable-amount
+  bill alerts (#191) and pending rows pinned to page 1 (#210). One additive migration
+  (`sql/35_variable_bills.sql`), applied automatically by `release.yml` step 2. Reusable lessons:
+
+  ⚠️ **`css_v` could not verify this deploy, and neither could anything else public** —
+  `app/static/` was byte-identical to `0.6.0` and `sw.js` still read `bb-static-v3`. The deploy
+  was confirmed from the box's own output instead, which is the only place the ordering is
+  observable: `pinned TAG=0.7.0` → `backup ok` → `Applied 1 migration(s).` → pull → up, with
+  `db … Up 6 days` proving the database container was **not** recreated. Ask what will be
+  observable from outside *before* cutting.
+
+  ⚠️ **Three of the four defects fixed this cycle were in the release tooling, not the app**,
+  and each was found by *using* it rather than by testing it — the suite was green throughout.
+  Two were the same defect recurring in the same file days apart, past a comment describing it
+  exactly. That is the case for changing a mechanism rather than a document; see
+  `docs/testing.md`.
+
+- **`0.6.0` (2026-08-10) — shipped `ghcr.io/caddismaster/budget-buddy:0.6.0`.** Background jobs
   you can check on (`app/jobs.py`, the `/settings` panel) plus `scripts/release_prep.py`. One
   additive migration (`sql/34_job_runs.sql`). Verification lessons, all reusable: **the app logs
   NOTHING when the scheduler starts**, so an empty `logs | grep -i scheduler` is not evidence —
