@@ -132,11 +132,13 @@ Details, including the xdist isolation rules that make `-n auto` safe, are in
 - It **refuses to run while another run is in flight** (an advisory `flock`) — two concurrent runs
   corrupt each other through identical xdist prefixes
 - Defaults to a bounded `-n 10`; `-n0` is the serial escape for `pdb` or unreadable output
-- **912 tests** (measured 2026-08-17). ⚠️ Recount rather than trusting that number — it has been
+- **921 tests** (measured 2026-08-17; `910 passed, 11 skipped` inside the shipped image). ⚠️ Recount rather than trusting that number — it has been
   wrong four times running
-- Also runs in CI, and **inside the shipped image** when `Dockerfile`/`requirements*.txt` change.
-  ⚠️ The dev bind mount hides files `.dockerignore` strips, so a green local run says nothing about
-  the real artifact
+- Also runs in CI, and **inside the shipped image** when `Dockerfile`, `requirements*.txt`,
+  `tests/` or `ci.yml` change (widened in #218 — a `tests/`-only change used to skip it, which is
+  how the same defect reached `main` twice). ⚠️ The dev bind mount hides files `.dockerignore`
+  strips, so a green local run says nothing about the real artifact — a test reading a repo file
+  needs a `skipif` guard, not a passing assertion
 
 ## Versioning
 
@@ -228,13 +230,14 @@ server itself — **read it before touching anything on the Droplet.**
 describes the last session rather than the current tree, and it asserts rather than going quiet.
 **Reconcile against `git log` and `gh issue list` at the start of every session.**
 
-- **Prod runs `0.6.0`; `main` is ahead of it** and there is something to release (#191 is
-  user-facing). A release needs the What's-new strip written and the usual gate. Not cut — Sean's call
-- ⚠️ **#203 blocks closing the `0.7.0` milestone** — a compounding trailing newline in
-  `scripts/release_prep.py`, i.e. in the tool used to cut the release it blocks
-- ⚠️ **#190's fix is merged but NOT APPLIED TO PRODUCTION**, and merging cannot apply it — the
-  Droplet holds an `scp`-ed compose file. The `.env` pin must land **before** the new compose file.
-  See `docs/status.md` for the exact sequence
+- **Prod runs `0.7.0`, shipped and verified 2026-08-17.** `main` is level with it apart from
+  the docs commit that records this. The `0.7.0` milestone is closed; **no milestone is open**,
+  so the next cycle needs one created
+- **#36 is the only open issue** — date-parked to ~Dec 2026, correctly carries no milestone
+- ⚠️ **Nothing on the public surface distinguishes one deployed version from the next** —
+  `app/static/` did not change between `0.6.0` and `0.7.0`, so `css_v` could not verify the
+  deploy. Decide the verification handle **before** cutting; a version on `/healthz` would end
+  this permanently and does not exist yet
 - **Standing decisions that must not be re-opened** are listed in `docs/status.md`. Check there
   before re-filing anything that looks like an obvious improvement
 

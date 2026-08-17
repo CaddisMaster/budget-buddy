@@ -121,7 +121,7 @@ install cost ~1.5s and total per-invocation overhead ~2.9s, cut to ~0.8s by #70.
 predicted to "roughly halve" the run; it actually cut it by ~12×, because the suite is
 IO/DB-bound rather than CPU-bound and parallelises far better than a CPU-bound suite would.
 
-**912 tests in `tests/`** (measured 2026-08-17; 5 of them skip on the last day of a month — `test_forecast.py`'s date guards, and 1 more skips *inside the shipped image* — see the `.dockerignore` gotcha). ⚠️ **Recount rather than trusting this number** — it has now been wrong four times (757 against a true 762 on 2026-08-03, 783 against a true 806 on 2026-08-04, 806 against a true 843 on 2026-08-10, 906 against a true 912 on 2026-08-17), so the drift is real and the month-end skips do not explain it. Cross-cutting patterns: **no real API calls anywhere** — every
+**921 tests in `tests/`** (measured 2026-08-17, end of session; 5 of them skip on the last day of a month — `test_forecast.py`'s date guards. ⚠️ **Inside the shipped image the run is `910 passed, 11 skipped`** — real-file tests skipping because `.dockerignore` strips `*.md`. Two legitimately different numbers; do not "fix" the gap.) ⚠️ **Recount rather than trusting this number** — it has now been wrong four times (757 against a true 762 on 2026-08-03, 783 against a true 806 on 2026-08-04, 806 against a true 843 on 2026-08-10, 906 against a true 912 on 2026-08-17), so the drift is real and the month-end skips do not explain it. Cross-cutting patterns: **no real API calls anywhere** — every
 `ai.py::_call_*_model` seam (and `mailer.py::_call_resend`) is monkeypatched with canned
 `SimpleNamespace` responses; every feature file asserts **user isolation**; route tests assert
 anon → 302. What each file covers:
