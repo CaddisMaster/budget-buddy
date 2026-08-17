@@ -255,28 +255,9 @@ def test_the_rest_of_the_roll_is_unchanged_apart_from_the_final_newlines():
     assert a.rstrip("\n") == b.rstrip("\n")
 
 
-def test_the_real_changelog_does_not_grow_a_newline():
-    """⚠️ Against the REAL file, which is where this was found. The fixture
-    above is trimmed, and a fix that satisfies it without handling the real
-    file's tail would be useless on the day the release is cut.
-
-    ⚠️ Only the file's TAIL is under test, so both inputs that change on every
-    release are neutralised: `[Unreleased]` is seeded (it is empty immediately
-    after a release is cut, which would raise "nothing to release"), and the
-    version rolled is one that can never already exist. The first cut of this
-    test pinned the real 0.7.0 and went red the moment 0.7.0 was rolled —
-    a test that fails on release day is worse than no test."""
-    real = (release_prep.__file__.rsplit("/scripts/", 1)[0] + "/CHANGELOG.md")
-    with open(real, encoding="utf-8") as fh:
-        text = fh.read()
-    seeded = text.replace(
-        "## [Unreleased]\n",
-        "## [Unreleased]\n\n### Added\n\n- Seeded by the test.\n",
-        1,
-    )
-    assert "### Added" in seeded, "seeding failed — the heading shape moved"
-    rolled = release_prep.roll_changelog(seeded, "99.0.0", RELEASE_DATE)
-    assert _trailing_newlines(rolled) == 1
+# The real-file counterpart of these lives with the other real-file tests at the
+# bottom of this module — it needs the `REAL_CHANGELOG.exists()` skip guard, and
+# that constant is defined down there.
 
 
 # ── Refusals ─────────────────────────────────────────────────────────────────
@@ -590,6 +571,35 @@ def test_it_parses_the_real_changelog():
     assert "## [9.9.9] - 2026-08-10" in rolled
     # Derived from the file, never hardcoded — see the warning above.
     assert f"compare/{previous}...v9.9.9" in rolled
+
+
+@pytest.mark.skipif(not REAL_CHANGELOG.exists(), reason=_NOT_IN_IMAGE)
+def test_the_real_changelog_does_not_grow_a_newline():
+    """The #203 counterpart of the fixture tests above, against the REAL file —
+    the trimmed fixture does not reproduce the growth on its own.
+
+    ⚠️ Two traps, both of which this test hit before it settled here:
+
+    1. **It must skip when the file is absent.** `.dockerignore` strips `*.md`,
+       so `CHANGELOG.md` is not in the shipped image. Without the guard above
+       this goes red in the in-image CI step, asserting the image is wrong when
+       it is right — exactly #176, which is what the comment block above is for.
+       The first cut of this test omitted the guard and did precisely that.
+    2. **It must not pin a real version.** The first cut rolled the literal
+       `0.7.0` against the real file; the moment `0.7.0` was cut, that version
+       existed and `[Unreleased]` was empty, so the call raised instead of
+       returning. Only the file's TAIL is under test, so both inputs that move
+       every release are neutralised: seed `[Unreleased]`, and roll a version
+       that can never exist."""
+    text = REAL_CHANGELOG.read_text(encoding="utf-8")
+    seeded = text.replace(
+        "## [Unreleased]\n",
+        "## [Unreleased]\n\n### Added\n\n- Seeded by the test.\n",
+        1,
+    )
+    assert "- Seeded by the test." in seeded, "seeding failed — heading shape moved"
+    rolled = release_prep.roll_changelog(seeded, "99.0.0", RELEASE_DATE)
+    assert _trailing_newlines(rolled) == 1
 
 
 @pytest.mark.skipif(not REAL_DASHBOARD.exists(), reason=_NOT_IN_IMAGE)
