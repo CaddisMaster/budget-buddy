@@ -8,6 +8,8 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-17
+
 ### Added
 
 - **Bills whose amount changes every month can now tell you when they post.**
@@ -632,7 +634,8 @@ lineage, most recent first:
 - **v9.0** — conversational transaction entry (first AI feature)
 - **v1–v8** — core CRUD and deployment, UI overhaul, multi-user authentication, blueprints and pytest, ownership guards, transfers and goals, smart budgets, HTMX inline CRUD and CI
 
-[Unreleased]: https://github.com/CaddisMaster/budget-buddy/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/CaddisMaster/budget-buddy/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/CaddisMaster/budget-buddy/compare/v0.4.0...v0.4.1
@@ -641,4 +644,3 @@ lineage, most recent first:
 [0.3.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/CaddisMaster/budget-buddy/releases/tag/v0.1.0
-
