@@ -8,16 +8,24 @@ budget.seandesmet.com on a DigitalOcean Droplet behind Nginx + Gunicorn with Let
 > in that area.** Each entry below is a defect that already happened at least once, so a pointer
 > being unread is the failure mode to guard against.
 >
-> | Read this | Before you |
+> ⚠️ **The left column is the ACTION, not the topic** (rewritten 2026-08-18). It used to read
+> "before you *touch issue triage*", and a session filing an issue did not recognise itself in
+> that description — so the rule went unread and the run it was meant to prevent fired anyway.
+> A trigger you can match against the command you are about to type needs no judgement; a
+> trigger phrased as a subject area needs you to classify your own work correctly first, which
+> is exactly the step that failed.
+>
+> | Before you… | Read |
 > |---|---|
-> | [`docs/gotchas.md`](docs/gotchas.md) | change anything non-trivial — the full load-bearing invariant list |
-> | [`docs/architecture.md`](docs/architecture.md) | need the full module map or exact table columns |
-> | [`docs/testing.md`](docs/testing.md) | add or change tests, or sweep a pattern across files |
-> | [`docs/status.md`](docs/status.md) | start a session — what's on `main`, settled decisions, release lessons |
-> | [`docs/delegation.md`](docs/delegation.md) | spawn a worker agent, or touch issue triage |
-> | [`docs/deployment.md`](docs/deployment.md) | cut a release, add an env var, or apply a migration |
-> | [`RUNBOOK.md`](RUNBOOK.md) | touch the server itself |
-> | [`CONTRIBUTING.md`](CONTRIBUTING.md) | need the workflow rationale rather than the rule |
+> | start a session — reconcile against `git log` / `gh issue list` | [`docs/status.md`](docs/status.md) |
+> | change anything non-trivial in `app/` | [`docs/gotchas.md`](docs/gotchas.md) |
+> | write or change anything under `tests/`, or sweep a pattern across files | [`docs/testing.md`](docs/testing.md) |
+> | run `gh issue create`, or edit `.github/workflows/claude-triage.yml` | [`docs/delegation.md`](docs/delegation.md) |
+> | spawn a worker agent (`sweeper`, `test-first`, the two reporters) | [`docs/delegation.md`](docs/delegation.md) |
+> | add a file under `sql/`, add an env var, or cut a release | [`docs/deployment.md`](docs/deployment.md) |
+> | need the full module map or the exact columns of a table | [`docs/architecture.md`](docs/architecture.md) |
+> | run anything on the Droplet | [`RUNBOOK.md`](RUNBOOK.md) |
+> | want the reasoning behind a workflow rule rather than the rule | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
 
 ## Tech Stack
 
@@ -117,6 +125,12 @@ These apply to nearly every change, which is why they are here rather than in `d
 - Run **`./test.sh`** (full suite, ~35–55s). Do not ration test runs, and do not delegate running them
 - New behaviour gets a test that **fails without it**
 - Update `CHANGELOG.md` under `## [Unreleased]` in every PR
+- **Automated issue triage is OPT-IN**: the `triage` label runs
+  `.github/workflows/claude-triage.yml` (~$0.50 of subscription budget per run). The two issue
+  templates and the in-app feedback route apply it themselves, so an issue **filed by hand from
+  a session carries no label and is deliberately not reviewed** — the code was just read. Add
+  `--label triage` only when a second opinion is genuinely wanted; `gh workflow run
+  claude-triage.yml -f issue=<n>` gets one after the fact
 - A **schema migration always stands alone in its own PR**. Deploy ordering: additive migrations go
   **before** the image pull, DROPs **after**
 - `ai.py` never touches the DB and never sees a user id — tool dispatch is a callback the blueprint

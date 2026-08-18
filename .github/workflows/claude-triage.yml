@@ -12,8 +12,10 @@
 # `blank_issues_enabled: false` in ISSUE_TEMPLATE/config.yml means every issue
 # opened through the UI — including the GitHub mobile app, which is the point of
 # #94 — arrives carrying `bug` or `enhancement`, so the label is a reliable
-# signal. Only API/CLI-created issues can arrive unlabelled; those fall through
-# to TRIAGE, which is the pre-#94 behaviour.
+# signal. ⚠️ Since triage became OPT-IN (2026-08-18) those templates also carry
+# `triage`, which is what makes a UI-filed issue reviewed and a hand-filed one
+# not. An API/CLI issue that arrives with no labels is now SKIPPED rather than
+# falling through to TRIAGE — see the resolver's note below.
 #
 # READ-ONLY BY DESIGN. This posts a comment and nothing else — no branch, no
 # commit, no PR, and it does NOT edit the issue body. The permissions block below
@@ -33,8 +35,8 @@ on:
     types: [opened]
   # Manual run against an issue that already exists (#96) — `gh workflow run
   # claude-triage.yml -f issue=87`. What it buys: an issue opened before this
-  # workflow existed, or one carrying `skip-triage`, can still be reviewed on
-  # demand without closing and re-filing it to change its number.
+  # workflow existed, or one carrying no `triage` label, can still be reviewed
+  # on demand without closing and re-filing it to change its number.
   #
   # ⚠️ It does NOT let you test a change to this workflow before merging, and
   # the `--ref <branch>` flag will not help. claude-code-action refuses to run
@@ -89,23 +91,33 @@ jobs:
       # evaluates false on every dispatch and would send an `enhancement` issue
       # down the TRIAGE path. Querying works identically for both triggers.
       #
-      # `skip-triage` (#98) suppresses the automatic run. It exists because an
-      # issue written during a Claude Code session has already had the code read
-      # and the analysis done — re-reviewing it seconds later mostly restates
-      # work that just happened. Measured on 2026-07-29: #94 and #96 were both
-      # auto-triaged, cost roughly $0.50 each against the subscription, and
-      # neither comment was ever read by anyone. The two runs that DID find
-      # something (#86, #87) were both dispatched deliberately, at a moment a
-      # second opinion was actually wanted.
+      # ⚠️ TRIAGE IS OPT-IN, and the `triage` label is what opts in. Inverted
+      # 2026-08-18, after the previous `skip-triage` opt-OUT was forgotten on
+      # the very issue that proposed fixing it.
       #
-      # It cannot be an author check — `gh` authenticates as the repo owner, so
-      # a session-filed issue and a phone-filed one have the same author. The
-      # label is applied by hand at creation; forgetting it costs one run.
+      # Why a run is not wanted by default: an issue written during a Claude
+      # Code session has already had the code read and the analysis done, so
+      # re-reviewing it seconds later mostly restates work that just happened.
+      # Measured on 2026-07-29: #94 and #96 were both auto-triaged, cost roughly
+      # $0.50 each against the subscription, and neither comment was ever read.
+      # The two runs that DID find something (#86, #87) were both dispatched
+      # deliberately, at a moment a second opinion was actually wanted.
       #
-      # ⚠️ A DISPATCH IGNORES `skip-triage` ON PURPOSE. Dispatching is already a
-      # deliberate act, and the issues most worth a second read are exactly the
-      # hand-written ones that carry the label — honouring it here would make
-      # them the only issues that could never be reviewed.
+      # ⚠️ An author check still cannot work — `gh` authenticates as the repo
+      # owner, so a session-filed issue and a phone-filed one have the same
+      # author. What DOES discriminate is how the issue was filed: both
+      # ISSUE_TEMPLATE files carry `labels: [..., "triage"]`, and
+      # `app/blueprints/feedback.py` adds TRIAGE_LABEL, so anything filed
+      # through the web UI, the mobile app or the in-app form opts in by itself.
+      # An issue filed by hand with `gh issue create` carries only what was
+      # passed — which is exactly the set that should not be triaged.
+      #
+      # The failure mode is now the harmless one: forgetting the label costs a
+      # review nobody asked for, rather than $0.50 and a comment nobody reads.
+      #
+      # ⚠️ A DISPATCH IGNORES THE LABEL ON PURPOSE, as it always did.
+      # Dispatching is already a deliberate act, and the issues most worth a
+      # second read are exactly the hand-written ones that carry no label.
       #
       # The issue number is passed through `env:` and NOT interpolated straight
       # into the run block. A `${{ inputs.issue }}` inside the script would be
@@ -129,14 +141,14 @@ jobs:
 
           labels="$(gh issue view "$ISSUE" --repo "$GITHUB_REPOSITORY" \
                       --json labels -q '.labels[].name')"
-          has_skip=false
+          has_triage=false
           has_enhancement=false
           while IFS= read -r label; do
-            [ "$label" = "skip-triage" ] && has_skip=true
+            [ "$label" = "triage" ] && has_triage=true
             [ "$label" = "enhancement" ] && has_enhancement=true
           done <<< "$labels"
 
-          if [ "$has_skip" = true ] && [ "$GITHUB_EVENT_NAME" = "issues" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "issues" ] && [ "$has_triage" != true ]; then
             mode=skip
           elif [ "$has_enhancement" = true ]; then
             mode=specify
@@ -146,8 +158,8 @@ jobs:
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
 
           if [ "$mode" = skip ]; then
-            echo "Issue #$ISSUE carries skip-triage — no automatic review." \
-                 "Dispatch manually if a second read is wanted." >> "$GITHUB_STEP_SUMMARY"
+            echo "Issue #$ISSUE does not carry the 'triage' label — no automatic" \
+                 "review. Dispatch manually if one is wanted." >> "$GITHUB_STEP_SUMMARY"
           fi
           echo "Issue #$ISSUE -> $mode (event: $GITHUB_EVENT_NAME)"
 
