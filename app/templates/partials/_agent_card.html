@@ -3,7 +3,7 @@
    created_at} or None (never run yet — the empty state carries the Run-now
    button). POST /agent/run swaps this whole card. #}
 {# Read-state collapse (v10.15) — see _insight_card.html. #}
-<details id="agent-card" class="card ai-card agent-card" data-ai-key="agent"
+<details id="agent-card" class="ai-section agent-card" data-ai-key="agent"
          {%- if agent_run and agent_run.created_at %} data-generated="{{ agent_run.created_at.isoformat() }}"{% endif %}
          {%- if just_generated or not agent_run %} open{% endif %}>
   <summary class="ai-head">

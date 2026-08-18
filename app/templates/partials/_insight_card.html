@@ -3,7 +3,7 @@
    cached yet (the Generate button must stay reachable without JS) or when the
    generate route just swapped this fragment in. initAiCollapse (base.html)
    opens unseen content and records data-generated in localStorage. #}
-<details id="insight-card" class="card ai-card insight-card" data-ai-key="insight"
+<details id="insight-card" class="ai-section insight-card" data-ai-key="insight"
          {%- if insight and insight.created_at %} data-generated="{{ insight.created_at.isoformat() }}"{% endif %}
          {%- if just_generated or not insight %} open{% endif %}>
   <summary class="ai-head">

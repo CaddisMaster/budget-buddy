@@ -10,6 +10,31 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The Home page opens with the answer now.** It used to open with a What's-new
+  strip, a quick-add box and a month dropdown, and only then tell you where the
+  month stood — and it printed your net position twice, three lines apart, in the
+  same panel. The page now leads with the month's net position; the strip and the
+  quick-add sit underneath it, and Net is stated once, with income and expenses
+  beside it rather than repeated below.
+
+  **Where your money went is now a ranked list rather than a doughnut.** Six
+  categories, longest first, each with its name on the row and its amount beside
+  it — no legend to read across, and the same colours as before. The
+  expenses/income switch works exactly as it did.
+
+  **Everything the AI writes about the month is now one panel** — the monthly
+  insight, the forecast, the weekly money check and the Ask box were four
+  separate cards saying four things about one month, and they are now four
+  sections of a single "This month's read", with Ask at its foot. Each still
+  generates, refreshes and remembers what you've read independently.
+
+  **The year-over-year comparison is one line** instead of three full-height
+  cards, leading with the percentage, which is the number the comparison exists
+  to give you.
+
+  The six charts are unchanged and still live in the section at the bottom of the
+  page, which still opens on desktop and stays closed on a phone.
+
 - **Budget Buddy looks like something now, rather than like a form.** The app has
   always been legible — sensible colours, a real dark mode, charts you can read —
   but every surface carried the same weight, the same one blue and the same

@@ -56,9 +56,14 @@ def test_charts_section_is_collapsible(client_a):
     # v10.13 de-scroll: the chart grid sits inside a <details> (open on
     # desktop, collapsed on mobile via JS); the canvases are still always
     # server-rendered.
+    # ⚠️ #223 moved the CATEGORY chart out of this section entirely — it is now
+    # server-rendered ranked bars in the page's own flow (see
+    # test_dashboard_layout.py). This asserts a canvas that is still in the
+    # drawer, so it keeps testing the drawer rather than the doughnut.
     response = client_a.get("/")
     assert b'id="charts-details"' in response.data
-    assert b'id="spendingPie"' in response.data
+    assert b'id="accountBar"' in response.data
+    assert b'id="spendingPie"' not in response.data
 
 
 # --- the moved Ask box ----------------------------------------------------------
@@ -97,8 +102,11 @@ def test_yoy_card_shown_when_month_filtered_with_history(client_a, users):
 
     response = client_a.get(f"/?month={today.strftime('%Y-%m')}")
     assert response.status_code == 200
-    assert b"Year over year" in response.data
-    assert b"Same month last year" in response.data
+    # #223 collapsed three stat cards into one line: the "Year over year"
+    # heading and the "Same month last year" card label went with them, but the
+    # comparison itself — and last year's figure — must still be on the page.
+    assert b'class="yoy-strip"' in response.data
+    assert b"same month last year" in response.data
     assert b"$100.00" in response.data
 
 
@@ -415,7 +423,11 @@ def test_folded_slice_is_coloured_off_the_flag_not_a_series_slot(client_a, users
                            date.today(), category_id=cat_id)
 
     body = client_a.get("/").data.decode()
-    assert "d.is_other ? cssVar('--series-other')" in body
+    # ⚠️ #223 moved this from the doughnut's JS colour function to a class on
+    # the server-rendered bar. The INVARIANT is unchanged and is the reason this
+    # test exists: the folded row is coloured off its is_other FLAG, never off
+    # the label "Other", so a user's real category of that name keeps its hue.
+    assert 's-other' in body, "the folded row does not paint from the fold token"
     # The synthetic row must not carry a palette slot of its own.
     assert "Other" not in _slot_map(body)
 

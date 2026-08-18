@@ -1,6 +1,6 @@
 {% set month_names = ['','January','February','March','April','May','June','July','August','September','October','November','December'] %}
 {# Read-state collapse (v10.15) — see _insight_card.html. #}
-<details id="forecast-card" class="card ai-card forecast-card" data-ai-key="forecast"
+<details id="forecast-card" class="ai-section forecast-card" data-ai-key="forecast"
          {%- if forecast and forecast.created_at %} data-generated="{{ forecast.created_at.isoformat() }}"{% endif %}
          {%- if just_generated or not forecast %} open{% endif %}>
   <summary class="ai-head">

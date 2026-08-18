@@ -346,6 +346,84 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .hero-stat .hero-stat-val.pos { color: var(--on-dark-pos); }
 .hero-stat .hero-stat-val.neg { color: var(--on-dark-neg); }
 
+/* ── #223 Home layout ─────────────────────────────────────────────────────────
+   The Home page said nine things at one volume. These are the surfaces that
+   replaced them; all of them draw on the #225 tokens rather than new values. */
+
+/* The month picker sits in the header row beside the title, not as a labelled
+   form above the fold. */
+.month-picker { margin: 0; }
+.month-picker select { width: auto; min-width: 150px; margin: 0; }
+
+/* Year over year — three stat cards became one line. The change leads because
+   it is the figure the comparison exists to give you. */
+.yoy-strip {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4);
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: var(--sp-3) var(--sp-4);
+  margin-bottom: var(--sp-5);
+}
+.yoy-change { font-family: var(--font-display); font-size: var(--fs-lg); font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.yoy-label { font-size: var(--fs-sm); color: var(--text-muted); }
+.yoy-figures { margin-left: auto; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.yoy-sep { color: var(--text-muted); }
+
+/* Ranked category bars — the doughnut's replacement. Readable without a legend,
+   which is the whole point: the name sits ON the row it describes. */
+.cat-bars-wrap { margin-bottom: var(--sp-5); }
+.cat-bars-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+.cat-bars-head h2 { margin: 0; }
+.cat-bars { display: flex; flex-direction: column; gap: var(--sp-2); }
+.cat-bar-row { display: grid; grid-template-columns: minmax(90px, 130px) 1fr minmax(72px, auto); align-items: center; gap: var(--sp-3); }
+.cat-bar-name { font-size: var(--fs-sm); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-bar-folded { color: var(--text-muted); font-weight: 400; }
+.cat-bar-track { background: var(--surface-2); border-radius: 999px; height: 12px; overflow: hidden; }
+.cat-bar-fill { display: block; height: 100%; border-radius: 999px; transition: width var(--dur-2) var(--ease); }
+/* One rule per palette slot rather than an inline var(--series-{{ n }}) in the
+   template: a token name assembled in Jinja is invisible to
+   test_param_hardening.py's undefined-custom-property scan, which is the only
+   thing standing between a typo'd token and a bar that silently paints
+   nothing. The row carries its slot as a class; the palette stays here.
+   ⚠️ .s-other is NOT a ninth slot — it is the #108 folded tail, painted from
+   the achromatic token so it reads as "not a category", and it is chosen off
+   the row's is_other FLAG, never its label (a user may own a real category
+   named "Other"). */
+.cat-bar-fill.s1 { background: var(--series-1); }
+.cat-bar-fill.s2 { background: var(--series-2); }
+.cat-bar-fill.s3 { background: var(--series-3); }
+.cat-bar-fill.s4 { background: var(--series-4); }
+.cat-bar-fill.s5 { background: var(--series-5); }
+.cat-bar-fill.s6 { background: var(--series-6); }
+.cat-bar-fill.s7 { background: var(--series-7); }
+.cat-bar-fill.s8 { background: var(--series-8); }
+.cat-bar-fill.s-other { background: var(--series-other); }
+.cat-bar-amount { font-family: var(--font-display); font-size: var(--fs-sm); font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+
+/* "This month's read" — one panel, four sections. The nested <details> keep
+   their own ids and swap targets (test_ai_collapse.py), so what changes here is
+   only the chrome: they are sections of a card rather than cards. */
+.month-read { border-left: 3px solid var(--accent-2); padding: var(--sp-4) var(--sp-5); }
+.month-read-head { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.month-read-head h2 { margin: 0; }
+.month-read .ai-section { border: none; border-radius: 0; box-shadow: none; background: none; padding: 0; margin: 0; }
+.month-read .ai-section + .ai-section,
+.month-read .ask-foot { border-top: 1px solid var(--border); margin-top: var(--sp-3); padding-top: var(--sp-3); }
+/* The section headings step down: the panel owns the h2 voice now. */
+.month-read .ai-head h2 { font-size: var(--fs-base); font-weight: 600; }
+/* One spark and one badge, on the panel head — not four of each. */
+.month-read .ai-section .ai-spark,
+.month-read .ai-section .ai-badge { display: none; }
+
+.ask-foot { display: flex; flex-direction: column; gap: var(--sp-2); }
+.ask-label { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
+
+/* Home's two-column band: the bars carry the detail, the read carries the
+   words. Single column below the tablet breakpoint (see the media block). */
+@media (min-width: 1100px) {
+  .home-band { display: grid; grid-template-columns: 1.35fr 1fr; gap: var(--sp-4); align-items: start; }
+  .home-band > * { margin-bottom: 0; }
+}
+
 /* Chart grid — two-up on wide screens, each in its own card */
 .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.1rem; margin-bottom: 1.5rem; }
 .chart-card { background: var(--surface-raise); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: 1.2rem 1.25rem; }
@@ -688,13 +766,6 @@ tr:hover td.report-miss { background: var(--danger-soft); }
 .trend-rising { color: var(--danger); }
 .trend-easing { color: var(--success); }
 .trend-steady { color: var(--text-muted); }
-
-/* v10.9 merged dashboard — Insight + Forecast share a row on wide screens;
-   a lone card (only one of the two showing) stretches full width. */
-.ai-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 1rem; align-items: start; margin-bottom: 1rem; }
-/* No height:100% here (was pre-v10.15): a collapsed card must not stretch to
-   match an expanded sibling — align-items:start sizes each to its content. */
-.ai-row .card { margin-bottom: 0; }
 
 /* Reduced motion (#225) — the whole of the above, switched off in one place.
    ⚠️ Written as `!important` against a wildcard on purpose: this must beat every

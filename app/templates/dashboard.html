@@ -1,8 +1,59 @@
 {% extends 'base.html' %}
 {% block title %}Home — Budget Buddy{% endblock %}
 {% block content %}
-<h1>Home</h1>
+{# #223 — the page opens with the month's answer, not with furniture. Order
+   is deliberate: header → hero → (strip, quick-add) → comparison → detail.
+   ⚠️ The What's-new strip below MOVED but its markup is byte-identical on
+   purpose: scripts/release_prep.py rewrites it by string surgery. Move it
+   freely; do not restyle it here.
+   ⚠️⚠️ And do NOT name that tool's marker strings in a comment — this one
+   originally spelled them out, and release_prep partitions the file on the
+   body marker, so it split on THIS COMMENT instead of the strip and reported
+   the strip as malformed. test_release_prep.py::test_it_parses_the_real_dashboard_strip
+   is what caught it. #}
+<div class="page-topbar">
+  <h1 style="margin-bottom:0">Home</h1>
+  <form method="get" class="month-picker">
+    <select name="month" onchange="this.form.submit()" aria-label="Filter by month">
+        <option value="">All months</option>
+        {% for m in months %}
+        <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ m }}</option>
+        {% endfor %}
+    </select>
+  </form>
+</div>
 
+
+
+{% if has_transactions %}
+<div class="hero">
+    <div class="hero-top">
+        <div>
+            <div class="hero-label">Net position · {{ summary.label }}</div>
+            <div class="hero-net {{ 'pos' if summary.net >= 0 else 'neg' }}">
+                {{ '−' if summary.net < 0 else '+' }}${{ summary.net|abs|money }}
+            </div>
+            <div class="hero-caption">
+                {% if summary.savings_rate is not none %}
+                    {{ "%.0f"|format(summary.savings_rate) }}% of income kept
+                {% else %}
+                    Income vs. expenses
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="hero-stats">
+        <div class="hero-stat">
+            <div class="hero-stat-label">Income</div>
+            <div class="hero-stat-val pos">${{ summary.income|money }}</div>
+        </div>
+        <div class="hero-stat">
+            <div class="hero-stat-label">Expenses</div>
+            <div class="hero-stat-val neg">${{ summary.expenses|money }}</div>
+        </div>
+    </div>
+</div><!--/hero-->
+{% endif %}
 {# ── What's new — ONE strip per release (released whenever Sean calls it). On the
    first feature commit after a release ships, REPLACE the strip's contents with
    the CURRENT release: the RELEASE VERSION in the heading + data-version, the
@@ -68,82 +119,100 @@
   });
 })();
 </script>
-
 {% include 'partials/_quick_add.html' %}
 {# Pre-filled form appears here after a quick-add parse; empty until then. #}
 <div id="txn-form-wrap"></div>
-
-<form method="get" style="margin-bottom:1rem">
-    <label>Filter by month</label>
-    <select name="month" onchange="this.form.submit()">
-        <option value="">All months</option>
-        {% for m in months %}
-        <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ m }}</option>
-        {% endfor %}
-    </select>
-</form>
-{% if has_transactions %}
-<div class="hero">
-    <div class="hero-top">
-        <div>
-            <div class="hero-label">Net position · {{ summary.label }}</div>
-            <div class="hero-net {{ 'pos' if summary.net >= 0 else 'neg' }}">
-                {{ '−' if summary.net < 0 else '+' }}${{ summary.net|abs|money }}
-            </div>
-            <div class="hero-caption">
-                {% if summary.savings_rate is not none %}
-                    {{ "%.0f"|format(summary.savings_rate) }}% of income kept
-                {% else %}
-                    Income vs. expenses
-                {% endif %}
-            </div>
-        </div>
-    </div>
-    <div class="hero-stats">
-        <div class="hero-stat">
-            <div class="hero-stat-label">Income</div>
-            <div class="hero-stat-val pos">${{ summary.income|money }}</div>
-        </div>
-        <div class="hero-stat">
-            <div class="hero-stat-label">Expenses</div>
-            <div class="hero-stat-val neg">${{ summary.expenses|money }}</div>
-        </div>
-        <div class="hero-stat">
-            <div class="hero-stat-label">Net</div>
-            <div class="hero-stat-val {{ 'pos' if summary.net >= 0 else 'neg' }}">
-                {{ '−' if summary.net < 0 else '' }}${{ summary.net|abs|money }}
-            </div>
-        </div>
-    </div>
-</div>
-{% endif %}
-{% include 'partials/_ask.html' %}
-{% if ai_enabled and (show_insight or show_forecast) %}
-<div class="ai-row">
-    {% if show_insight %}{% include 'partials/_insight_card.html' %}{% endif %}
-    {% if show_forecast %}{% include 'partials/_forecast_card.html' %}{% endif %}
-</div>
-{% endif %}
-{% if ai_enabled %}
-{% include 'partials/_agent_card.html' %}
-{% endif %}
+{# #223 — three full-height stat cards for ONE comparison was the clearest case
+   of the page shouting every figure at the same volume. Same three numbers,
+   one line, with the change leading because it is the one you read. #}
 {% if yoy %}
-<h2>Year over year</h2>
-<div class="stats-grid">
-    <div class="stat-card">
-        <div class="stat-label">{{ selected_month }} spending</div>
-        <div class="stat-value {% if yoy.this_year <= yoy.last_year %}income{% else %}expense{% endif %}">${{ yoy.this_year|money }}</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-label">Same month last year</div>
-        <div class="stat-value">${{ yoy.last_year|money }}</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-label">Change</div>
-        <div class="stat-value {% if yoy.change <= 0 %}income{% else %}expense{% endif %}">{{ '+' if yoy.change > 0 }}{{ yoy.change }}%</div>
-    </div>
-</div>
+<div class="yoy-strip">
+    <span class="yoy-change {% if yoy.change <= 0 %}income{% else %}expense{% endif %}">{{ '+' if yoy.change > 0 }}{{ yoy.change }}%</span>
+    <span class="yoy-label">vs. the same month last year</span>
+    <span class="yoy-figures">${{ yoy.this_year|money }} <span class="yoy-sep">from</span> ${{ yoy.last_year|money }}</span>
+</div><!--/yoy-strip-->
 {% endif %}
+{# #223 — the figures and the words about them, side by side on a wide
+   screen and stacked below 1100px (see .home-band). #}
+<div class="home-band">
+{# #223 — "Spending by category" was a doughnut behind a legend; it is now
+   ranked bars, readable at a glance and without one. Rendered SERVER-SIDE from
+   the same rows that build the chart payload, so a Jinja typo is caught by a
+   content assertion rather than rendering as an empty string.
+   ⚠️ Colour still comes from the row's own `slot` (main.py's
+   assign_series_slots, #111) — slots are 0-indexed and the tokens are 1-based,
+   hence slot + 1. A folded row (#108) carries no slot and paints from the
+   achromatic --series-other, which is what makes it read as "not a category". #}
+{% if has_transactions and category_bars %}
+<section class="cat-bars-wrap">
+  {% set view_titles = {'expense': 'Spending by category', 'income': 'Income by category'} %}
+  {% set first_view = (category_bars.keys() | list)[0] %}
+  <div class="cat-bars-head">
+    <h2 id="categoryChartTitle">{{ view_titles[first_view] }}</h2>
+    {% if category_bars | length > 1 %}
+    <div class="chart-toggle" id="categoryChartToggle">
+        <button type="button" class="active" data-view="expense">Expenses</button>
+        <button type="button" data-view="income">Income</button>
+    </div>
+    {% endif %}
+  </div>
+  {% for view, rows in category_bars.items() %}
+  <div class="cat-bars" data-view="{{ view }}"{% if not loop.first %} hidden{% endif %}>
+    {% for r in rows %}
+    <div class="cat-bar-row">
+      <span class="cat-bar-name">{{ r.category }}{% if r.folded %} <span class="cat-bar-folded">({{ r.folded }})</span>{% endif %}</span>
+      <span class="cat-bar-track">
+        <span class="cat-bar-fill {{ 's-other' if r.is_other else 's' ~ (r.slot + 1) }}" style="width: {{ r.pct }}%"></span>
+      </span>
+      <span class="cat-bar-amount">${{ r.total|money }}</span>
+    </div>
+    {% endfor %}
+  </div><!--/cat-bars-->
+  {% endfor %}
+</section>
+{% if category_bars | length > 1 %}
+<script>
+(() => {
+  // Both lists are already in the DOM, server-rendered; the toggle only flips
+  // which one is hidden. No payload, no redraw, and it works on first paint
+  // rather than waiting on Chart.js.
+  const titles = {expense: 'Spending by category', income: 'Income by category'};
+  const lists = document.querySelectorAll('.cat-bars');
+  document.querySelectorAll('#categoryChartToggle button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      lists.forEach(l => { l.hidden = l.dataset.view !== btn.dataset.view; });
+      document.getElementById('categoryChartTitle').textContent = titles[btn.dataset.view];
+      document.querySelectorAll('#categoryChartToggle button').forEach(
+        b => b.classList.toggle('active', b === btn));
+    });
+  });
+})();
+</script>
+{% endif %}
+{% endif %}
+{# #223 — insight, forecast, the weekly check and Ask were four stacked cards
+   saying four things about one month. They are now sections of ONE panel.
+   ⚠️ The merge is VISUAL only. Each section keeps its own <details> id
+   (#insight-card / #forecast-card / #agent-card), its data-ai-key and its
+   data-generated, because those are its HTMX swap target and its read-state
+   key — test_ai_collapse.py pins all three. The partials dropped `.card` for
+   `.ai-section`; nothing else about them moved.
+   ⚠️ The wrapper is gated on ai_enabled together with its contents: an empty
+   bordered box on an AI-less install would be worse than the four cards. #}
+{% if ai_enabled %}
+<div class="card month-read" id="month-read">
+  <div class="month-read-head">
+    {% include 'partials/_ai_spark.html' %}
+    <h2>This month&rsquo;s read</h2>
+    <span class="ai-badge">AI</span>
+  </div>
+  {% if show_insight %}{% include 'partials/_insight_card.html' %}{% endif %}
+  {% if show_forecast %}{% include 'partials/_forecast_card.html' %}{% endif %}
+  {% include 'partials/_agent_card.html' %}
+  {% include 'partials/_ask.html' %}
+</div><!--/month-read-->
+{% endif %}
+</div><!--/home-band-->
 {% if goals %}
 <h2>Goals</h2>
 {% include 'partials/_goal_summary.html' %}
@@ -166,6 +235,7 @@
 </div>
 <p style="margin-bottom:1.5rem"><a href="{{ url_for('goals.goals') }}">Manage goals →</a></p>
 {% endif %}
+
 {% if has_transactions %}
 {# Collapsible on purpose (v10.13 de-scroll): open on desktop, collapsed on
    mobile. Charts are lazily initialized on first open — Chart.js renders
@@ -173,18 +243,6 @@
 <details id="charts-details" class="charts-details" open>
 <summary><h2>Charts</h2></summary>
 <div class="chart-grid">
-    <div class="chart-card">
-        <div class="chart-head">
-            <h3 id="categoryChartTitle">Spending by category</h3>
-            {% if income_by_category_data %}
-            <div class="chart-toggle" id="categoryChartToggle">
-                <button type="button" class="active" data-view="expense">Expenses</button>
-                <button type="button" data-view="income">Income</button>
-            </div>
-            {% endif %}
-        </div>
-        <canvas id="spendingPie"></canvas>
-    </div>
     <div class="chart-card">
         <h3>Account balances</h3>
         <canvas id="accountBar"></canvas>
@@ -214,6 +272,14 @@ if (window.matchMedia('(max-width: 768px)').matches)
 </script>
 <script src="{{ url_for('static', filename='chart.umd.min.js') }}"></script>
 <script>
+// ⚠️ These two payloads no longer draw anything — #223 replaced the doughnut
+// with server-rendered bars. They stay because they are the CONTRACT that
+// test_dashboard_merge.py asserts against: #108's fold (never more than seven
+// entries, the total conserved, only the synthetic row flagged) and #111's slot
+// distinctness are both read off these literals. Moving those assertions onto
+// the rendered bars would mean rewriting the extraction helper of a file that
+// encodes two production regressions, for no gain. Delete them only together
+// with that file's `_chart_rows`.
 const spendingData = {{ spending_data | tojson }};
 const incomeByCategoryData = {{ income_by_category_data | tojson }};
 const cashFlowData = {{ cash_flow_data | tojson }};
@@ -227,78 +293,6 @@ const _css = getComputedStyle(document.documentElement);
 const cssVar = (n) => _css.getPropertyValue(n).trim();
 // Eight validated categorical hues, read from CSS so dark mode swaps them
 // without a second array here. Order is load-bearing — see style.css.
-const PALETTE = Array.from({length: 8}, (_, i) => cssVar(`--series-${i + 1}`));
-// Each drawn row carries its own palette slot, assigned SERVER-SIDE per view
-// (main.py's assign_series_slots). Creation order is the preference, so a
-// category keeps its familiar hue; a category that would have collided is moved
-// to the lowest free slot instead.
-//
-// ⚠️ This replaced `slot = creation_index % 8`, which WRAPPED — a user's 1st and
-// 9th categories painted the same hex, and with both drawn the chart showed two
-// identical slices (seen in production on 0.3.0). The fix is only safe because
-// the #108 fold caps the chart at 6 real slices against 8 hues, so a free slot
-// always exists. Do not reintroduce a shared name->slot map: the expense and
-// income views must be assigned independently, since their union can exceed the
-// palette while neither view alone does.
-const colorsFor = (data) => data.map(
-    d => d.is_other ? cssVar('--series-other') : PALETTE[(d.slot ?? 0) % PALETTE.length]);
-Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
-Chart.defaults.font.size = 12;
-Chart.defaults.color = cssVar('--text-muted');
-Chart.defaults.borderColor = cssVar('--border');
-Chart.defaults.plugins.legend.labels.boxWidth = 12;
-Chart.defaults.plugins.legend.labels.usePointStyle = true;
-Chart.defaults.plugins.legend.labels.padding = 14;
-const gridColor = cssVar('--border');
-const gridScales = { x: { grid: { color: gridColor } }, y: { beginAtZero: true, grid: { color: gridColor } } };
-
-// Charts (and the pill-toggle listeners that reference them) are built only
-// once the <details> is open, so canvases always have layout when Chart.js
-// measures them.
-let chartsInitialized = false;
-function initCharts() {
-if (chartsInitialized) return;
-chartsInitialized = true;
-// Tracks whichever payload the pill toggle currently has on the canvas, so the
-// tooltip can look the row up by index and report how many categories a folded
-// slice stands for.
-let categoryRows = spendingData;
-const categoryPie = new Chart(document.getElementById('spendingPie'), {
-    type: 'doughnut',
-    data: {
-        labels: spendingData.map(d => d.category),
-        datasets: [{ data: spendingData.map(d => d.total), backgroundColor: colorsFor(spendingData), borderColor: cssVar('--surface'), borderWidth: 2 }]
-    },
-    options: {
-        aspectRatio: 1.6,
-        cutout: '58%',
-        plugins: {
-            legend: { position: 'right' },
-            tooltip: { callbacks: { label: (ctx) => {
-                const base = `${ctx.label}: ${ctx.formattedValue}`;
-                const row = categoryRows[ctx.dataIndex];
-                return row && row.folded ? `${base} (${row.folded} categories)` : base;
-            } } }
-        }
-    }
-});
-// Expense/Income toggle on the category card (buttons only render when the
-// user has categorized income).
-const categoryViews = { expense: spendingData, income: incomeByCategoryData };
-const categoryTitles = { expense: 'Spending by category', income: 'Income by category' };
-document.querySelectorAll('#categoryChartToggle button').forEach(btn => {
-    btn.addEventListener('click', () => {
-        const data = categoryViews[btn.dataset.view];
-        categoryRows = data;
-        categoryPie.data.labels = data.map(d => d.category);
-        categoryPie.data.datasets[0].data = data.map(d => d.total);
-        categoryPie.data.datasets[0].backgroundColor = colorsFor(data);
-        categoryPie.update();
-        document.getElementById('categoryChartTitle').textContent = categoryTitles[btn.dataset.view];
-        document.querySelectorAll('#categoryChartToggle button').forEach(
-            b => b.classList.toggle('active', b === btn));
-    });
-});
 new Chart(document.getElementById('cashFlowBar'), {
     type: 'bar',
     data: {

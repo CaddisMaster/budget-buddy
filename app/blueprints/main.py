@@ -150,6 +150,27 @@ def assign_series_slots(rows, category_order, palette_size=8):
             for r in rows]
 
 
+# #223 — the category doughnut became ranked bars, rendered server-side so a
+# Jinja mistake is caught by a content assertion rather than showing as an empty
+# string. Pure, like fold_chart_tail() and assign_series_slots() above, and it
+# runs AFTER both: it consumes their output and adds only a width.
+#
+# The width is relative to the LARGEST row, not to the total. Bars sized by
+# share of total leave every bar short as soon as spending is spread across
+# categories, which is precisely when the comparison matters; scaling to the
+# biggest row means the ranking is always legible. The figure beside each bar
+# carries the actual amount, so nothing is inferred from the length alone.
+def to_bar_rows(rows):
+    """Add a `pct` (1-100) to each chart row, scaled to the largest. Pure."""
+    biggest = max((float(r['total']) for r in rows), default=0.0)
+    if biggest <= 0:
+        return [{**r, 'pct': 0} for r in rows]
+    # Floor at 1% so a tiny-but-real category still draws something a reader can
+    # see next to its name, rather than an empty track that reads as a bug.
+    return [{**r, 'pct': max(1, round(float(r['total']) / biggest * 100))}
+            for r in rows]
+
+
 @bp.route('/sw.js')
 def service_worker():
     """The PWA service worker (v10.13). Served from the root — a worker's
@@ -427,6 +448,17 @@ def index():
     income_by_category_data = assign_series_slots(income_by_category_data,
                                                   category_order)
 
+    # #223 — the same two views, shaped for the server-rendered bars. Only views
+    # that HAVE rows go in, and insertion order is the display order: the
+    # template shows the first and hides the rest, so a user with income
+    # categorized but nothing spent still sees a populated section rather than
+    # an empty one labelled "Spending by category".
+    category_bars = {}
+    if spending_data:
+        category_bars['expense'] = to_bar_rows(spending_data)
+    if income_by_category_data:
+        category_bars['income'] = to_bar_rows(income_by_category_data)
+
     has_transactions = bool(cash_flow) or bool(spending)
 
     # v10.6 hero — income/expenses/net for the current view (a single selected
@@ -457,6 +489,7 @@ def index():
         yoy=yoy,
         spending_data=spending_data,
         income_by_category_data=income_by_category_data,
+        category_bars=category_bars,
         cash_flow_data=cash_flow_data,
         net_balance_data=net_balance_data,
         account_data=account_data,
