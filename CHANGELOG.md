@@ -8,6 +8,33 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Changed
+
+- **Budget Buddy looks like something now, rather than like a form.** The app has
+  always been legible — sensible colours, a real dark mode, charts you can read —
+  but every surface carried the same weight, the same one blue and the same
+  corner, so nothing on a page ever told you where to look first. This is the
+  first half of that: the shared foundation every page draws from, changed once
+  so that every page changes with it.
+
+  Headings and money are now set in **Space Grotesk**, with **Instrument Sans**
+  for reading — two typefaces that ship inside the app itself rather than being
+  fetched from anyone else's servers. Amounts use tabular figures, so a column of
+  them finally lines up on the decimal point instead of shifting about row to
+  row. The navigation rail is dark in both light and dark mode, which gives the
+  page an edge to sit against. The month's net position gets a deep gradient
+  panel of its own — the one thing on the page that does not look like a card,
+  because it is the one number you came to see. Cards lift slightly under the
+  pointer and settle in when a page loads.
+
+  If you have asked your system for reduced motion, none of that moves: every
+  animation and transition in the app is switched off in one place, and nothing
+  is communicated by movement alone.
+
+  Nothing about what any page *does* has changed, and no figure is computed
+  differently. The Home page's own layout — which is a separate complaint, and a
+  fair one — is next.
+
 ## [0.7.0] - 2026-08-17
 
 ### Added
