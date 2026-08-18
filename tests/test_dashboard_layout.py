@@ -176,3 +176,45 @@ def test_year_over_year_is_one_strip_not_three_cards(client_a, users):
     strip = _between(html, 'class="yoy-strip"', '<!--/yoy-strip-->')
     assert "%" in strip, "the change figure is what the comparison is for"
     assert 'class="stat-card"' not in strip
+
+
+# --- regressions found by LOOKING at the page, not by running it -------------
+#
+# Both of these shipped green through the whole suite and were caught only in a
+# browser screenshot. They are the two failure modes a Flask test client
+# structurally cannot see: markup that is present but invisible, and script that
+# is present but throws.
+
+def test_the_chart_scaffolding_survives_beside_the_bars(client_a, users):
+    # #223 cut the category doughnut out of the inline chart script. The
+    # defaults, the grid colours and the initialization guard were written ABOVE
+    # the doughnut and went with it, leaving `initCharts()` called but never
+    # defined — every chart on the page blank, with the suite still green
+    # because the canvases are in the HTML either way.
+    _seed_month(users["a"])
+    html = client_a.get("/").get_data(as_text=True)
+
+    assert 'id="charts-details"' in html
+    # ⚠️ Word-boundary regexes, not substrings: `"const gridScales" in html`
+    # passes against `const gridScalesXX`, so the first cut of this test could
+    # not tell a rename from a deletion — verified by renaming it.
+    for pattern in (r"\bfunction initCharts\s*\(",
+                    r"\bconst gridScales\b",
+                    r"\bconst gridColor\b",
+                    r"\bChart\.defaults\.font\.family\b"):
+        assert re.search(pattern, html), f"the chart script lost {pattern!r}"
+    # Called and defined, never one without the other.
+    assert re.search(r"\binitCharts\(\)", html)
+
+
+def test_a_hidden_bar_list_is_actually_hidden():
+    # The income list carries `hidden`, but the UA stylesheet's
+    # `[hidden] { display: none }` lives in the user-agent origin — ANY author
+    # `display` declaration beats it. `.cat-bars { display: flex }` therefore
+    # rendered the income list straight under the expense list, and the page
+    # showed Salary as though it were a cost.
+    css = (Path(__file__).resolve().parents[1]
+           / "app" / "static" / "style.css").read_text()
+    rule = re.search(r"\.cat-bars\[hidden\]\s*\{([^}]*)\}", css)
+    assert rule, ".cat-bars[hidden] has no rule, so `hidden` does nothing here"
+    assert "display: none" in rule.group(1)

@@ -370,10 +370,22 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 
 /* Ranked category bars — the doughnut's replacement. Readable without a legend,
    which is the whole point: the name sits ON the row it describes. */
-.cat-bars-wrap { margin-bottom: var(--sp-5); }
+/* Carded like the panel beside it: a naked list next to a bordered card read
+   as though the page had forgotten to finish it. */
+.cat-bars-wrap {
+  background: var(--surface-raise); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-sm);
+  padding: var(--sp-4) var(--sp-5); margin-bottom: var(--sp-4);
+}
 .cat-bars-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-3); }
 .cat-bars-head h2 { margin: 0; }
 .cat-bars { display: flex; flex-direction: column; gap: var(--sp-2); }
+/* ⚠️ Required, not defensive: the UA stylesheet's `[hidden] { display: none }`
+   lives in the user-agent origin, so ANY author `display` declaration beats it.
+   Without this the income list renders straight under the expense list and the
+   page shows Salary as though it were a cost. */
+.cat-bars[hidden] { display: none; }
+
 .cat-bar-row { display: grid; grid-template-columns: minmax(90px, 130px) 1fr minmax(72px, auto); align-items: center; gap: var(--sp-3); }
 .cat-bar-name { font-size: var(--fs-sm); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cat-bar-folded { color: var(--text-muted); font-weight: 400; }
@@ -398,6 +410,17 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .cat-bar-fill.s8 { background: var(--series-8); }
 .cat-bar-fill.s-other { background: var(--series-other); }
 .cat-bar-amount { font-family: var(--font-display); font-size: var(--fs-sm); font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+/* On a phone the three-column row leaves the track about 100px wide, so a
+   category at 17% of the largest draws a 17-pixel stub and the ranking stops
+   being readable — which is the only thing these bars are for. Below 560px the
+   row becomes two lines: the name and the amount on one, the full-width track
+   under them. */
+@media (max-width: 560px) {
+  .cat-bar-row { grid-template-columns: 1fr auto; row-gap: var(--sp-1); }
+  .cat-bar-name { grid-column: 1; }
+  .cat-bar-amount { grid-column: 2; }
+  .cat-bar-track { grid-column: 1 / -1; grid-row: 2; }
+}
 
 /* "This month's read" — one panel, four sections. The nested <details> keep
    their own ids and swap targets (test_ai_collapse.py), so what changes here is
@@ -420,8 +443,17 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 /* Home's two-column band: the bars carry the detail, the read carries the
    words. Single column below the tablet breakpoint (see the media block). */
 @media (min-width: 1100px) {
-  .home-band { display: grid; grid-template-columns: 1.35fr 1fr; gap: var(--sp-4); align-items: start; }
+  .home-band { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(340px, 1fr); gap: var(--sp-4); align-items: start; }
   .home-band > * { margin-bottom: 0; }
+  /* ⚠️ The left column carries the bars AND the goals. With only the bars in
+     it the column ended level with the goals summary and left ~450px of dead
+     space beside a much taller panel — two columns of unequal content is not a
+     layout, it is a gap. The goals are the natural filler: they are what the
+     month's figures are FOR. */
+  .band-main { display: flex; flex-direction: column; }
+  .band-main > :last-child { margin-bottom: 0; }
+  /* Inside a narrow column the goal cards stop trying to sit two-up. */
+  .band-main .goal-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* Chart grid — two-up on wide screens, each in its own card */

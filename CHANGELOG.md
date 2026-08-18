@@ -32,8 +32,11 @@ this project uses the `0.x` versioning scheme described in
   cards, leading with the percentage, which is the number the comparison exists
   to give you.
 
-  The six charts are unchanged and still live in the section at the bottom of the
-  page, which still opens on desktop and stays closed on a phone.
+  Your goals now sit beside the month's read rather than below it, so the page
+  ends where the reading does. The six charts are unchanged and still live in
+  the section at the bottom, which still opens on desktop and stays closed on a
+  phone — where the category bars now put each name and amount on one line with
+  the bar beneath, instead of squeezing the bar into a stub too small to compare.
 
 - **Budget Buddy looks like something now, rather than like a form.** The app has
   always been legible — sensible colours, a real dark mode, charts you can read —
