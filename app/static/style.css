@@ -1,15 +1,49 @@
 /* Reset */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Vendored faces (#225) — served from /static/fonts, NEVER a CDN, so the app
+   stays self-contained and no third party sees a page view. Both are the
+   `latin` subset of the variable font (~52 KB the pair); provenance, licences
+   and how to refresh them are in app/static/fonts/README.md.
+   font-display: swap on purpose — the fallback paints immediately and the real
+   face swaps in, rather than the app flashing blank text on a cold cache. */
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("fonts/space-grotesk-latin-var.woff2") format("woff2-variations");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Instrument Sans";
+  src: url("fonts/instrument-sans-latin-var.woff2") format("woff2-variations");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* Variables */
 :root {
   --sidebar-width: 220px;
   --sidebar-collapsed: 0px;
 
+  /* Type (#225). Space Grotesk carries the character — headings, and every
+     figure that is money. Instrument Sans is the reading face. Both fall back
+     to system-ui, which is what renders while the woff2 loads and for any
+     glyph outside the latin subset. */
+  --font-display: "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+
   /* Palette */
   --accent: #378ADD;
   --accent-hover: #185FA5;
   --accent-soft: #eaf2fb;          /* tinted accent background */
+  /* ⚠️ --accent stays exactly the brand blue because app/static/icons/icon.svg
+     hardcodes it, and the PNG rasters are built from that SVG with no script in
+     the repo to regenerate them. Depth comes from the two gradients below, not
+     from moving this hex — change it and the mark in the sidebar no longer
+     matches the app around it. */
+  --accent-deep: #1B5FBF;          /* the far end of --grad-accent */
   --accent-2: #7c5cff;             /* the "AI assist" accent (all AI features) */
   --accent-2-soft: #efeafe;        /* tinted AI background (badges) */
   --text: #16202b;
@@ -18,9 +52,35 @@
   --bg: #f2f4f7;                   /* page background */
   --surface: #ffffff;             /* cards, sidebar, tables */
   --surface-2: #f7f9fb;           /* subtle raised/nested fill */
+  --surface-raise: #ffffff;       /* cards that sit ON the page rather than in it */
+
+  /* Depth (#225). Two gradients, both deliberately in the BLUE family:
+     --accent-2 means "a model wrote this" everywhere in the app, so a button or
+     a hero borrowing that violet would empty the AI badge of meaning.
+     test_design_system.py::test_the_ai_accent_stays_exclusive_to_ai holds this. */
+  --grad-accent: linear-gradient(120deg, #378ADD 0%, #1B5FBF 100%);
+  --grad-hero: linear-gradient(135deg, #10214A 0%, #1E3A8A 52%, #2B3F9E 100%);
+
+  /* Ink for anything sitting on a saturated fill. Fixed across both themes —
+     the hero is dark in light mode too, so these do not flip. */
+  --on-dark: #ffffff;
+  --on-dark-muted: #A9BEEA;
+  --on-dark-pos: #6EE7B7;
+  --on-dark-neg: #FCA5A5;
+  --hero-rule: rgba(255,255,255,0.18);
+
+  /* The sidebar is dark in BOTH themes (#225) — it is the app's frame, and a
+     white rail beside a white page had nothing to say. */
+  --sidebar-bg: #0B1220;
+  --sidebar-border: #1D2739;
+  --sidebar-ink: #ffffff;
+  --sidebar-ink-muted: #8E9BB3;
+  --sidebar-hover: #161F31;
+  --sidebar-active: #1E2C48;
   --success: #1D9E75;
   --success-soft: #e7f4ef;
   --danger: #E24B4A;
+  --danger-hover: #c43a39;
   --danger-soft: #fceceb;
   --warning: #EF9F27;
 
@@ -53,6 +113,7 @@
   --fs-lg: 20px;
   --fs-xl: 26px;
   --fs-2xl: 34px;
+  --fs-3xl: 46px;                  /* the hero figure, and nothing else */
 
   /* Spacing scale */
   --sp-1: 4px;
@@ -62,10 +123,19 @@
   --sp-5: 24px;
   --sp-6: 32px;
 
-  /* Radius + elevation */
-  --radius: 10px;
-  --radius-sm: 7px;
-  --radius-lg: 14px;
+  /* Motion (#225). Two durations and one easing curve, so everything that
+     moves in the app moves the same way. The curve decelerates hard at the end
+     — it reads as "settling", not "sliding". Every use of these is suppressed
+     wholesale by the prefers-reduced-motion block at the end of this file. */
+  --dur-1: 120ms;                  /* state change you should barely notice */
+  --dur-2: 240ms;                  /* something arriving on screen */
+  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+
+  /* Radius + elevation. Rounder than the pre-#225 scale — 10px read as a
+     utility table, and the app is not one. */
+  --radius: 14px;
+  --radius-sm: 9px;
+  --radius-lg: 20px;
   --shadow-sm: 0 1px 2px rgba(16,32,43,0.05), 0 1px 3px rgba(16,32,43,0.04);
   --shadow-md: 0 2px 6px rgba(16,32,43,0.06), 0 6px 16px rgba(16,32,43,0.06);
   --shadow-lg: 0 8px 30px rgba(16,32,43,0.12);
@@ -80,7 +150,14 @@
     --bg: #12171d;
     --surface: #1b2128;
     --surface-2: #232a32;
+    --surface-raise: #212933;
+    /* Re-stepped, not reused: the light hero gradient is already dark, but on a
+       #12171d page it loses its edge, so the dark steps sit lighter than the
+       light-mode ones rather than darker. */
+    --grad-accent: linear-gradient(120deg, #3987e5 0%, #2A6FD0 100%);
+    --grad-hero: linear-gradient(135deg, #16264F 0%, #24418F 52%, #3348A6 100%);
     --success-soft: #14261f;
+    --danger-hover: #f06462;
     --danger-soft: #2a1a1a;
     /* The same eight hues re-stepped for the dark surface — not an automatic
        flip. Each one clears 3:1 against --surface here, which the light steps
@@ -106,11 +183,28 @@
    status bar from the sampled page background (theme-color is ignored now) —
    without it the bar renders as a gray glass band over the app. */
 html { background: var(--bg); }
-body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: var(--fs-base); color: var(--text); background: var(--bg); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+body { font-family: var(--font-body); font-size: var(--fs-base); color: var(--text); background: var(--bg); line-height: 1.6; -webkit-font-smoothing: antialiased; }
 a { color: var(--accent); text-decoration: none; }
 a:hover { color: var(--accent-hover); }
-h1 { font-size: var(--fs-xl); font-weight: 650; letter-spacing: -0.02em; margin-bottom: var(--sp-5); }
-h2 { font-size: var(--fs-md); font-weight: 600; letter-spacing: -0.01em; margin: var(--sp-5) 0 var(--sp-3); }
+h1 { font-family: var(--font-display); font-size: var(--fs-xl); font-weight: 600; letter-spacing: -0.02em; margin-bottom: var(--sp-5); }
+h2 { font-family: var(--font-display); font-size: var(--fs-md); font-weight: 600; letter-spacing: -0.01em; margin: var(--sp-5) 0 var(--sp-3); }
+h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.01em; }
+
+/* Money is set in the display face with TABULAR figures (#225): proportional
+   digits make a column of amounts wobble line to line and stop the decimal
+   points lining up, which is the clearest tell of a page not designed for
+   money. Applies to every surface that prints an amount — the table cells, the
+   hero, the stat cards, the goal figures.
+   ⚠️ td is deliberately blanket rather than a .money class: amounts appear in
+   ~15 templates' table cells, and one missed class is an invisible defect. */
+td,
+.hero-net, .hero-stat-val, .stat-value,
+.goal-figures, .goal-summary-saved, .credit-meta, .ai-headline {
+  font-variant-numeric: tabular-nums;
+}
+.hero-net, .hero-stat-val, .stat-value, .goal-summary-saved {
+  font-family: var(--font-display);
+}
 
 /* Layout */
 .app-wrapper { display: flex; min-height: 100vh; }
@@ -118,8 +212,8 @@ h2 { font-size: var(--fs-md); font-weight: 600; letter-spacing: -0.01em; margin:
 /* Sidebar */
 .sidebar {
   width: var(--sidebar-width);
-  background: var(--surface);
-  border-right: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--sidebar-border);
   display: flex;
   flex-direction: column;
   position: fixed;
@@ -130,26 +224,26 @@ h2 { font-size: var(--fs-md); font-weight: 600; letter-spacing: -0.01em; margin:
   overflow: hidden;
 }
 .sidebar.collapsed { transform: translateX(calc(-1 * var(--sidebar-width))); }
-.sidebar-header { padding: 1.1rem 1rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
-.brand { display: flex; align-items: center; gap: 9px; font-weight: 650; font-size: var(--fs-md); letter-spacing: -0.02em; color: var(--text); }
+.sidebar-header { padding: 1.1rem 1rem; border-bottom: 1px solid var(--sidebar-border); display: flex; align-items: center; justify-content: space-between; }
+.brand { display: flex; align-items: center; gap: 9px; font-family: var(--font-display); font-weight: 600; font-size: var(--fs-md); letter-spacing: -0.02em; color: var(--sidebar-ink); }
 .brand-mark { width: 26px; height: 26px; flex-shrink: 0; display: block; }
 .brand-mark svg { width: 100%; height: 100%; display: block; }
 .sidebar-title { font-weight: 500; font-size: 15px; }
 .sidebar nav { padding: 0.6rem 0.6rem; }
-.sidebar nav a { display: flex; align-items: center; gap: 11px; padding: 0.55rem 0.7rem; margin: 1px 0; border-radius: var(--radius-sm); color: var(--text-muted); font-size: 14px; font-weight: 500; transition: background 0.15s, color 0.15s; }
+.sidebar nav a { display: flex; align-items: center; gap: 11px; padding: 0.55rem 0.7rem; margin: 1px 0; border-radius: var(--radius-sm); color: var(--sidebar-ink-muted); font-size: 14px; font-weight: 500; transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease); }
 .sidebar nav a svg { width: 18px; height: 18px; flex-shrink: 0; opacity: 0.85; }
-.sidebar nav a:hover { background: var(--surface-2); color: var(--text); }
-.sidebar nav a.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.sidebar nav a:hover { background: var(--sidebar-hover); color: var(--sidebar-ink); }
+.sidebar nav a.active { background: var(--sidebar-active); color: var(--sidebar-ink); font-weight: 600; }
 .sidebar nav a.active svg { opacity: 1; }
-.nav-sep { height: 1px; background: var(--border); margin: 0.5rem 0.7rem; border: none; }
+.nav-sep { height: 1px; background: var(--sidebar-border); margin: 0.5rem 0.7rem; border: none; }
 /* v10.13 nav regroup — non-link section labels between nav groups. */
-.nav-group-label { display: block; padding: 0.7rem 0.7rem 0.15rem; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.nav-group-label { display: block; padding: 0.7rem 0.7rem 0.15rem; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--sidebar-ink-muted); }
 /* Logout is a POST (CSRF-proof) so it's a tiny form — the button must render
    exactly like the sibling nav <a> links. */
 .sidebar nav .nav-logout { margin: 0; }
-.sidebar nav .nav-logout button { display: flex; align-items: center; gap: 11px; width: 100%; padding: 0.55rem 0.7rem; margin: 1px 0; border-radius: var(--radius-sm); color: var(--text-muted); font-size: 14px; font-weight: 500; font-family: inherit; text-align: left; background: none; border: none; cursor: pointer; transition: background 0.15s, color 0.15s; }
+.sidebar nav .nav-logout button { display: flex; align-items: center; gap: 11px; width: 100%; padding: 0.55rem 0.7rem; margin: 1px 0; border-radius: var(--radius-sm); color: var(--sidebar-ink-muted); font-size: 14px; font-weight: 500; font-family: inherit; text-align: left; background: none; border: none; cursor: pointer; transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease); }
 .sidebar nav .nav-logout button svg { width: 18px; height: 18px; flex-shrink: 0; opacity: 0.85; }
-.sidebar nav .nav-logout button:hover { background: var(--surface-2); color: var(--text); }
+.sidebar nav .nav-logout button:hover { background: var(--sidebar-hover); color: var(--sidebar-ink); }
 
 /* Main content */
 /* min-width: 0 — as a flex item, .main-content's automatic minimum is its
@@ -166,8 +260,8 @@ h2 { font-size: var(--fs-md); font-weight: 600; letter-spacing: -0.01em; margin:
 /* v10.13 — the global "Add transaction" entry point: a pill in the topbar on
    desktop, a floating action button on mobile (see the media block). */
 .page-topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-.quick-add-btn { display: inline-flex; align-items: center; gap: 6px; padding: 0.5rem 1.15rem; border-radius: 999px; background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; line-height: 1.2; box-shadow: var(--shadow-sm); transition: background 0.15s, transform 0.05s; }
-.quick-add-btn:hover { background: var(--accent-hover); color: #fff; }
+.quick-add-btn { display: inline-flex; align-items: center; gap: 6px; padding: 0.5rem 1.15rem; border-radius: 999px; background: var(--grad-accent); color: #fff; font-size: 14px; font-weight: 600; line-height: 1.2; box-shadow: var(--shadow-sm); transition: background var(--dur-1) var(--ease), transform var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease); }
+.quick-add-btn:hover { background: var(--accent-hover); color: #fff; box-shadow: var(--shadow-md); }
 .quick-add-btn:active { transform: translateY(1px); }
 .quick-add-btn svg { width: 16px; height: 16px; }
 
@@ -193,16 +287,35 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 /* font-family + line-height are explicit because .btn sits on BOTH <a> and
    <button>: anchors inherit the body's 1.6, buttons get the UA's ~1.15 — same
    class, two heights (caught on Export CSV vs the Bulk edit toggle). */
-.btn { display: inline-flex; align-items: center; gap: 6px; padding: 0.5rem 1.15rem; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); color: var(--text); font-family: inherit; font-size: 14px; font-weight: 500; line-height: 1.2; cursor: pointer; transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.05s; }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 0.5rem 1.15rem; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); color: var(--text); font-family: inherit; font-size: 14px; font-weight: 500; line-height: 1.2; cursor: pointer; transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease), transform var(--dur-1) var(--ease); }
 .btn:hover { background: var(--surface-2); border-color: var(--text-muted); }
 .btn:active { transform: translateY(1px); }
-.btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: var(--shadow-sm); }
+.btn-primary { background: var(--grad-accent); color: #fff; border-color: var(--accent-deep); box-shadow: var(--shadow-sm); }
 .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: #fff; }
 .btn-danger { background: var(--danger); color: #fff; border-color: var(--danger); }
-.btn-danger:hover { background: #c43a39; border-color: #c43a39; color: #fff; }
+.btn-danger:hover { background: var(--danger-hover); border-color: var(--danger-hover); color: #fff; }
 
 /* Flash messages */
 .flash { padding: 0.75rem 1rem; border-radius: var(--radius-sm); margin-bottom: 1rem; font-size: 14px; background: var(--accent-soft); border: 1px solid var(--border); border-left: 3px solid var(--accent); }
+
+/* Motion (#225) — one entrance, one hover. Both are compositor-only (opacity
+   and transform), so neither triggers layout on a page carrying six charts.
+   ⚠️ The entrance is deliberately NOT on .card: HTMX swaps card partials in
+   place all over the app (an insight refresh, a saved row), and a card that
+   re-plays its arrival every time it is edited reads as a glitch rather than as
+   polish. It goes on the page furniture that is rendered once per navigation. */
+@keyframes bb-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.stat-card, .chart-card, .goal-card { animation: bb-rise var(--dur-2) var(--ease) both; }
+.stat-card, .chart-card, .goal-card {
+  transition: transform var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
+}
+.stat-card:hover, .chart-card:hover, .goal-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
 
 /* Cards */
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.35rem; margin-bottom: 1rem; box-shadow: var(--shadow-sm); }
@@ -210,27 +323,32 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 
 /* Summary stats */
 .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
-.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.1rem 1.2rem; box-shadow: var(--shadow-sm); }
+.stat-card { background: var(--surface-raise); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.1rem 1.2rem; box-shadow: var(--shadow-sm); }
 .stat-label { font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
 .stat-value { font-size: var(--fs-xl); font-weight: 650; letter-spacing: -0.02em; margin-top: 4px; }
 
 /* Dashboard hero — this-month at a glance */
-.hero { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); padding: 1.5rem 1.6rem; margin-bottom: 1.5rem; }
+/* The hero is the one surface that states the month's answer, so it is the one
+   surface that looks unlike a card: a deep gradient in BOTH themes, with its own
+   ink tokens because --text/--text-muted would be unreadable on it. */
+.hero { background: var(--grad-hero); border: none; border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); padding: 1.75rem 1.8rem; margin-bottom: 1.5rem; color: var(--on-dark); animation: bb-rise var(--dur-2) var(--ease) both; }
 .hero-top { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
-.hero-label { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; color: var(--text-muted); }
-.hero-net { font-size: var(--fs-2xl); font-weight: 700; letter-spacing: -0.03em; margin: 0.2rem 0 0.1rem; line-height: 1.1; }
-.hero-net.pos { color: var(--success); }
-.hero-net.neg { color: var(--danger); }
-.hero-caption { font-size: var(--fs-sm); color: var(--text-muted); }
-.hero-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.9rem; margin-top: 1.3rem; padding-top: 1.2rem; border-top: 1px solid var(--border); }
-.hero-stat .hero-stat-label { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; color: var(--text-muted); }
-.hero-stat .hero-stat-val { font-size: var(--fs-lg); font-weight: 650; letter-spacing: -0.02em; margin-top: 3px; }
-.hero-stat .hero-stat-val.pos { color: var(--success); }
-.hero-stat .hero-stat-val.neg { color: var(--danger); }
+.hero-label { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.12em; font-weight: 600; color: var(--on-dark-muted); }
+.hero-net { font-size: var(--fs-3xl); font-weight: 700; letter-spacing: -0.03em; margin: 0.35rem 0 0.2rem; line-height: 1.05; color: var(--on-dark); }
+/* ⚠️ pos/neg are the SAME two hues as everywhere else, re-stepped for a dark
+   fill — --success and --danger themselves fail contrast on the gradient. */
+.hero-net.pos { color: var(--on-dark-pos); }
+.hero-net.neg { color: var(--on-dark-neg); }
+.hero-caption { font-size: var(--fs-sm); color: var(--on-dark-muted); }
+.hero-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.9rem; margin-top: 1.4rem; padding-top: 1.3rem; border-top: 1px solid var(--hero-rule); }
+.hero-stat .hero-stat-label { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; color: var(--on-dark-muted); }
+.hero-stat .hero-stat-val { font-size: var(--fs-lg); font-weight: 650; letter-spacing: -0.02em; margin-top: 3px; color: var(--on-dark); }
+.hero-stat .hero-stat-val.pos { color: var(--on-dark-pos); }
+.hero-stat .hero-stat-val.neg { color: var(--on-dark-neg); }
 
 /* Chart grid — two-up on wide screens, each in its own card */
 .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.1rem; margin-bottom: 1.5rem; }
-.chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: 1.2rem 1.25rem; }
+.chart-card { background: var(--surface-raise); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: 1.2rem 1.25rem; }
 .chart-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 0.9rem; color: var(--text); }
 .chart-card.wide { grid-column: 1 / -1; }
 .chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; }
@@ -577,3 +695,21 @@ tr:hover td.report-miss { background: var(--danger-soft); }
 /* No height:100% here (was pre-v10.15): a collapsed card must not stretch to
    match an expanded sibling — align-items:start sizes each to its content. */
 .ai-row .card { margin-bottom: 0; }
+
+/* Reduced motion (#225) — the whole of the above, switched off in one place.
+   ⚠️ Written as `!important` against a wildcard on purpose: this must beat every
+   transition and animation in this file, including ones added later that forget
+   this block exists. Nothing in the app conveys information by motion alone, so
+   suppressing all of it costs the reader nothing. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .stat-card:hover, .chart-card:hover, .goal-card:hover,
+  .btn:active, .quick-add-btn:active {
+    transform: none !important;
+  }
+}
