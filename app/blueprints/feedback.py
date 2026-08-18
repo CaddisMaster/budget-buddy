@@ -31,8 +31,7 @@ from flask import Blueprint, current_app, flash, redirect, request, url_for
 from flask_login import login_required
 
 from app import limiter
-from app.github import (FROM_APP_LABEL, TRIAGE_LABEL, GitHubError, create_issue,
-                        feedback_enabled)
+from app.github import FROM_APP_LABEL, TRIAGE_LABEL, GitHubError, create_issue, feedback_enabled
 from app.helpers import GENERIC_ERROR
 
 bp = Blueprint('feedback', __name__)
