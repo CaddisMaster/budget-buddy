@@ -78,11 +78,17 @@ def test_the_hero_states_net_once(client_a, users):
     html = client_a.get("/").get_data(as_text=True)
     hero = _between(html, '<div class="hero"', '</div><!--/hero-->')
 
-    labels = [chunk.split("<", 1)[0].strip() for chunk in
-              hero.split('class="hero-stat-label">')[1:]]
-    assert labels == ["Income", "Expenses"], (
-        f"the hero should break the net into its two parts, got {labels}")
+    # One net figure in the hero, full stop.
     assert hero.count('class="hero-net') == 1
+    # ⚠️ #225 moved income and expenses OUT of the hero into their own cards
+    # beside it, so the hero must no longer carry stat rows at all — that markup
+    # is exactly what printed the net a second time.
+    assert "hero-stat" not in hero
+
+    # The two parts are still on the page, as peers of the hero rather than
+    # repetitions inside it.
+    band = _between(html, 'class="hero-band"', '<!--/hero-band-->')
+    assert "Money in" in band and "Money out" in band
 
 
 # --- 2. one AI panel, not four cards ------------------------------------------
@@ -159,7 +165,7 @@ def test_the_hero_comes_before_the_strip_and_the_quick_add(client_a, users):
 
 # --- 6. year-over-year is a strip ---------------------------------------------
 
-def test_year_over_year_is_one_strip_not_three_cards(client_a, users):
+def test_year_over_year_is_a_tile_among_peers_not_three_cards(client_a, users):
     # Three full-height stat cards for one comparison was the clearest single
     # case of the page shouting every figure at the same volume.
     a = users["a"]
@@ -173,9 +179,12 @@ def test_year_over_year_is_one_strip_not_three_cards(client_a, users):
     # unfiltered request renders no strip at all and would fail this for a
     # reason unrelated to layout.
     html = client_a.get(f"/?month={when:%Y-%m}").get_data(as_text=True)
-    strip = _between(html, 'class="yoy-strip"', '<!--/yoy-strip-->')
-    assert "%" in strip, "the change figure is what the comparison is for"
-    assert 'class="stat-card"' not in strip
+    row = _between(html, 'class="stat-row"', '<!--/stat-row-->')
+    assert "%" in row, "the change figure is what the comparison is for"
+    # The three full-height cards this replaced are gone for good.
+    assert 'class="stat-card"' not in row
+    # Year-over-year is a peer of the other tiles, not a headline of its own.
+    assert "<h2>Year over year</h2>" not in html
 
 
 # --- regressions found by LOOKING at the page, not by running it -------------

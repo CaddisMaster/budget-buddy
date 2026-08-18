@@ -105,7 +105,10 @@ def test_yoy_card_shown_when_month_filtered_with_history(client_a, users):
     # #223 collapsed three stat cards into one line: the "Year over year"
     # heading and the "Same month last year" card label went with them, but the
     # comparison itself — and last year's figure — must still be on the page.
-    assert b'class="yoy-strip"' in response.data
+    # #223 collapsed three stat cards into one line; #225 made that line one of
+    # three PEER tiles (year-over-year, budget used, still to post). The
+    # comparison and last year's figure must still be on the page either way.
+    assert b'class="stat-row"' in response.data
     assert b"same month last year" in response.data
     assert b"$100.00" in response.data
 

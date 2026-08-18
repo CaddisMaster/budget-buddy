@@ -12,47 +12,95 @@
    the strip as malformed. test_release_prep.py::test_it_parses_the_real_dashboard_strip
    is what caught it. #}
 <div class="page-topbar">
-  <h1 style="margin-bottom:0">Home</h1>
-  <form method="get" class="month-picker">
-    <select name="month" onchange="this.form.submit()" aria-label="Filter by month">
-        <option value="">All months</option>
-        {% for m in months %}
-        <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ m }}</option>
-        {% endfor %}
-    </select>
-  </form>
+  <div>
+    {# The time of day is the BROWSER's, not the server's: prod runs on UTC and
+       a "Good evening" at three in the afternoon is worse than no greeting at
+       all. The server renders the neutral form and the script below refines it;
+       with JS off the page still reads correctly. #}
+    <h1 class="page-greeting" id="greeting" style="margin-bottom:2px">Hello, {{ current_user.username|capitalize }}</h1>
+    <p class="page-sub">
+      {% if days_left > 0 %}{{ days_left }} day{{ '' if days_left == 1 else 's' }} left in the month.{% else %}Last day of the month.{% endif %}
+    </p>
+  </div>
+  <div class="topbar-actions">
+    <form method="get" class="month-picker">
+      <select name="month" onchange="this.form.submit()" aria-label="Filter by month">
+          <option value="">All months</option>
+          {% for m in months %}
+          <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ m }}</option>
+          {% endfor %}
+      </select>
+    </form>
+  </div>
 </div>
+<script>
+(() => {
+  const h = new Date().getHours();
+  const part = h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening';
+  const el = document.getElementById('greeting');
+  el.textContent = `Good ${part}, ${el.textContent.replace(/^Hello, /, '')}`;
+})();
+</script>
 
 
 
 {% if has_transactions %}
-<div class="hero">
-    <div class="hero-top">
-        <div>
-            <div class="hero-label">Net position · {{ summary.label }}</div>
-            <div class="hero-net {{ 'pos' if summary.net >= 0 else 'neg' }}">
-                {{ '−' if summary.net < 0 else '+' }}${{ summary.net|abs|money }}
-            </div>
-            <div class="hero-caption">
-                {% if summary.savings_rate is not none %}
-                    {{ "%.0f"|format(summary.savings_rate) }}% of income kept
-                {% else %}
-                    Income vs. expenses
-                {% endif %}
-            </div>
-        </div>
+<div class="hero-band">
+  <div class="hero">
+      <div class="hero-label">Net position · {{ summary.label }}</div>
+      <div class="hero-net {{ 'pos' if summary.net >= 0 else 'neg' }}">
+          {{ '−' if summary.net < 0 else '+' }}${{ summary.net|abs|money }}
+      </div>
+      <div class="hero-meta">
+        {% if hero_delta is not none %}
+        <span class="hero-chip {{ 'up' if hero_delta >= 0 else 'down' }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            {% if hero_delta >= 0 %}<path d="M12 19V5M5 12l7-7 7 7"></path>{% else %}<path d="M12 5v14M5 12l7 7 7-7"></path>{% endif %}
+          </svg>
+          {{ hero_delta|abs }}%
+        </span>
+        {% endif %}
+        <span class="hero-caption">
+          {% if hero_delta is not none %}vs. the month before{% if summary.savings_rate is not none %} · {% endif %}{% endif %}
+          {% if summary.savings_rate is not none %}{{ "%.0f"|format(summary.savings_rate) }}% of income kept{% endif %}
+        </span>
+      </div>
+      {% if hero_spark %}
+      {# Server-rendered so it needs no JS and no Chart.js — see main.sparkline(). #}
+      <svg class="hero-spark" viewBox="0 0 420 64" preserveAspectRatio="none" role="img" aria-label="Net balance over the months shown">
+        <defs>
+          <linearGradient id="sparkFade" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="var(--spark-line)" stop-opacity="0.38"></stop>
+            <stop offset="100%" stop-color="var(--spark-line)" stop-opacity="0"></stop>
+          </linearGradient>
+        </defs>
+        <path d="{{ hero_spark.area }}" fill="url(#sparkFade)"></path>
+        <polyline points="{{ hero_spark.line }}" fill="none" stroke="var(--spark-line)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></polyline>
+        <circle cx="{{ hero_spark.last[0] }}" cy="{{ hero_spark.last[1] }}" r="3.5" fill="#fff"></circle>
+      </svg>
+      {% endif %}
+  </div><!--/hero-->
+  <div class="flow-cards">
+    <div class="flow-card">
+      <div class="flow-head">
+        <span class="flow-label">Money in</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"></path></svg>
+      </div>
+      <div class="flow-val pos">${{ summary.income|money }}</div>
+      <div class="flow-track"><span class="flow-fill pos" style="width:100%"></span></div>
     </div>
-    <div class="hero-stats">
-        <div class="hero-stat">
-            <div class="hero-stat-label">Income</div>
-            <div class="hero-stat-val pos">${{ summary.income|money }}</div>
-        </div>
-        <div class="hero-stat">
-            <div class="hero-stat-label">Expenses</div>
-            <div class="hero-stat-val neg">${{ summary.expenses|money }}</div>
-        </div>
+    <div class="flow-card">
+      <div class="flow-head">
+        <span class="flow-label">Money out</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"></path></svg>
+      </div>
+      <div class="flow-val neg">${{ summary.expenses|money }}</div>
+      {# Width is expenses as a share of income, capped: past 100% the bar is
+         full and the figure above it is what tells you by how much. #}
+      <div class="flow-track"><span class="flow-fill neg" style="width:{{ [100, (summary.expenses / summary.income * 100)|round|int] | min if summary.income > 0 else 100 }}%"></span></div>
     </div>
-</div><!--/hero-->
+  </div>
+</div><!--/hero-band-->
 {% endif %}
 {# ── What's new — ONE strip per release (released whenever Sean calls it). On the
    first feature commit after a release ships, REPLACE the strip's contents with
@@ -122,15 +170,41 @@
 {% include 'partials/_quick_add.html' %}
 {# Pre-filled form appears here after a quick-add parse; empty until then. #}
 <div id="txn-form-wrap"></div>
-{# #223 — three full-height stat cards for ONE comparison was the clearest case
-   of the page shouting every figure at the same volume. Same three numbers,
-   one line, with the change leading because it is the one you read. #}
-{% if yoy %}
-<div class="yoy-strip">
-    <span class="yoy-change {% if yoy.change <= 0 %}income{% else %}expense{% endif %}">{{ '+' if yoy.change > 0 }}{{ yoy.change }}%</span>
-    <span class="yoy-label">vs. the same month last year</span>
-    <span class="yoy-figures">${{ yoy.this_year|money }} <span class="yoy-sep">from</span> ${{ yoy.last_year|money }}</span>
-</div><!--/yoy-strip-->
+{# #225 — three facts about the month at the same weight, which is right
+   BECAUSE they are peers: what you spent against last year, how far through the
+   budget you are, and what has not left the account yet. The year-over-year
+   trio this replaced said one thing three times. #}
+{% if yoy or budget_used or bills_due.count %}
+<div class="stat-row">
+  {% if yoy %}
+  <div class="stat-tile">
+    <div class="stat-tile-label">vs. the same month last year</div>
+    <div class="stat-tile-main">
+      <span class="stat-tile-val {% if yoy.change <= 0 %}income{% else %}expense{% endif %}">{{ '+' if yoy.change > 0 }}{{ yoy.change }}%</span>
+      <span class="stat-tile-sub">${{ yoy.last_year|money }} → ${{ yoy.this_year|money }}</span>
+    </div>
+  </div>
+  {% endif %}
+  {% if budget_used %}
+  <div class="stat-tile">
+    <div class="stat-tile-label">Budget used</div>
+    <div class="stat-tile-main">
+      <span class="stat-tile-val {{ 'expense' if budget_used.pct > 100 }}">{{ budget_used.pct }}%</span>
+      <span class="stat-tile-sub">of ${{ budget_used.total|money }}</span>
+    </div>
+    <div class="stat-tile-track"><span class="stat-tile-fill{{ ' over' if budget_used.pct > 100 }}" style="width:{{ [100, budget_used.pct] | min }}%"></span></div>
+  </div>
+  {% endif %}
+  {% if bills_due.count %}
+  <div class="stat-tile">
+    <div class="stat-tile-label">Still to post</div>
+    <div class="stat-tile-main">
+      <span class="stat-tile-val">{{ bills_due.count }}</span>
+      <span class="stat-tile-sub">bill{{ '' if bills_due.count == 1 else 's' }} · ${{ bills_due.total|money }}</span>
+    </div>
+  </div>
+  {% endif %}
+</div><!--/stat-row-->
 {% endif %}
 {# #223 — the figures and the words about them, side by side on a wide
    screen and stacked below 1100px (see .home-band). #}
@@ -194,20 +268,34 @@
 {% if goals %}
 <h2>Goals</h2>
 {% include 'partials/_goal_summary.html' %}
+{# #225 — a ring instead of a bar. The dash arithmetic: r=20 gives a
+   circumference of 2*pi*20 = 125.66, so the drawn arc is percent/100 of that
+   and the gap is the remainder. Rotated -90deg so it starts at twelve o'clock.
+   Capped at 100 so an overfunded goal draws a full ring rather than wrapping
+   round and reading as though it were barely started. #}
 <div class="goal-grid">
     {% for g in goals %}
+    {% set pct = [100, g.percent] | min %}
     <div class="card goal-card goal-mini">
-        <div class="goal-head">
+        <div class="goal-ring-row">
+          <svg class="goal-ring" viewBox="0 0 48 48" role="img" aria-label="{{ g.percent }}% of {{ g.name }}">
+            <circle cx="24" cy="24" r="20" fill="none" stroke="var(--surface-2)" stroke-width="5"></circle>
+            <circle cx="24" cy="24" r="20" fill="none" stroke-width="5" stroke-linecap="round"
+                    class="goal-ring-arc{% if g.complete %} done{% elif g.on_track is false %} behind{% endif %}"
+                    stroke-dasharray="{{ (125.66 * pct / 100) | round(2) }} 125.66"
+                    transform="rotate(-90 24 24)"></circle>
+            <text x="24" y="27" class="goal-ring-pct">{{ g.percent }}%</text>
+          </svg>
+          <div class="goal-ring-text">
             <strong class="goal-name">{{ g.name }}</strong>
-            {% if g.complete %}<span class="transfer-badge">{{ '✓ Paid off' if g.type == 'payoff' else '✓ Reached' }}</span>
-            {% elif g.on_track is true %}<span class="transfer-badge">On track</span>
-            {% elif g.on_track is false %}<span class="recurring-badge">Behind</span>{% endif %}
+            <p class="goal-figures">${{ g.saved|money }} <span class="goal-pct">of ${{ g.target_amount|money }}</span></p>
+            <p class="goal-state">
+              {% if g.complete %}<span class="goal-flag done">{{ 'Paid off' if g.type == 'payoff' else 'Reached' }}</span>
+              {% elif g.on_track is true %}<span class="goal-flag on">On track</span>
+              {% elif g.on_track is false %}<span class="goal-flag behind">Behind</span>{% endif %}
+            </p>
+          </div>
         </div>
-        <div class="goal-bar"><div class="goal-bar-fill" style="width:{{ g.percent }}%"></div></div>
-        <p class="goal-figures">
-            ${{ g.saved|money }} / ${{ g.target_amount|money }}
-            <span class="goal-pct">({{ g.percent }}%)</span>
-        </p>
     </div>
     {% endfor %}
 </div>

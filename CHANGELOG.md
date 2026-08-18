@@ -32,6 +32,18 @@ this project uses the `0.x` versioning scheme described in
   cards, leading with the percentage, which is the number the comparison exists
   to give you.
 
+  **The page now leads with a composed summary rather than a list of panels.**
+  The month's net position sits on a gradient panel with the shape of your
+  balance behind it and, when you are looking at a single month, how it compares
+  with the month before. Money in and money out are two cards beside it rather
+  than small print underneath. Below them sit up to three facts of equal weight
+  — how this month compares with the same month last year, how far through your
+  budget you are, and what is still due to leave the account — each appearing
+  only when there is something to say. Goals are rings rather than bars, and
+  "This month's read" is a panel of its own material, so it is obvious at a
+  glance which part of the page was written for you and which part is your own
+  arithmetic.
+
   Your goals now sit beside the month's read rather than below it, so the page
   ends where the reading does. The six charts are unchanged and still live in
   the section at the bottom, which still opens on desktop and stays closed on a

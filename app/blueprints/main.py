@@ -1,3 +1,4 @@
+import calendar
 from datetime import datetime
 
 import psycopg2
@@ -169,6 +170,89 @@ def to_bar_rows(rows):
     # see next to its name, rather than an empty track that reads as a bug.
     return [{**r, 'pct': max(1, round(float(r['total']) / biggest * 100))}
             for r in rows]
+
+
+# ── #223/#225 Home composition helpers ───────────────────────────────────────
+# All pure, all here beside fold_chart_tail()/assign_series_slots()/to_bar_rows()
+# for the same reason: the interesting cases are arithmetic, and arithmetic that
+# needs a database and a browser to test does not get tested.
+
+
+def days_left_in_month(today):
+    """Whole days remaining after today, 0 on the last day. Pure."""
+    return calendar.monthrange(today.year, today.month)[1] - today.day
+
+
+def net_change(before, after):
+    """Percent change between two nets, or None when it means nothing. Pure.
+
+    ⚠️ Takes two FIGURES, not a series. It first read the last two months off
+    the cash-flow payload, which is filtered by the month picker — so on the
+    all-time view the hero showed "ALL TIME +$17,216" with a chip beside it
+    reading "-122.5% vs. last month", two different scopes in one sentence.
+    The caller now decides which two months are being compared.
+
+    None when the earlier figure is zero: a percentage against zero is not a
+    large number, it is undefined, and rendering it as one is how a quiet month
+    starts claiming a 4000% improvement.
+    """
+    before, after = float(before), float(after)
+    if before == 0:
+        return None
+    # abs() on the denominator: a net that goes -400 -> -200 has IMPROVED, and
+    # dividing by a negative would report that as -50%.
+    return round((after - before) / abs(before) * 100, 1)
+
+
+def sparkline(series, key='balance', width=420, height=64, pad=4):
+    """An SVG polyline for a series of {month, <key>} rows. Pure.
+
+    Returns {'line': 'x,y x,y …', 'area': 'M… Z', 'last': (x, y)} or None when
+    there is nothing to draw. A flat series is centred rather than divided by a
+    zero range.
+    """
+    values = [float(r[key]) for r in series]
+    if len(values) < 2:
+        return None
+    lo, hi = min(values), max(values)
+    span = hi - lo
+    inner = height - pad * 2
+    step = width / (len(values) - 1)
+    pts = []
+    for i, v in enumerate(values):
+        x = round(i * step, 2)
+        y = round(pad + inner / 2 if span == 0
+                  else pad + (hi - v) / span * inner, 2)
+        pts.append((x, y))
+    # :g so the path reads 0,20 rather than 0.0,20 — this string goes into the
+    # page, and a rounded float prints its trailing zero.
+    n = lambda v: f'{v:g}'
+    line = ' '.join(f'{n(x)},{n(y)}' for x, y in pts)
+    area = (f'M{n(pts[0][0])},{n(height)} L'
+            + ' L'.join(f'{n(x)},{n(y)}' for x, y in pts)
+            + f' L{n(pts[-1][0])},{n(height)} Z')
+    return {'line': line, 'area': area, 'last': pts[-1]}
+
+
+def budget_usage(budget_rows):
+    """{used, total, pct} across every budgeted category, or None if nothing is
+    budgeted. pct is uncapped on purpose — being 130% through the month's budget
+    is exactly the state worth seeing. Pure."""
+    total = sum(float(r['budget']) for r in budget_rows)
+    if total <= 0:
+        return None
+    used = sum(float(r['actual']) for r in budget_rows)
+    return {'used': used, 'total': total, 'pct': round(used / total * 100)}
+
+
+def bills_outstanding(remaining_items):
+    """{count, total} of scheduled EXPENSES still to post this month. Pure.
+
+    Income is excluded deliberately: the question this answers on the dashboard
+    is "what is still going to leave the account", and netting a salary against
+    it makes the figure meaningless."""
+    bills = [i for i in remaining_items if i.get('type') == 'expense']
+    return {'count': len(bills), 'total': sum(float(i['amount']) for i in bills)}
 
 
 @bp.route('/sw.js')
@@ -400,11 +484,18 @@ def index():
     #     there's something to project (month-to-date activity OR a scheduled
     #     item still to land) — mirrors the generator's own not-enough-data gate.
         ai_on = ai_enabled()
+        # ⚠️ Computed UNCONDITIONALLY since #223: the dashboard's "still to post"
+        # figure reads `remaining_items`, and that is a plain fact about the
+        # user's schedules, not an AI feature. It used to sit inside the `if
+        # ai_on:` below purely because the forecast card was its only consumer —
+        # leaving it there would mean the stat silently vanishing on an install
+        # with no API key. The narration around it (`forecast`, `show_forecast`)
+        # stays gated.
+        forecast_facts = compute_forecast(current_user.id, today.year, today.month)
         insight = None
         insight_facts = None
         show_insight = False
         forecast = None
-        forecast_facts = None
         show_forecast = False
         agent_run = None
         insight_year, insight_month = _prev_month(today.year, today.month)
@@ -414,7 +505,6 @@ def index():
             if show_insight:
                 insight = load_insight(cursor, current_user.id, insight_year, insight_month)
 
-            forecast_facts = compute_forecast(current_user.id, today.year, today.month)
             show_forecast = not (forecast_facts['income_to_date'] == 0
                                  and forecast_facts['expenses_to_date'] == 0
                                  and not forecast_facts['remaining_items'])
@@ -459,6 +549,13 @@ def index():
     if income_by_category_data:
         category_bars['income'] = to_bar_rows(income_by_category_data)
 
+    # #225 — the figures the composed hero and stat row state. Each is pure and
+    # unit-tested in tests/test_home_composition.py.
+    hero_spark = sparkline(net_balance_data)
+    budget_used = budget_usage(budget_chart_data)
+    bills_due = bills_outstanding(forecast_facts['remaining_items'])
+    days_left = days_left_in_month(today)
+
     has_transactions = bool(cash_flow) or bool(spending)
 
     # v10.6 hero — income/expenses/net for the current view (a single selected
@@ -472,6 +569,14 @@ def index():
         'savings_rate': ((hero_income - hero_expenses) / hero_income * 100) if hero_income > 0 else None,
         'label': selected_month if selected_month else 'All time',
     }
+
+    # ⚠️ Only when ONE month is being viewed. Against "All time" there is no
+    # "last month" the headline figure could be compared with, and inventing one
+    # is how the two scopes got mixed.
+    hero_delta = None
+    if selected_month:
+        prev_facts = compute_month_facts(current_user.id, *_prev_month(filter_year, filter_month))
+        hero_delta = net_change(prev_facts['net'], summary['net'])
 
     # Year over year — only when a month is selected AND last year has data;
     # hero_expenses is the same-filtered this-year total.
@@ -490,6 +595,11 @@ def index():
         spending_data=spending_data,
         income_by_category_data=income_by_category_data,
         category_bars=category_bars,
+        hero_spark=hero_spark,
+        hero_delta=hero_delta,
+        budget_used=budget_used,
+        bills_due=bills_due,
+        days_left=days_left,
         cash_flow_data=cash_flow_data,
         net_balance_data=net_balance_data,
         account_data=account_data,
