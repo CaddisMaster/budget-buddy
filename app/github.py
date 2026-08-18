@@ -35,6 +35,16 @@ FEEDBACK_REPO = os.getenv('FEEDBACK_REPO', 'CaddisMaster/budget-buddy')
 # the template.
 FROM_APP_LABEL = 'from-app'
 
+# Opts the issue in to the automated first-pass review
+# (.github/workflows/claude-triage.yml). Triage is OPT-IN rather than the
+# default: an issue filed from a Claude Code session has already had the code
+# read, and re-reviewing it seconds later spends ~$0.50 of subscription budget
+# restating work that just happened. The two issue templates apply this label
+# automatically and so does the in-app feedback route, so the only issues that
+# miss it are the ones filed by hand from a session — which is exactly the set
+# that should miss it. Forgetting it now costs nothing.
+TRIAGE_LABEL = 'triage'
+
 # A slow GitHub must not hold a worker open. The route is user-facing, so this
 # is deliberately short — a failure is reported to the user, not retried.
 TIMEOUT_SECONDS = 10

@@ -31,7 +31,8 @@ from flask import Blueprint, current_app, flash, redirect, request, url_for
 from flask_login import login_required
 
 from app import limiter
-from app.github import FROM_APP_LABEL, GitHubError, create_issue, feedback_enabled
+from app.github import (FROM_APP_LABEL, TRIAGE_LABEL, GitHubError, create_issue,
+                        feedback_enabled)
 from app.helpers import GENERIC_ERROR
 
 bp = Blueprint('feedback', __name__)
@@ -80,7 +81,11 @@ def submit():
     )
 
     try:
-        issue = create_issue(title, body, [KINDS[kind], FROM_APP_LABEL])
+        # TRIAGE_LABEL: a report typed by a user has had no code read at all,
+        # so it is exactly the kind that benefits from the automated first
+        # pass — see the constant's note in app/github.py.
+        issue = create_issue(title, body,
+                             [KINDS[kind], FROM_APP_LABEL, TRIAGE_LABEL])
     except GitHubError:
         # The API's text can name the repository and the token's scopes, so it
         # goes to the log and never to the browser.

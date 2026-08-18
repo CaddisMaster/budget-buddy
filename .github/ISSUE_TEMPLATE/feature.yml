@@ -1,6 +1,6 @@
 name: Feature
 description: A new capability or an improvement to an existing one
-labels: ["enhancement"]
+labels: ["enhancement", "triage"]
 body:
   - type: markdown
     attributes:
