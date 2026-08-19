@@ -40,11 +40,11 @@
                     <td style="color:var(--text-muted)">{{ row.description }}</td>
                     <td>
                         {% if row.state == 'configured' %}
-                            <span class="integration-state is-configured">Configured</span>
+                            <span class="status-pill is-ok">Configured</span>
                         {% elif row.state == 'implausible' %}
-                            <span class="integration-state is-implausible">Set, but does not look valid</span>
+                            <span class="status-pill is-alert">Set, but does not look valid</span>
                         {% else %}
-                            <span class="integration-state is-unset">Not configured</span>
+                            <span class="status-pill is-idle">Not configured</span>
                         {% endif %}
                     </td>
                 </tr>
@@ -98,13 +98,13 @@
                     </td>
                     <td>
                         {% if job.state == 'ok' %}
-                            <span class="integration-state is-configured">On schedule</span>
+                            <span class="status-pill is-ok">On schedule</span>
                         {% elif job.state == 'stale' %}
-                            <span class="integration-state is-implausible">Overdue</span>
+                            <span class="status-pill is-attention">Overdue</span>
                         {% elif job.state == 'never' %}
-                            <span class="integration-state is-implausible">Has never run</span>
+                            <span class="status-pill is-alert">Has never run</span>
                         {% else %}
-                            <span class="integration-state is-unset">Not scheduled here</span>
+                            <span class="status-pill is-idle">Not scheduled here</span>
                         {% endif %}
                     </td>
                 </tr>

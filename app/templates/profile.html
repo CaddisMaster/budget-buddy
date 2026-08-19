@@ -2,12 +2,27 @@
 {% block title %}Profile — Budget Buddy{% endblock %}
 {% block page_heading %}<h1>Profile</h1>{% endblock %}
 {% block content %}
+{# #245 — three groups, by what they affect: who you are, what you have, and
+   how Budget Buddy contacts you. They used to be four equal peers, so "Your
+   data" sat beside a notification toggle as though they were the same kind of
+   thing.
+   ⚠️ NOTHING in the copy below changed. Two blocks here are load-bearing and
+   are reproduced verbatim: the push paragraph is a CONSENT RECORD (#115/#191)
+   and the feedback warning is the only control on what gets published (#64).
+   Reordering the page is allowed; rewording those two is not. #}
+<section class="profile-section">
+<h2>Your account</h2>
 <div class="card">
     <p><strong>Username:</strong> {{ current_user.username }}</p>
     <p style="margin-top:0.5rem"><strong>Role:</strong> {{ 'Admin' if current_user.is_admin else 'User' }}</p>
     <p style="margin-top:0.5rem"><strong>Member since:</strong> {{ created_at.strftime('%B %-d, %Y') if created_at else '—' }}</p>
 </div>
+<div style="margin-top:1rem">
+    <a href="{{ url_for('auth.change_password') }}" class="btn">Change password</a>
+</div>
+</section>
 
+<section class="profile-section">
 <h2>Your data</h2>
 <div class="stats-grid">
     <div class="stat-card"><div class="stat-label">Transactions</div><div class="stat-value">{{ txn_count }}</div></div>
@@ -15,9 +30,14 @@
     <div class="stat-card"><div class="stat-label">Accounts</div><div class="stat-value">{{ acct_count }}</div></div>
     <div class="stat-card"><div class="stat-label">Goals</div><div class="stat-value">{{ goal_count }}</div></div>
 </div>
+</section>
 
+{% if mail_enabled or push_enabled %}
+<section class="profile-section">
+<h2>How Budget Buddy contacts you</h2>
+{% endif %}
 {% if mail_enabled %}
-<h2>Weekly email digest</h2>
+<h3>Weekly email digest</h3>
 <div class="card" style="max-width:480px">
     <p style="color:var(--text-muted);font-size:14px;margin-bottom:1rem">
         A weekly email recap — your spending vs budget, net position, and what's
@@ -38,7 +58,7 @@
 {% endif %}
 
 {% if push_enabled %}
-<h2>Bill reminders and app updates</h2>
+<h3>Bill reminders and app updates</h3>
 <div class="card" style="max-width:480px">
     {# #115 — this copy IS the consent record. One switch covers every kind of
        notification, so all of them are named here. A new kind belongs in this
@@ -59,7 +79,12 @@
 </div>
 {% endif %}
 
+{% if mail_enabled or push_enabled %}
+</section>
+{% endif %}
+
 {% if feedback_enabled %}
+<section class="profile-section">
 <h2>Report a problem or suggest a feature</h2>
 <div class="card" style="max-width:480px">
     {# #64 — the warning is the ONLY control on what gets published. It is
@@ -89,11 +114,8 @@
         <button type="submit" class="btn btn-primary" style="margin-top:1.5rem">Send report</button>
     </form>
 </div>
+</section>
 {% endif %}
-
-<div style="margin-top:1.5rem">
-    <a href="{{ url_for('auth.change_password') }}" class="btn">Change password</a>
-</div>
 
 {% if push_enabled %}
 <script>

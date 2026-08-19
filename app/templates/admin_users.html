@@ -1,10 +1,20 @@
 {% extends 'base.html' %}
 {% block title %}User Management — Budget Buddy{% endblock %}
 {% block page_heading %}<h1>User management</h1>{% endblock %}
+{% block page_actions %}
+  <a href="{{ url_for('admin.create_user') }}" class="btn btn-primary">Create user</a>
+{% endblock %}
 {% block content %}
-<div style="margin-bottom:1rem">
-    <a href="{{ url_for('admin.create_user') }}" class="btn btn-primary">Create user</a>
-</div>
+{# #247 asked whether this deserves its own page or is a section of Settings.
+   It STAYS a page — it is the only place a destructive, account-level action
+   lives, and burying that inside a scrolling admin page makes it easier to hit
+   by accident, not harder. What was missing is that the page never said where
+   it belongs; the crumb below is that answer, not decoration. #}
+<p class="page-lede">
+  Part of <a href="{{ url_for('admin.settings') }}">Settings</a>. Every account on
+  this server, including yours.
+</p>
+{% if users %}
 <div class="table-wrapper">
     <table>
         <thead><tr><th>Username</th><th>Role</th><th>Created</th><th>Actions</th></tr></thead>
@@ -15,4 +25,10 @@
         </tbody>
     </table>
 </div>
+{% else %}
+{# Unreachable in practice — you must be signed in to be here, so there is
+   always at least one. Rendered anyway: a table head above a void is the worse
+   failure if the query ever changes. #}
+<p style="color:var(--text-muted)">No user accounts found.</p>
+{% endif %}
 {% endblock %}

@@ -10,6 +10,26 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The login page looks like the app it opens.** It carries the Budget Buddy
+  mark, the same one in the sidebar on every other page, instead of a bare
+  heading.
+
+- **Profile is grouped by what each part affects** — your account, your data,
+  and how Budget Buddy contacts you — rather than four equal sections where the
+  weekly digest sat beside a count of your transactions. Changing your password
+  now sits with the rest of your account details. Nothing about what the
+  notification or feedback sections *say* has changed.
+
+- **Settings uses one set of status labels.** The integrations panel and the
+  scheduled-jobs panel now share one vocabulary with four levels, and two states
+  that used to look identical are told apart: a job that is *overdue* (it has
+  worked before and is late) no longer looks the same as one that has *never
+  run*. A job switched off on this server still reads as switched off rather
+  than as a fault.
+
+- **User management says where it belongs** — it is part of Settings, and links
+  back — and has an empty state rather than a table heading above nothing.
+
 - **Add transaction leads with the amount.** It used to sit fourth, behind a
   type dropdown you had to answer first — and the two edge-case checkboxes
   (exclude from analytics, pending amount) carried more explanation between them
