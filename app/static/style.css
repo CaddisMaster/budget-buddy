@@ -463,6 +463,24 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
    needs its own top margin rather than the grid gap a page-level panel gets. */
 .txn-flags { margin-top: var(--sp-5); }
 
+/* #245 — Profile's groups. The rule is the SPACING between groups: four equal
+   peers is what made "Your data" read as the same kind of thing as a
+   notification toggle. */
+.profile-section + .profile-section { margin-top: var(--sp-6); padding-top: var(--sp-5); border-top: 1px solid var(--border); }
+.profile-section > h2:first-child { margin-top: 0; }
+.profile-section h3 { font-family: var(--font-display); font-size: 15px; font-weight: 600; margin: var(--sp-5) 0 var(--sp-3); }
+
+/* #248 — the login shell. ⚠️ login.html does NOT extend base.html, so these
+   are the only rules that reach it; anything shared has to be written for both
+   shells. It is the first thing a visitor sees and carried none of the app's
+   identity — no mark, no gradient, a bare h1. */
+.login-shell { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: var(--bg); }
+.login-card { width: 100%; max-width: 380px; padding: 2rem; }
+.login-brand { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 600; font-size: var(--fs-lg); letter-spacing: -0.02em; color: var(--text); }
+.login-brand .brand-mark { width: 32px; height: 32px; flex-shrink: 0; display: block; }
+.login-lede { margin: 0.35rem 0 1.5rem; color: var(--text-muted); font-size: 14px; }
+
+
 
 
 
@@ -766,7 +784,20 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
    companion that works in both mode blocks. Three states, not two: "not
    configured" is a legitimate off state and stays muted, while "set but does
    not look valid" is an actual fault and is the one that must catch the eye. */
-.integration-state {
+/* #246 — ONE status vocabulary, serving the integrations panel and the
+   scheduled-jobs panel. It was `.integration-state`, named for one of the two
+   things it serves, which is how the jobs panel came to borrow a set of words
+   that does not describe it.
+
+   Four levels, because the two panels between them really do have four:
+     is-ok        working / configured
+     is-attention late, but it has worked before
+     is-alert     a real fault: never ran, or a credential that cannot be valid
+     is-idle      ⚠️ LEGITIMATELY switched off — NOT a fault (#151). This level
+                  exists so a job that is off on this server does not report as
+                  overdue; a panel that cries wolf is one people stop reading.
+   ⚠️ is-idle must never take a red. Its whole job is to be visibly calm. */
+.status-pill {
   font-size: 12px;
   padding: 2px 8px;
   border-radius: var(--radius-sm);
@@ -775,9 +806,10 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
   font-weight: 600;
   white-space: nowrap;
 }
-.integration-state.is-configured { color: var(--success); }
-.integration-state.is-implausible { color: var(--danger); }
-.integration-state.is-unset { color: var(--text-muted); }
+.status-pill.is-ok { color: var(--success); }
+.status-pill.is-attention { color: var(--warning); }
+.status-pill.is-alert { color: var(--danger); }
+.status-pill.is-idle { color: var(--text-muted); }
 
 tr.transfer td { background: var(--accent-soft); }
 

@@ -12,9 +12,13 @@
   {# css_v = automatic content hash (app/__init__.py) — same value as base.html. #}
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ css_v }}">
 </head>
-<body style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--bg)">
-  <div style="width:100%;max-width:380px;padding:2rem">
-    <h1 style="margin-bottom:1.5rem">Budget Buddy</h1>
+<body class="login-shell">
+  <div class="login-card">
+    <span class="login-brand">
+      <span class="brand-mark" aria-hidden="true">{{ brand_svg | safe }}</span>
+      <span>Budget Buddy</span>
+    </span>
+    <p class="login-lede">Sign in to your money.</p>
     {% with messages = get_flashed_messages() %}
     {% if messages %}<div class="flash">{{ messages[0] }}</div>{% endif %}
     {% endwith %}
