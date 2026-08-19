@@ -32,6 +32,7 @@ from app.blueprints.accounts import (
     monthly_interest,
 )
 from app.blueprints.budgets import compute_budget_vs_actual
+from app.blueprints.forecasts import compute_forecast
 from app.blueprints.insights import category_spending, compute_month_facts
 from app.db import db_cursor
 from app.helpers import hx_toast
@@ -291,6 +292,55 @@ def _t_account_balances(user_id, args):
 # --- tool definitions (the schemas the model sees) --------------------------
 # strict + additionalProperties:false + required → args validate exactly.
 
+def _t_month_summary(user_id, args):
+    """#232 — everything the retired Insight card showed, as one tool.
+
+    income_expense_summary answers "how did I do"; this answers "how does that
+    COMPARE" — last month beside this one, which budgets are blown, and the card
+    snapshot. Same builder the month read narrates, so the panel's paragraph and
+    the box's answer can never quote different figures."""
+    year, month = _parse_month(args)
+    facts = compute_month_facts(user_id, year, month)
+    return {
+        "month": f"{year}-{month:02d}",
+        "income": facts["income"],
+        "expenses": facts["expenses"],
+        "net": facts["net"],
+        "savings_rate_pct": facts["savings_rate"],
+        "previous_month": facts["prev"],
+        "top_categories": facts["top_categories"],
+        "overruns": facts["overruns"],
+        "credit_cards": facts["credit_cards"],
+    }
+
+
+def _t_month_projection(user_id, args):
+    """#232 — everything the retired Forecast card showed, as one tool.
+
+    The only tool that looks FORWARD: where the month is heading on the current
+    run-rate, and which scheduled items have not landed yet. `method` names how
+    the projection was reached so the model can hedge honestly on thin data."""
+    year, month = _parse_month(args)
+    f = compute_forecast(user_id, year, month)
+    return {
+        "month": f"{year}-{month:02d}",
+        "day_of_month": f["day_of_month"],
+        "days_in_month": f["days_in_month"],
+        "income_to_date": f["income_to_date"],
+        "expenses_to_date": f["expenses_to_date"],
+        "net_to_date": f["net_to_date"],
+        "projected_income": f["projected_income"],
+        "projected_expenses": f["projected_expenses"],
+        "projected_net": f["projected_net"],
+        "projection_method": f["method"],
+        "remaining_scheduled_income": f["remaining_scheduled_income"],
+        "remaining_scheduled_expense": f["remaining_scheduled_expense"],
+        "remaining_items": f["remaining_items"],
+        "total_budget": f["total_budget"],
+        "projected_over_budget": f["projected_over_budget"],
+    }
+
+
 def _no_args():
     return {"type": "object", "properties": {}, "required": [],
             "additionalProperties": False}
@@ -413,6 +463,28 @@ ASK_TOOLS = [
                      "questions.",
       "strict": True, "input_schema": _no_args()},
      _t_account_balances),
+
+    # --- #232: the two tools that replace the Insight and Forecast cards -----
+    ({"name": "month_summary",
+      "description": "One month's figures WITH context the plain summary lacks: "
+                     "the previous month beside it, which categories are over "
+                     "budget and by how much, and the current credit-card "
+                     "snapshot. Use for 'how is this month going' / 'how does "
+                     "that compare with last month' / 'am I doing better' "
+                     "questions.",
+      "strict": True, "input_schema": _month_arg()},
+     _t_month_summary),
+
+    ({"name": "month_projection",
+      "description": "Where one month is HEADING: month-to-date actuals, the "
+                     "projected end-of-month income, expenses and net, and the "
+                     "scheduled income and bills that have not landed yet. The "
+                     "only forward-looking tool — use it for 'will I make it to "
+                     "the end of the month' / 'what is still to come out' / 'am "
+                     "I on pace' questions. Figures under it are projections, "
+                     "not facts; say so when you report them.",
+      "strict": True, "input_schema": _month_arg()},
+     _t_month_projection),
 ]
 
 _HANDLERS = {spec["name"]: handler for spec, handler in ASK_TOOLS}

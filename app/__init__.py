@@ -111,7 +111,6 @@ def load_user(user_id):
 from app.blueprints import (
     accounts,
     admin,
-    agent,
     analytics,
     announce,
     ask,
@@ -120,7 +119,6 @@ from app.blueprints import (
     categories,
     digests,
     feedback,
-    forecasts,
     goals,
     insights,
     main,
@@ -142,11 +140,14 @@ app.register_blueprint(admin.bp)
 app.register_blueprint(transfers.bp)
 app.register_blueprint(goals.bp)
 app.register_blueprint(schedules.bp)
+# ⚠️ blueprints/forecasts.py and blueprints/agent.py are deliberately NOT here
+# (#232): both lost their routes with Home's AI cards and are now plain function
+# modules — the forecast arithmetic feeds the month read and an Ask tool, and the
+# money agent runs inside the weekly digest. They stay under blueprints/ because
+# that is where their callers look for them, not because they serve requests.
 app.register_blueprint(insights.bp)
-app.register_blueprint(forecasts.bp)
 app.register_blueprint(ask.bp)
 app.register_blueprint(digests.bp)
-app.register_blueprint(agent.bp)
 app.register_blueprint(push.bp)
 app.register_blueprint(reminders.bp)
 app.register_blueprint(feedback.bp)

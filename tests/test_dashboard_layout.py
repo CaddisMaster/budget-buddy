@@ -94,15 +94,17 @@ def test_the_hero_states_net_once(client_a, users):
 # --- 2. one AI panel, not four cards ------------------------------------------
 
 def test_the_ai_surfaces_render_inside_one_panel(client_a, users, monkeypatch):
+    """#223 merged four AI cards into one panel visually; #232 made them ONE
+    feature. What is asserted here is the end state: a single panel, the read
+    and the box inside it, and no trace of the three cards it replaced."""
     monkeypatch.setenv(AI_KEY, "test-key")
     _seed_month(users["a"])
     html = client_a.get("/").get_data(as_text=True)
 
-    panel = _between(html, 'id="month-read"', '<!--/month-read-->')
-    for card in ('id="insight-card"', 'id="forecast-card"', 'id="agent-card"'):
-        assert card in panel, f"{card} is not inside the read panel"
-    # Ask moved into the panel's foot rather than being a fifth card.
+    panel = _between(html, 'id="ask-panel"', '<!--/ask-panel-->')
     assert 'id="ask-question"' in panel
+    for gone in ('id="insight-card"', 'id="forecast-card"', 'id="agent-card"'):
+        assert gone not in html, f"{gone} survived the fold into one panel"
 
 
 def test_no_read_panel_without_a_key(client_a, users, monkeypatch):
@@ -111,7 +113,7 @@ def test_no_read_panel_without_a_key(client_a, users, monkeypatch):
     monkeypatch.delenv(AI_KEY, raising=False)
     _seed_month(users["a"])
     html = client_a.get("/").get_data(as_text=True)
-    assert 'id="month-read"' not in html
+    assert 'id="ask-panel"' not in html
     assert "Ask your finances" not in html
 
 
@@ -153,14 +155,18 @@ def test_the_remaining_charts_stay_in_the_collapsed_section(client_a, users):
 
 # --- 5. the hero opens the page -----------------------------------------------
 
-def test_the_hero_comes_before_the_strip_and_the_quick_add(client_a, users):
+def test_the_hero_comes_before_the_strip(client_a, users):
+    """⚠️ This used to check the quick-add box was below the hero too. #232
+    removed that feature outright, so the ordering property now has one
+    subject — do not re-add an assertion about #txn-form-wrap here: Home has no
+    such element any more, and `index()` would raise rather than fail."""
     _seed_month(users["a"])
     html = client_a.get("/").get_data(as_text=True)
 
     hero = html.index('<div class="hero"')
-    for later in ('id="whatsnew"', 'id="txn-form-wrap"'):
-        assert html.index(later) > hero, (
-            f"{later} still renders above the month's headline figure")
+    assert html.index('id="whatsnew"') > hero, (
+        "the What's-new strip still renders above the month's headline figure")
+    assert 'id="txn-form-wrap"' not in html
 
 
 # --- 6. year-over-year is a strip ---------------------------------------------

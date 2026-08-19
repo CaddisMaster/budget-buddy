@@ -1,4 +1,9 @@
-{# Read-state collapse (v10.15) — see _insight_card.html. #}
+{# Read-state collapse (v10.15): closed by default, opened by initAiCollapse
+   (base.html) when data-generated differs from the localStorage key.
+   ⚠️ Since #232 this is the LAST card using that machinery — the insight,
+   forecast and money-agent cards it was built for are gone, and Home's one AI
+   panel does not collapse. If this card ever goes too, delete initAiCollapse
+   with it rather than leaving dead JS on every page. #}
 <details id="goal-coach-card" class="card ai-card goal-coach-card" data-ai-key="coach"
          {%- if coach and coach.created_at %} data-generated="{{ coach.created_at.isoformat() }}"{% endif %}
          {%- if just_generated or not coach %} open{% endif %}>

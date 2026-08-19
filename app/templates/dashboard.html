@@ -2,7 +2,7 @@
 {% block title %}Home — Budget Buddy{% endblock %}
 {% block content %}
 {# #223 — the page opens with the month's answer, not with furniture. Order
-   is deliberate: header → hero → (strip, quick-add) → comparison → detail.
+   is deliberate: header → hero → strip → comparison → detail.
    ⚠️ The What's-new strip below MOVED but its markup is byte-identical on
    purpose: scripts/release_prep.py rewrites it by string surgery. Move it
    freely; do not restyle it here.
@@ -108,13 +108,13 @@
    release date in the badge (set/corrected at ship), and one .whatsnew-block per
    feature. One bundle per strip; only ever one strip here at a time. Dismiss is
    per-device (localStorage, keyed by version) — a new version resurfaces it. #}
-{# ⚠️ Never name the weekly agent card in here — the exact two-word label
-   ("Money" followed by "agent"). This strip renders on '/' whether or not AI is
-   configured, and test_dashboard_hides_card_without_key asserts that label is
-   ABSENT from the page when there is no API key, so writing it here turns that
-   test red. Say "weekly money check", as the v10.15.0 strip did. (This comment
-   deliberately avoids the literal too — a Jinja comment never renders, but it
-   would still show up in a grep and read as a violation.) #}
+{# ⚠️ The old rule here — never name the weekly agent card in this strip,
+   because a test asserted that label was absent from an AI-less page — RETIRED
+   with #232: the card and that test are both gone, and the panel that replaced
+   them renders nothing named after a model. Kept as a note because the shape
+   recurs: this strip renders on '/' whether or not AI is configured, so any
+   copy naming an AI-gated element can make an absence assertion elsewhere fail
+   from the one place on the page that ignores the gate. #}
 <div class="card whatsnew" id="whatsnew" data-version="v0.7.0" hidden>
   <div class="whatsnew-head">
     <strong>What's new in v0.7.0</strong>
@@ -167,9 +167,6 @@
   });
 })();
 </script>
-{% include 'partials/_quick_add.html' %}
-{# Pre-filled form appears here after a quick-add parse; empty until then. #}
-<div id="txn-form-wrap"></div>
 {# #225 — three facts about the month at the same weight, which is right
    BECAUSE they are peers: what you spent against last year, how far through the
    budget you are, and what has not left the account yet. The year-over-year
@@ -302,28 +299,14 @@
 <p style="margin-bottom:1.5rem"><a href="{{ url_for('goals.goals') }}">Manage goals →</a></p>
 {% endif %}
 </div><!--/band-main-->
-{# #223 — insight, forecast, the weekly check and Ask were four stacked cards
-   saying four things about one month. They are now sections of ONE panel.
-   ⚠️ The merge is VISUAL only. Each section keeps its own <details> id
-   (#insight-card / #forecast-card / #agent-card), its data-ai-key and its
-   data-generated, because those are its HTMX swap target and its read-state
-   key — test_ai_collapse.py pins all three. The partials dropped `.card` for
-   `.ai-section`; nothing else about them moved.
-   ⚠️ The wrapper is gated on ai_enabled together with its contents: an empty
-   bordered box on an AI-less install would be worse than the four cards. #}
-{% if ai_enabled %}
-<div class="card month-read" id="month-read">
-  <div class="month-read-head">
-    {% include 'partials/_ai_spark.html' %}
-    <h2>This month&rsquo;s read</h2>
-    <span class="ai-badge">AI</span>
-  </div>
-  {% if show_insight %}{% include 'partials/_insight_card.html' %}{% endif %}
-  {% if show_forecast %}{% include 'partials/_forecast_card.html' %}{% endif %}
-  {% include 'partials/_agent_card.html' %}
-  {% include 'partials/_ask.html' %}
-</div><!--/month-read-->
-{% endif %}
+{# #232 — insight, forecast, the weekly money check and the Ask box were four
+   AI surfaces stacked in one panel, each with its own cache and Generate
+   button. They are ONE feature now: partials/_ask_panel.html renders a single
+   read of the month and the box beneath it, and the three cards, their routes
+   and their <details> read-state machinery are gone.
+   ⚠️ The partial gates itself on ai_enabled — do NOT wrap it in a second gate,
+   or the panel's own three states get a fourth. #}
+{% include 'partials/_ask_panel.html' %}
 </div><!--/home-band-->
 
 {% if has_transactions %}

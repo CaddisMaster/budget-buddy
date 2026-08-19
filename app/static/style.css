@@ -482,47 +482,46 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .goal-flag.on, .goal-flag.done { color: var(--success); }
 .goal-flag.behind { color: var(--warning); }
 
-/* "This month's read" — one panel, four sections. The nested <details> keep
-   their own ids and swap targets (test_ai_collapse.py), so what changes here is
-   only the chrome: they are sections of a card rather than cards. */
-/* The panel is a dark surface in BOTH themes, like the hero — it is the one
+/* "Ask your finances" (#232) — Home's ONE AI surface: a short read of the month
+   and the box, in one panel. It replaced four stacked <details> cards, so the
+   collapse chrome, the per-section heads and the facts strip that used to live
+   here are all gone rather than restyled.
+   The panel is a dark surface in BOTH themes, like the hero — it is the one
    place on the page where a model is speaking, and making that a change of
    MATERIAL rather than a badge is what the mockup was doing. Its own ink
    tokens, for the same reason the hero has them. */
-.month-read {
+.ask-panel {
   background: var(--grad-read); border: none;
   padding: var(--sp-4) var(--sp-5) var(--sp-5);
   color: var(--on-read); box-shadow: var(--shadow-lg);
 }
-.month-read h2, .month-read strong, .month-read .fact-val { color: var(--on-read); }
-.month-read p, .month-read li, .month-read .insight-intro, .month-read .ai-intro,
-.month-read .insight-ts, .month-read .agent-evidence, .month-read .insight-meta,
-.month-read .fact-label, .month-read .ai-headline { color: var(--on-read-muted); }
-.month-read .ai-headline.pos { color: var(--on-dark-pos); }
-.month-read .ai-headline.neg { color: var(--on-dark-neg); }
-.month-read .insight-warn { color: var(--on-dark-neg); }
-.month-read .ai-section + .ai-section,
-.month-read .ask-foot { border-top-color: var(--read-rule); }
-.month-read .btn, .month-read .btn-sm { background: var(--read-btn); border-color: var(--read-rule); color: var(--on-read); }
-.month-read .btn:hover, .month-read .btn-sm:hover { background: var(--read-btn-hover); border-color: var(--on-read-muted); }
-.month-read input { background: var(--read-btn); border-color: var(--read-rule); color: var(--on-read); }
-.month-read input::placeholder { color: var(--on-read-muted); }
-.month-read .agent-finding { background: var(--read-btn); border-left-color: var(--warning); }
+.ask-panel h2, .ask-panel strong { color: var(--on-read); }
+.ask-panel p, .ask-panel li, .ask-panel .ask-read-ts { color: var(--on-read-muted); }
+.ask-panel .ask-foot { border-top-color: var(--read-rule); }
+.ask-panel .btn, .ask-panel .btn-sm { background: var(--read-btn); border-color: var(--read-rule); color: var(--on-read); }
+.ask-panel .btn:hover, .ask-panel .btn-sm:hover { background: var(--read-btn-hover); border-color: var(--on-read-muted); }
+.ask-panel input { background: var(--read-btn); border-color: var(--read-rule); color: var(--on-read); }
+.ask-panel input::placeholder { color: var(--on-read-muted); }
 /* The one ACTION on the panel keeps the accent, so it still reads as one. */
-.month-read .ask-foot .btn-primary { background: var(--grad-accent); border-color: transparent; color: #fff; }
-.month-read-head { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }
-.month-read-head h2 { margin: 0; }
-.month-read .ai-section { border: none; border-radius: 0; box-shadow: none; background: none; padding: 0; margin: 0; }
-.month-read .ai-section + .ai-section,
-.month-read .ask-foot { border-top: 1px solid var(--border); margin-top: var(--sp-3); padding-top: var(--sp-3); }
-/* The section headings step down: the panel owns the h2 voice now. */
-.month-read .ai-head h2 { font-size: var(--fs-base); font-weight: 600; }
-/* One spark and one badge, on the panel head — not four of each. */
-.month-read .ai-section .ai-spark,
-.month-read .ai-section .ai-badge { display: none; }
+.ask-panel .ask-foot .btn-primary { background: var(--grad-accent); border-color: transparent; color: #fff; }
+.ask-panel .ask-answer { background: var(--read-btn); }
+.ask-panel-head { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.ask-panel-head h2 { margin: 0; }
 
-.ask-foot { display: flex; flex-direction: column; gap: var(--sp-2); }
+/* The read itself: the first thing the panel says, so it carries the panel's
+   full ink rather than the muted tone the rest of the prose uses. */
+.ask-read { font-size: var(--fs-base); line-height: 1.55; margin: var(--sp-2) 0 0; color: var(--on-read) !important; }
+.ask-read-waiting { color: var(--on-read-muted) !important; }
+.ask-read-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); flex-wrap: wrap; margin-top: var(--sp-2); }
+.ask-read-ts { font-size: var(--fs-xs); }
+.read-spinner { font-size: var(--fs-xs); color: var(--on-read-muted); }
+
+.ask-foot { display: flex; flex-direction: column; gap: var(--sp-2); border-top: 1px solid var(--border); margin-top: var(--sp-3); padding-top: var(--sp-3); }
 .ask-label { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--on-read); }
+.ask-row { display: flex; gap: var(--sp-2); align-items: center; }
+.ask-row input { flex: 1; margin: 0; }
+.ask-row .btn { margin: 0; white-space: nowrap; }
+.ask-spinner { font-size: var(--fs-xs); color: var(--on-read-muted); }
 
 /* Home's two-column band: the bars carry the detail, the read carries the
    words. Single column below the tablet breakpoint (see the media block). */
@@ -846,9 +845,10 @@ details.ai-card:not([open]) > summary.ai-head { margin-bottom: 0; }
 .ask-answer p { margin: 0; white-space: pre-line; }
 .ask-answer .ask-tools { font-size: 11px; color: var(--text-muted); margin: 0.5rem 0 0; }
 
-/* v10.1 Insight / v10.2 Forecast cards — now share the .ai-card border above.
-   .insight-* layout classes are still reused by both. */
-.insight-head { display: flex; align-items: center; gap: 0.6rem; }
+/* ⚠️ These .insight-* / .fact* classes outlived the cards they were named for
+   (#232 removed Insight, Forecast and the money agent). Their remaining
+   consumers are the goal-coach card and the budget-review banner — rename them
+   only together with those two templates. */
 .insight-spinner { font-size: 12px; color: var(--text-muted); }
 .insight-intro { color: var(--text-muted); font-size: 14px; margin: 0.5rem 0 0.9rem; }
 .facts-strip { display: flex; flex-wrap: wrap; gap: 0.75rem 1.5rem; margin: 0.9rem 0; }
@@ -857,21 +857,11 @@ details.ai-card:not([open]) > summary.ai-head { margin-bottom: 0; }
 .fact-val { font-size: 18px; font-weight: 600; }
 .fact-val.pos { color: var(--success); }
 .fact-val.neg { color: var(--danger); }
-.insight-meta { font-size: 13px; color: var(--text-muted); margin: 0.2rem 0; }
-.insight-warn { color: var(--danger); }
 .insight-summary { font-size: 15px; line-height: 1.5; margin: 0.9rem 0; }
 .insight-tips { margin: 0.5rem 0 0.9rem; padding-left: 1.2rem; font-size: 14px; }
 .insight-tips li { margin: 0.25rem 0; }
 .insight-foot { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
 .insight-ts { font-size: 12px; color: var(--text-muted); }
-/* Money agent card (v10.10) — the weekly-check findings list. Reuses the
-   .ai-card identity + .insight-* layout classes; these style the findings. */
-.agent-findings { list-style: none; margin: 0.9rem 0 0; padding: 0; }
-.agent-finding { padding: 0.7rem 0.9rem; margin: 0.5rem 0; background: var(--surface-2); border-left: 3px solid var(--warning); border-radius: 6px; }
-.agent-finding strong { font-size: 14px; }
-.agent-detail { font-size: 14px; line-height: 1.5; margin: 0.3rem 0 0; }
-.agent-evidence { font-size: 12px; color: var(--text-muted); margin: 0.35rem 0 0; }
-
 /* Budget report (v10.9): hit/miss month cells + trend words. The tr:hover
    overrides keep the verdict tint from being wiped by the global hover rule. */
 .budget-report td { white-space: nowrap; }

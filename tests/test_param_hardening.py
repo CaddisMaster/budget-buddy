@@ -4,13 +4,16 @@
 Covers the deferred items from the 2026-07-02 review + the 2026-07-07 re-review:
 query-param parsing (?month / ?page on dashboard, history, CSV export), posted
 ids that aren't ints (budgets set/clear, transaction edit, transfers, schedule
-forms), the budget-review "inf" OverflowError, the forecasts/insights month=13
-clamp, the bcrypt 72-byte password limit, the transaction-date validation, the
-generic-error-message sweep (no raw psycopg2 text to the browser), and the
-style.css cache-bust lockstep between base.html and login.html.
+forms), the budget-review "inf" OverflowError, the bcrypt 72-byte password
+limit, the transaction-date validation, the generic-error-message sweep (no raw
+psycopg2 text to the browser), and the style.css cache-bust lockstep between
+base.html and login.html.
 
-No real Anthropic API calls — the forecast/insight seams are monkeypatched with
-the boom stub (the route's graceful ParseError fallback is the assertion).
+⚠️ The forecasts/insights `month=13` clamp is GONE from this file — #232 removed
+both routes, and the panel that replaced them reads no month parameter at all.
+What stands in its place asserts that absence.
+
+No real Anthropic API calls — the model seams are monkeypatched.
 """
 import re
 from contextlib import contextmanager
@@ -22,7 +25,7 @@ import pytest
 
 import app as app_package
 import app.ai as ai
-from app.ai import ParseError
+from app.ai import _MonthRead
 from app.helpers import (
     GENERIC_ERROR,
     parse_int_param,
@@ -38,6 +41,7 @@ from tests.conftest import (
     count_transfer_schedules,
     create_category,
     fetch_budget_by_category,
+    fetch_insight,
     fetch_transaction,
 )
 
@@ -159,27 +163,26 @@ def test_budget_review_apply_inf_amount_is_skipped(client_a, users, monkeypatch)
     assert fetch_budget_by_category(users["a"]["id"], cat) is None
 
 
-# --- tampered hidden year/month on the AI cards -------------------------------
+# --- the AI panel takes no month at all (#232) --------------------------------
 
-def test_forecast_generate_month_13_clamps_to_today(client_a, monkeypatch):
-    """calendar.monthrange(year, 13) raised IllegalMonthError → 500. The clamp
-    falls back to the current month; the boom seam then exercises the route's
-    graceful ParseError toast (and proves no real API call shape is needed)."""
-    def _boom(*a, **k):
-        raise ParseError("network down")
-    monkeypatch.setattr(ai, "_call_forecast_model", _boom)
-    response = client_a.post("/forecasts/generate",
-                             data={"year": "2026", "month": "13"})
+def test_the_month_read_ignores_a_posted_year_and_month(client_a, users, monkeypatch):
+    """The Insight and Forecast cards posted hidden year/month fields, and both
+    needed a clamp: `calendar.monthrange(year, 13)` raised IllegalMonthError →
+    500. #232's panel is always the CURRENT month and reads no parameter, so
+    the class of bug is designed out rather than guarded. This asserts the
+    ABSENCE — a tampered month must not reach the cache key — because a future
+    change reintroducing the parameter would otherwise be silent."""
+    def _read(*a, **k):
+        return _MonthRead(summary="Current month only.")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(ai, "_call_month_read_model", _read)
+
+    response = client_a.post("/insights/read", data={"year": "0", "month": "13"})
     assert response.status_code == 200
 
-
-def test_insight_generate_month_13_clamps_to_today(client_a, monkeypatch):
-    def _boom(*a, **k):
-        raise ParseError("network down")
-    monkeypatch.setattr(ai, "_call_insight_model", _boom)
-    response = client_a.post("/insights/generate",
-                             data={"year": "0", "month": "13"})
-    assert response.status_code == 200
+    today = date.today()
+    assert fetch_insight(users["a"]["id"], today.year, today.month) is not None
+    assert fetch_insight(users["a"]["id"], 0, 13) is None
 
 
 # --- transaction-date validation ----------------------------------------------

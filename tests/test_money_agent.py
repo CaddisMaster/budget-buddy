@@ -10,6 +10,11 @@ The free-hunt design has no deterministic pre-screen, so its guardrails ARE
 the testable surface: the run must end via submit_findings, a submit without
 any successful data-tool call is rejected, findings are capped at 3, and an
 unevidenced finding is dropped by the pure normalizer.
+
+⚠️ #232 removed the dashboard card and POST /agent/run — the agent now runs ONE
+way, inside the weekly digest send. The route tests that used to sit here went
+with it; the digest tests at the bottom are what keep the feature covered, so
+do not thin them out.
 """
 import json
 from datetime import date, timedelta
@@ -33,7 +38,6 @@ from app.db import get_db_connection
 from app.helpers import most_recent_sunday
 from tests.conftest import create_agent_run, fetch_agent_runs
 
-HX = {"HX-Request": "true"}
 TODAY = date.today()
 WEEK = most_recent_sunday(TODAY)
 
@@ -312,55 +316,6 @@ def test_load_agent_run_specific_week_misses_stale(users):
     assert load_agent_run(cur, a)["summary"] == "old"   # latest still loads
     cur.close()
     conn.close()
-
-
-# --- POST /agent/run (route) -------------------------------------------------
-
-def test_agent_run_requires_login(anon_client):
-    resp = anon_client.post("/agent/run", headers=HX)
-    assert resp.status_code == 302
-
-
-def test_agent_run_returns_card_fragment_and_caches(client_a, users, monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-    monkeypatch.setattr(ai, "_call_agent_model",
-                        _AgentSeam(summary="All good.", findings=[_finding()]))
-    resp = client_a.post("/agent/run", headers=HX)
-    assert resp.status_code == 200
-    html = resp.get_data(as_text=True)
-    assert "<html" not in html                 # a fragment, not a page
-    assert "Money agent" in html
-    assert "Finding 1" in html and "Evidence 1" in html
-    assert len(fetch_agent_runs(users["a"]["id"])) == 1
-
-
-def test_agent_run_graceful_fallback_writes_nothing(client_a, users, monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-    monkeypatch.setattr(ai, "_call_agent_model", _AgentSeam(boom=True))
-    resp = client_a.post("/agent/run", headers=HX)
-    assert resp.status_code == 200             # never a broken page
-    assert "showToast" in resp.headers.get("HX-Trigger", "")
-    assert fetch_agent_runs(users["a"]["id"]) == []
-
-
-def test_dashboard_shows_card_without_calling_model(client_a, users, monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-    seam = _AgentSeam()
-    monkeypatch.setattr(ai, "_call_agent_model", seam)
-    create_agent_run(users["a"]["id"], WEEK,
-                     {"summary": "Cached quiet week.", "findings": [],
-                      "tools_used": ["recent_transactions"]})
-    resp = client_a.get("/")
-    html = resp.get_data(as_text=True)
-    assert "Money agent" in html
-    assert "Cached quiet week." in html
-    assert seam.calls == 0                     # dashboard load is cache-only
-
-
-def test_dashboard_hides_card_without_key(client_a, monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    resp = client_a.get("/")
-    assert "Money agent" not in resp.get_data(as_text=True)
 
 
 # --- digest integration -------------------------------------------------------

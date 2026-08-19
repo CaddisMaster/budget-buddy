@@ -15,7 +15,6 @@ from app.blueprints.main import (
     sparkline,
 )
 
-
 # --- days left ----------------------------------------------------------------
 
 def test_days_left_counts_whole_days_and_ends_at_zero():

@@ -13,20 +13,34 @@ this project uses the `0.x` versioning scheme described in
 - **The Home page opens with the answer now.** It used to open with a What's-new
   strip, a quick-add box and a month dropdown, and only then tell you where the
   month stood — and it printed your net position twice, three lines apart, in the
-  same panel. The page now leads with the month's net position; the strip and the
-  quick-add sit underneath it, and Net is stated once, with income and expenses
-  beside it rather than repeated below.
+  same panel. The page now leads with the month's net position; the strip sits
+  underneath it, and Net is stated once, with income and expenses beside it
+  rather than repeated below.
 
   **Where your money went is now a ranked list rather than a doughnut.** Six
   categories, longest first, each with its name on the row and its amount beside
   it — no legend to read across, and the same colours as before. The
   expenses/income switch works exactly as it did.
 
-  **Everything the AI writes about the month is now one panel** — the monthly
-  insight, the forecast, the weekly money check and the Ask box were four
-  separate cards saying four things about one month, and they are now four
-  sections of a single "This month's read", with Ask at its foot. Each still
-  generates, refreshes and remembers what you've read independently.
+  **The four AI features are one feature now: "Ask your finances".** The monthly
+  insight, the month-ahead forecast, the weekly money check and the Ask box were
+  four separate cards, each with its own Generate button, saying four things
+  about one month. There is one panel instead. It opens with a short read of
+  where your month stands and where it is heading — how it compares with last
+  month, and what is still to leave the account before the month ends — and the
+  question box sits underneath it.
+
+  The read writes itself the first time you open Home in a new month, and
+  Refresh rewrites it whenever you want a fresh one; loading the page never
+  waits on it. Asking a question can now reach everything the three retired
+  cards showed, because the same figures they were built on are wired straight
+  into the box — so "am I on pace to make it to the end of the month, and how
+  does that compare with last month?" is one question rather than two cards to
+  read and reconcile yourself.
+
+  **Your weekly digest email is unchanged.** The money check still runs there,
+  with its findings, exactly as before — it is only the card on Home that has
+  gone.
 
   **The year-over-year comparison is one line** instead of three full-height
   cards, leading with the percentage, which is the number the comparison exists
@@ -40,12 +54,12 @@ this project uses the `0.x` versioning scheme described in
   — how this month compares with the same month last year, how far through your
   budget you are, and what is still due to leave the account — each appearing
   only when there is something to say. Goals are rings rather than bars, and
-  "This month's read" is a panel of its own material, so it is obvious at a
+  "Ask your finances" is a panel of its own material, so it is obvious at a
   glance which part of the page was written for you and which part is your own
   arithmetic.
 
-  Your goals now sit beside the month's read rather than below it, so the page
-  ends where the reading does. The six charts are unchanged and still live in
+  Your goals now sit beside that panel rather than below it, so the page ends
+  where the reading does. The six charts are unchanged and still live in
   the section at the bottom, which still opens on desktop and stays closed on a
   phone — where the category bars now put each name and amount on one line with
   the bar beneath, instead of squeezing the bar into a stub too small to compare.
@@ -74,6 +88,14 @@ this project uses the `0.x` versioning scheme described in
   Nothing about what any page *does* has changed, and no figure is computed
   differently. The Home page's own layout — which is a separate complaint, and a
   fair one — is next.
+
+### Removed
+
+- **The natural-language quick-add box is gone**, from both Home and the Add
+  Transaction page. You could type "spent 42 on groceries at Safeway yesterday"
+  and have the form filled in for you; in practice nobody did, and it took up
+  the space at the top of both pages. Adding a transaction by hand is unchanged,
+  and so is everything else the app does with your text.
 
 ## [0.7.0] - 2026-08-17
 

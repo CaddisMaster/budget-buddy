@@ -1,35 +1,29 @@
-"""v10.10 — the "Money agent" (Budget Buddy's ninth AI feature).
+"""The money agent: an autonomous weekly investigation of the user's finances.
 
-An autonomous weekly investigation of the user's finances: the model free-hunts
-the last week through the SAME read-only, user-scoped ask-tools the v10.3 "Ask"
-box uses (blueprints/ask.py is still the one security boundary — dispatch
-validates every arg and forces user_id), dismisses what's explicable, and
-submits at most 3 evidence-cited findings. "Nothing notable this week" is the
-expected outcome most weeks.
+The model free-hunts the last week through the SAME read-only, user-scoped
+ask-tools the "Ask your finances" box uses (blueprints/ask.py is still the one
+security boundary — dispatch validates every arg and forces user_id), dismisses
+what is explicable, and submits at most 3 evidence-cited findings. "Nothing
+notable this week" is the expected outcome most weeks.
 
-Runs two ways: on demand from the dashboard card (POST /agent/run), and inside
-the weekly digest send (digests.py calls run_money_agent per recipient, reusing
-this week's cached run if one exists). Each run is cached one-row-per-
-(user, week) in `agent_runs` — the insights load/upsert pattern, keyed by the
-week's Sunday (most_recent_sunday, the digest's period boundary) — so the
-dashboard shows the latest run instantly and the digest never re-pays a run the
-user already triggered. Gated on ai_enabled(); every failure degrades to a
-ParseError the callers handle (an error toast, or a digest without the section
-— never a broken page or a dead email).
+⚠️ It runs ONE way now: inside the weekly digest send (digests.py calls
+run_money_agent per recipient, reusing this week's cached run if one exists).
+#232 removed the dashboard card and the `/agent/run` route along with the other
+Home AI surfaces — Sean's call was that the digest keeps its investigation and
+Home keeps one panel. This module therefore defines NO blueprint any more.
+
+Each run is cached one-row-per-(user, week) in `agent_runs`, keyed by the week's
+Sunday (most_recent_sunday, the digest's period boundary), so a re-send never
+re-pays for a run. Gated on ai_enabled(); every failure degrades to a ParseError
+the caller handles (a digest without the section — never a dead email).
 """
 import json
 from datetime import date
 
-from flask import Blueprint, make_response, render_template
-from flask_login import current_user, login_required
-
-from app import limiter
-from app.ai import AGENT_MODEL, ParseError, investigate_finances
+from app.ai import AGENT_MODEL, investigate_finances
 from app.blueprints.ask import TOOL_SPECS, dispatch
 from app.db import db_cursor
-from app.helpers import hx_toast, most_recent_sunday
-
-bp = Blueprint('agent', __name__)
+from app.helpers import most_recent_sunday
 
 
 def run_money_agent(user_id, *, today=None):
@@ -97,30 +91,3 @@ def load_agent_run(cursor, user_id, period_start=None):
     data['period_start'] = row[1]
     data['created_at'] = row[2]
     return data
-
-
-@bp.route('/agent/run', methods=['POST'])
-@limiter.limit("3 per minute")
-@login_required
-def run():
-    """The dashboard card's "Run now" / "Re-run": investigate, cache, and swap
-    the card. An explicit re-run always re-investigates (the Regenerate
-    precedent) — the upsert overwrites this week's row. Any failure falls back
-    to the previously cached card + an error toast, so the dashboard never
-    breaks."""
-    def _card(agent_run, just_generated=False):
-        return make_response(render_template(
-            'partials/_agent_card.html', agent_run=agent_run,
-            just_generated=just_generated))
-
-    try:
-        agent_run = run_money_agent(current_user.id)
-    except ParseError:
-        # The fallback re-renders the PREVIOUS cached run — old content, so it
-        # keeps the default collapsed-when-read behaviour (no just_generated).
-        with db_cursor() as cursor:
-            agent_run = load_agent_run(cursor, current_user.id)
-        return hx_toast(_card(agent_run),
-                        "Couldn't run the money agent right now", 'error')
-
-    return hx_toast(_card(agent_run, just_generated=True), 'Weekly check complete')

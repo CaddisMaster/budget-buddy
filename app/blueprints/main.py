@@ -6,11 +6,15 @@ from flask import Blueprint, current_app, jsonify, redirect, render_template, re
 from flask_login import current_user, login_required
 
 from app import limiter
-from app.blueprints.agent import load_agent_run
 from app.blueprints.budgets import compute_budget_vs_actual
-from app.blueprints.forecasts import compute_forecast, load_forecast
+from app.blueprints.forecasts import compute_forecast
 from app.blueprints.goals import build_goals_view
-from app.blueprints.insights import _prev_month, compute_month_facts, load_insight
+from app.blueprints.insights import (
+    _prev_month,
+    compute_month_facts,
+    load_read,
+    month_worth_reading,
+)
 from app.blueprints.transactions import compute_next_due
 from app.db import db_cursor
 from app.helpers import ai_enabled, parse_month_param, recent_months
@@ -226,7 +230,9 @@ def sparkline(series, key='balance', width=420, height=64, pad=4):
         pts.append((x, y))
     # :g so the path reads 0,20 rather than 0.0,20 — this string goes into the
     # page, and a rounded float prints its trailing zero.
-    n = lambda v: f'{v:g}'
+    def n(v):
+        return f'{v:g}'
+
     line = ' '.join(f'{n(x)},{n(y)}' for x, y in pts)
     area = (f'M{n(pts[0][0])},{n(height)} L'
             + ' L'.join(f'{n(x)},{n(y)}' for x, y in pts)
@@ -473,48 +479,32 @@ def index():
                        (current_user.id,))
         category_order = {row.name: i for i, row in enumerate(cursor.fetchall())}
 
-    # AI cards (both independent of the chart month filter so their cache keys
-    # stay stable; cache-only on load, no model call). Each is positioned at a
-    # distinct moment in time and HIDDEN entirely when its target month has
-    # nothing to say (v10.6) — so the dashboard never leads with a dead card:
-    #   * Insight (v10.1) is RETROSPECTIVE → the last COMPLETE month, so on the
-    #     1st of a new month it shows a fully-populated prior-month recap rather
-    #     than an empty in-progress one. Shown only if that month had activity.
-    #   * Forecast (v10.2) is PROSPECTIVE → the current month. Shown only when
-    #     there's something to project (month-to-date activity OR a scheduled
-    #     item still to land) — mirrors the generator's own not-enough-data gate.
+        # The month read (#232) — always the CURRENT month, and deliberately
+        # independent of the chart's month filter so its cache key stays stable:
+        # the panel answers "how is this month going", not "how did the month
+        # you are browsing go". Cache-only here, no model call.
         ai_on = ai_enabled()
         # ⚠️ Computed UNCONDITIONALLY since #223: the dashboard's "still to post"
         # figure reads `remaining_items`, and that is a plain fact about the
         # user's schedules, not an AI feature. It used to sit inside the `if
         # ai_on:` below purely because the forecast card was its only consumer —
         # leaving it there would mean the stat silently vanishing on an install
-        # with no API key. The narration around it (`forecast`, `show_forecast`)
-        # stays gated.
+        # with no API key. The narration around it stays gated.
         forecast_facts = compute_forecast(current_user.id, today.year, today.month)
-        insight = None
-        insight_facts = None
-        show_insight = False
-        forecast = None
-        show_forecast = False
-        agent_run = None
-        insight_year, insight_month = _prev_month(today.year, today.month)
+        read = None
+        read_pending = False
         if ai_on:
-            insight_facts = compute_month_facts(current_user.id, insight_year, insight_month)
-            show_insight = insight_facts['income'] > 0 or insight_facts['expenses'] > 0
-            if show_insight:
-                insight = load_insight(cursor, current_user.id, insight_year, insight_month)
-
-            show_forecast = not (forecast_facts['income_to_date'] == 0
-                                 and forecast_facts['expenses_to_date'] == 0
-                                 and not forecast_facts['remaining_items'])
-            if show_forecast:
-                forecast = load_forecast(cursor, current_user.id, today.year, today.month)
-
-            # Money agent (v10.10) — the latest cached weekly run. Unlike the two
-            # cards above there's no not-enough-data gate: the empty state IS the
-            # card (it carries the Run-now button), so it shows whenever AI is on.
-            agent_run = load_agent_run(cursor, current_user.id)
+            # #232 — ONE cached read of the CURRENT month, replacing the Insight
+            # (previous month), Forecast (current month) and money-agent cards.
+            # ⚠️ Nothing is generated here: a page load must never wait on — or
+            # pay for — a model call. When the month has no read yet the panel
+            # asks for one itself after load, and it asks only when there is
+            # something to narrate, so an empty month stays silent and free.
+            read = load_read(cursor, current_user.id, today.year, today.month)
+            read_pending = read is None and month_worth_reading(
+                forecast_facts['income_to_date'],
+                forecast_facts['expenses_to_date'],
+                forecast_facts['remaining_items'])
 
     # Chart payloads — plain lists the template renders with |tojson, which
     # HTML-escapes into the script block (the old json.dumps + |safe let a
@@ -610,15 +600,6 @@ def index():
         has_transactions=has_transactions,
         goals=goals_view,
         ai_enabled=ai_on,
-        show_insight=show_insight,
-        insight=insight,
-        facts=insight_facts,
-        insight_year=insight_year,
-        insight_month=insight_month,
-        show_forecast=show_forecast,
-        forecast=forecast,
-        forecast_facts=forecast_facts,
-        forecast_year=today.year,
-        forecast_month=today.month,
-        agent_run=agent_run
+        read=read,
+        read_pending=bool(read_pending)
     )

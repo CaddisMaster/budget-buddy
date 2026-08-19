@@ -250,5 +250,24 @@
 - CSRF: Flask-WTF CSRFProtect — token on POST forms, plus a single `hx-headers='{"X-CSRFToken": ...}'` on `<body>` in base.html covering every HTMX post/put/delete
 - **Flex overflow:** `.main-content` is a flex item and MUST keep `min-width: 0` — without it a wide table inflates the column past the viewport instead of scrolling inside its `.table-wrapper`. Same hotfix owns the iOS status-bar rules: `viewport-fit=cover` + `html` background + safe-area paddings (keep `theme-color` for Android; never `black-translucent`)
 - **PWA/iOS testing:** responsive mode does NOT test iOS — installed-PWA bugs only show on the actual phone over HTTPS
-- **AI-card collapse:** the four AI narration cards are `<details>` with `data-ai-key` + `data-generated` (the cache row's `created_at.isoformat()`; `initAiCollapse` in base.html + localStorage `bb-ai-seen:<key>` drive read-state). Generate routes must get the timestamp via `RETURNING created_at` — a route-local `datetime.today()` makes every regenerate read as new twice. Server renders CLOSED except empty-state (Generate must work without JS) and `just_generated` fragments. The What's-new strip says "weekly money check", NOT "Money agent" — a dashboard test asserts the agent CARD's absence by that exact string
-
+- **AI-card collapse:** ⚠️ **ONE card still uses this** — the goal coach on `/goals`. #232 folded
+  Home's insight, forecast and money-agent cards into a single "Ask your finances" panel that does
+  not collapse, so `initAiCollapse` in base.html now exists for that one card; if it ever loses its
+  `<details>`, delete the script rather than leaving dead JS on every page. The mechanism, while it
+  lasts: `<details>` with `data-ai-key` + `data-generated` (the cache row's `created_at.isoformat()`;
+  `initAiCollapse` + localStorage `bb-ai-seen:<key>` drive read-state). A generate route must get the
+  timestamp via `RETURNING created_at` — a route-local `datetime.today()` makes every regenerate read
+  as new twice. Server renders CLOSED except empty-state (Generate must work without JS) and
+  `just_generated` fragments.
+- ⚠️ **Home's AI panel re-renders WHOLE, and its gate is shared** (#232, `partials/_ask_panel.html`).
+  Two things are load-bearing and neither is obvious from the markup. **(1)** `POST /insights/read`
+  returns the entire panel, Ask box included, and the panel's root keeps `id="ask-panel"` — the
+  read and the input are one feature, so a fragment carrying only the paragraph would swap the
+  input out of the page and strand every later Refresh. **(2)** `insights.month_worth_reading()` is
+  pure and called from BOTH sides: `main.py` decides whether the panel asks for a read
+  (`hx-trigger="load"`), the route decides whether to answer. Two separately-written gates
+  eventually disagree, and the failure mode is a panel that asks on every load and is refused every
+  time — a paid round-trip per page view, silent. The dashboard passes month-TO-DATE totals and the
+  route passes the whole month's, which is a superset, so the route can never refuse a read the
+  dashboard just asked for. ⚠️ And the dashboard GET must never generate: a page load that waits on
+  a model call is both slow and billable, which is why the empty state defers instead.

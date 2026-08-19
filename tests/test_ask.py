@@ -254,3 +254,77 @@ def test_upcoming_scheduled_excludes_a_finished_schedule(users):
     amounts = [s["amount"] for s in json.loads(content)["scheduled"]]
     assert 1234.0 in amounts      # the live schedule is still reported
     assert 4321.0 not in amounts  # the finished one is not
+
+
+# --- #232: the two tools that replace the retired cards ---------------------
+#
+# Folding Insight, Forecast and the money agent into one box only works if the
+# box can reach what they reached. Both wrap the SAME deterministic builders the
+# cards used, so the answer and the read can never disagree about a figure.
+
+def test_month_summary_tool_reports_the_month_and_its_comparison(users):
+    a = users["a"]["id"]
+    acct = create_account(a, "tool-summary-acct")
+    cat = create_category(a, "tool-summary-cat")
+    create_transaction(a, acct, 800, "2026-05-04", "income")
+    create_transaction(a, acct, 200, "2026-05-06", "expense", category_id=cat)
+    create_transaction(a, acct, 100, "2026-04-06", "expense", category_id=cat)
+
+    content, is_error = ask.dispatch(a, "month_summary", {"month": "2026-05"})
+    assert is_error is False
+    data = json.loads(content)
+    assert data["month"] == "2026-05"
+    assert data["income"] == 800.0
+    assert data["expenses"] == 200.0
+    # the prev-month comparison the Insight card used to render
+    assert data["previous_month"]["expenses"] == 100.0
+    assert "overruns" in data and "top_categories" in data
+
+
+def test_month_projection_tool_reports_what_is_still_to_land(users):
+    """The forecast card's whole point, now reachable from the Ask box."""
+    a = users["a"]["id"]
+    today = date.today()
+    acct = create_account(a, "tool-proj-acct")
+    cat = create_category(a, "tool-proj-cat")
+    create_transaction(a, acct, 600, today.replace(day=1), "income")
+    create_schedule(a, acct, 90, "monthly", today + timedelta(days=1),
+                    transaction_type="expense", category_id=cat,
+                    description="tool-proj-bill")
+
+    content, is_error = ask.dispatch(
+        a, "month_projection", {"month": f"{today.year}-{today.month:02d}"})
+    assert is_error is False
+    data = json.loads(content)
+    for key in ("projected_income", "projected_expenses", "projected_net",
+                "remaining_scheduled_expense", "remaining_items"):
+        assert key in data
+
+
+def test_the_new_tools_reject_a_bad_month(users):
+    """⚠️ Assert the PARSE error specifically. An unregistered tool answers
+    'Unknown tool: month_summary', which also contains the word "month" — so a
+    looser assertion passes before either tool exists, which is exactly what it
+    did while these were being written."""
+    for name in ("month_summary", "month_projection"):
+        content, is_error = ask.dispatch(users["a"]["id"], name, {"month": "nope"})
+        assert is_error is True
+        error = json.loads(content)["error"]
+        assert "Unknown tool" not in error
+        assert "YYYY-MM" in error
+
+
+def test_the_new_tools_only_see_their_own_users_rows(users):
+    a, b = users["a"]["id"], users["b"]["id"]
+    acct_b = create_account(b, "tool-iso-b")
+    create_transaction(b, acct_b, 7777, "2026-06-03", "income")
+
+    content, _ = ask.dispatch(a, "month_summary", {"month": "2026-06"})
+    assert json.loads(content)["income"] != 7777.0
+
+
+def test_every_tool_spec_has_a_handler():
+    """The registry is built by zipping specs to handlers — a spec added without
+    one would be advertised to the model and then fail every call."""
+    assert set(ask._HANDLERS) == {spec["name"] for spec in ask.TOOL_SPECS}
+    assert {"month_summary", "month_projection"} <= set(ask._HANDLERS)
