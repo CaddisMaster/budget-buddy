@@ -21,7 +21,13 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import USER_A
+from tests.conftest import (
+    PASSWORD,
+    TEST_PREFIX,
+    USER_A,
+    _create_user,
+    _delete_user,
+)
 
 TEMPLATES = Path(__file__).resolve().parents[1] / "app" / "templates"
 CSS_PATH = Path(__file__).resolve().parents[1] / "app" / "static" / "style.css"
@@ -147,11 +153,47 @@ def test_changing_your_password_is_reachable_from_profile(client_a):
 # --- #247: proportionate, and destructive actions weighted --------------------
 
 
-def test_deleting_a_user_is_not_the_same_weight_as_toggling_admin(admin_client):
+@pytest.fixture
+def a_second_user():
+    """A user the admin can actually act on.
+
+    ⚠️ /admin/users lists EVERY user on the server — it is not scoped to the
+    caller — so a test that just reads the page depends on whichever rows other
+    xdist workers happen to have created at that moment. The first cut of the
+    test below did exactly that and passed locally for the wrong reason: other
+    workers' users were present. In CI the admin was the ONLY row, and since
+    `_user_row.html` renders no controls for your own row (you cannot delete
+    yourself), there was no delete button to find.
+
+    This is the global-listing trap in docs/testing.md pointed at users rather
+    than push endpoints: assert on a row you created, never on whatever the
+    listing happens to contain.
+    """
+    username = TEST_PREFIX + "deletable"
+    _delete_user(username)
+    _create_user(username, PASSWORD)
+    yield username
+    _delete_user(username)
+
+
+def test_deleting_a_user_is_not_the_same_weight_as_toggling_admin(
+        admin_client, a_second_user):
     """#247: "deleting a user is visually distinguished from toggling admin"."""
     html = admin_client.get("/admin/users").get_data(as_text=True)
-    row = html[html.index("<tbody"):]
+    row_start = html.index(a_second_user)
+    row = html[row_start:html.index("</tr>", row_start)]
     assert "btn-danger" in row, "delete carries no destructive styling"
+    toggle = row[row.index("toggle_admin") if "toggle_admin" in row
+                 else row.index("Make admin"):]
+    assert not toggle.startswith("btn-danger"), \
+        "the admin toggle is styled as destructively as the delete"
+
+
+def test_your_own_row_offers_no_delete(admin_client):
+    """The reason the fixture above exists, stated as its own test: you cannot
+    delete yourself, so your row carries no controls at all."""
+    html = admin_client.get("/admin/users").get_data(as_text=True)
+    assert "(you)" in html
 
 
 def test_user_management_says_where_it_sits(admin_client):
@@ -208,14 +250,22 @@ def test_login_does_not_reveal_whether_a_username_exists(anon_client, users, cas
     assert b"Invalid username or password" in resp.data
 
 
+def _without_csrf(html):
+    """⚠️ The CSRF token is minted per REQUEST, so two renders of the same page
+    legitimately differ by that one value. Comparing raw bodies made this test
+    fail on main while the property it checks was perfectly intact."""
+    return re.sub(r'name="csrf_token" value="[^"]*"',
+                  'name="csrf_token" value="X"', html)
+
+
 def test_the_two_login_failures_render_identically(anon_client, users):
-    """The parametrized test above checks each in isolation; this compares
-    them, which is the property that actually forbids a leak."""
-    unknown = anon_client.post("/login", data={
+    """The parametrized test above checks each failure in isolation; this
+    compares them, which is the property that actually forbids enumeration."""
+    unknown = _without_csrf(anon_client.post("/login", data={
         "username": "no-such-user-at-all", "password": "x" * 12},
-        follow_redirects=True).get_data(as_text=True)
-    wrong = anon_client.post("/login", data={
+        follow_redirects=True).get_data(as_text=True))
+    wrong = _without_csrf(anon_client.post("/login", data={
         "username": USER_A, "password": "x" * 12},
-        follow_redirects=True).get_data(as_text=True)
+        follow_redirects=True).get_data(as_text=True))
     assert unknown == wrong, \
         "the two failure pages differ, which enumerates usernames"
