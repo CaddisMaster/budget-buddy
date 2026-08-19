@@ -10,6 +10,19 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **Every page has one header row instead of two.** Home stacked two bars before
+  any content — a ☰ with an Add button, then a greeting with the month picker —
+  which is 133 pixels of furniture for what is really a page title and a page
+  action. They share a line now: the title on the left, the month picker and Add
+  on the right, on every page rather than just Home. Roughly 50 pixels come back
+  on each one, and the greeting, the month picker and the Add button all stay
+  exactly where you can reach them.
+
+  **The ☰ menu button is gone on desktop**, where the sidebar is always on
+  screen and the button only implied it might not be. It still opens the
+  navigation drawer on a phone, and closes it again. On a narrow screen the row
+  wraps rather than squeezing the title, so "Good afternoon" stays on one line.
+
 - **The Home page opens with the answer now.** It used to open with a What's-new
   strip, a quick-add box and a month dropdown, and only then tell you where the
   month stood — and it printed your net position twice, three lines apart, in the

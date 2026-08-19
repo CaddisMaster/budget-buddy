@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Transfer Money — Budget Buddy{% endblock %}
+{% block page_heading %}<h1>Transfer money</h1>{% endblock %}
 {% block content %}
-<h1>Transfer money</h1>
 {% if accounts|length < 2 %}
 <p style="color:var(--text-muted)">You need at least two <a href="{{ url_for('accounts.accounts') }}">accounts</a> to make a transfer.</p>
 {% else %}

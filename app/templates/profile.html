@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Profile — Budget Buddy{% endblock %}
+{% block page_heading %}<h1>Profile</h1>{% endblock %}
 {% block content %}
-<h1>Profile</h1>
 <div class="card">
     <p><strong>Username:</strong> {{ current_user.username }}</p>
     <p style="margin-top:0.5rem"><strong>Role:</strong> {{ 'Admin' if current_user.is_admin else 'User' }}</p>

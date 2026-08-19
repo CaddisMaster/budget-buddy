@@ -68,12 +68,25 @@
     </nav>
   </aside>
   <main class="main-content" id="main">
-    <div class="page-topbar">
+    {# #235 — ONE header row per page: the page title and its actions are peers
+       and share a line. Home used to stack a second bar of its own on top of
+       this one, for 133px of chrome before any content.
+
+       Pages fill `page_heading` with their own <h1> rather than passing a
+       string, because Home's heading is a greeting plus a subtitle. A page
+       that fills neither block still renders a valid (empty) row.
+       ⚠️ The ☰ is CSS-hidden above 768px, not omitted — the server cannot
+       know the viewport. See the .hamburger rules in style.css. #}
+    <header class="page-header">
       <button class="hamburger" onclick="toggleSidebar()" aria-label="Open menu">☰</button>
-      <a class="quick-add-btn" href="{{ url_for('transactions.new_transaction') }}" aria-label="Add transaction">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Add</span>
-      </a>
-    </div>
+      <div class="page-heading">{% block page_heading %}{% endblock %}</div>
+      <div class="page-actions">
+        {% block page_actions %}{% endblock %}
+        <a class="quick-add-btn" href="{{ url_for('transactions.new_transaction') }}" aria-label="Add transaction">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Add</span>
+        </a>
+      </div>
+    </header>
     {% with messages = get_flashed_messages() %}
     {% if messages %}
     <div class="flash">{% for m in messages %}{{ m }}{% endfor %}</div>
@@ -86,18 +99,16 @@
 <script src="{{ url_for('static', filename='htmx.min.js') }}"></script>
 <script>
 const sidebar = document.getElementById('sidebar');
-const main = document.getElementById('main');
 const overlay = document.getElementById('overlay');
-const isMobile = () => window.innerWidth <= 768;
 
+// #235 — the sidebar is a mobile drawer and nothing else. There used to be a
+// desktop branch here that collapsed the sidebar off-screen; it went with the
+// desktop ☰, and it MUST NOT come back on its own. The button that restored a
+// collapsed sidebar was the one being removed, so re-adding the collapse alone
+// makes it a one-way door: no nav, and no control to bring it back.
 function toggleSidebar() {
-  if (isMobile()) {
-    sidebar.classList.toggle('open');
-    overlay.classList.toggle('active');
-  } else {
-    sidebar.classList.toggle('collapsed');
-    main.classList.toggle('expanded');
-  }
+  sidebar.classList.toggle('open');
+  overlay.classList.toggle('active');
 }
 
 function closeSidebar() {
