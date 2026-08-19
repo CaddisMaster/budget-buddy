@@ -52,6 +52,34 @@ def record_budget_change(cursor, user_id, category_id, amount):
 # this namedtuple is the single source of truth _budget_row.html reads.
 BudgetRow = namedtuple('BudgetRow', 'cid name effective is_set suggested actual')
 
+# The month's overall position, stated above the per-category detail (#238).
+BudgetOverall = namedtuple('BudgetOverall',
+                           'budgeted spent remaining pct over_count')
+
+
+def summarize_budgets(rows):
+    """The month's overall budget position, or None if nothing is budgeted. Pure.
+
+    ⚠️ Counts only categories whose budget the user has actually SET. The
+    cockpit's `effective` is a suggestion when `is_set` is false, and folding
+    suggestions into the total would state a figure the user never chose —
+    the page would then report them "under budget" against a number they have
+    never seen. A category with no budget still spends money; it is simply not
+    part of "how am I doing against my budgets".
+    """
+    live = [r for r in rows if r.is_set and r.effective is not None]
+    if not live:
+        return None
+    budgeted = sum(r.effective for r in live)
+    spent = sum(r.actual for r in live)
+    return BudgetOverall(
+        budgeted=budgeted,
+        spent=spent,
+        remaining=budgeted - spent,
+        pct=(spent / budgeted * 100) if budgeted else 0,
+        over_count=sum(1 for r in live if r.actual > r.effective),
+    )
+
 
 def build_budget_row(cursor, user_id, category_id):
     """Rebuild one cockpit BudgetRow after a set/clear, mirroring budgets().
@@ -377,6 +405,7 @@ def budgets():
     rows, all_categories = load_budget_rows(current_user.id)
     report = load_budget_report(current_user.id)
     return render_template('budgets.html', budget_rows=rows,
+                           overall=summarize_budgets(rows),
                            has_categories=bool(all_categories),
                            review_enabled=ai_enabled(),
                            report=report)
