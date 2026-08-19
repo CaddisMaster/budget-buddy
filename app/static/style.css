@@ -544,13 +544,24 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
      layout, it is a gap. The goals are the natural filler: they are what the
      month's figures are FOR. */
   .band-main { display: flex; flex-direction: column; }
-  .band-main > .cat-bars-wrap { flex: 1 1 auto; }
+  /* ⚠️ Named explicitly, and the margin reset repeated here, because
+     `.band-main > :last-child` does NOT reach this card: the category toggle's
+     inline <script> is the last child of .band-main. It has no box, so the
+     rule appeared to be doing its job while the card kept a 16px .card margin
+     and stopped 16px short of the AI panel beside it — the "slightly bigger
+     box" that survived align-items: stretch. */
+  .band-main > .cat-bars-wrap { flex: 1 1 auto; margin-bottom: 0; }
   .band-main > :last-child { margin-bottom: 0; }
   /* Inside a narrow column the goal cards stop trying to sit two-up. */
 }
 
 /* Chart grid — two-up on wide screens, each in its own card */
-.chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.1rem; margin-bottom: 1.5rem; }
+/* ⚠️ TWO columns, stated explicitly (#234). `auto-fit, minmax(320px, 1fr)`
+   resolved to THREE at desktop width while only two cards are narrow, so the
+   top row always ended with an empty third — the same hole the stat row had.
+   `.wide` spans both, so the layout is 2-up then full-width. */
+.chart-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.1rem; margin-bottom: 1.5rem; }
+@media (min-width: 760px) { .chart-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .chart-card { background: var(--surface-raise); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: 1.2rem 1.25rem; }
 .chart-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 0.9rem; color: var(--text); }
 .chart-card.wide { grid-column: 1 / -1; }

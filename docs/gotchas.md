@@ -46,6 +46,29 @@
   (clears only, never sets). `edit_transaction`'s UPDATE deliberately never mentions the
   column, which is what makes "editing the amount doesn't clear the flag" free and keeps
   `TxnEditRow` unchanged. Pending rows render an em dash in the balance cell
+- ⚠️ **The charts are ApexCharts 4.7.0 — the LAST MIT RELEASE** (#234). 5.x moved to a dual
+  licence and 6.x ships a `LicenseEnforcer` that watermarks charts using premium features, with
+  terms that bind on annual revenue. `tests/test_design_system.py` asserts the vendored licence
+  still says MIT and that no enforcer is in the bundle, because "upgrade the chart library" is
+  otherwise an ordinary-looking dependency bump that changes what this public repo is allowed to
+  ship. Chart.js was retired in the same change; the swap was Sean's call, made knowing the
+  restyle-in-place option was cheaper
+- ⚠️ **A chart must be constructed on FIRST OPEN of the `<details>`, never at parse time** — a
+  chart library measures its container, and inside a closed `<details>` that is 0. This survived
+  the library swap because it is a property of the drawer, not of Chart.js. `initCharts()` is
+  called both immediately (desktop, where the drawer starts open) and on `toggle`, guarded by
+  `chartsInitialized`
+- ⚠️ **No chart may name a colour** — every one comes through `cssVar()`. The pre-#234 script
+  hardcoded `#378ADD`/`#1D9E75`/`#E24B4A`, which *equalled* `--accent`/`--success`/`--danger` when
+  written, so it looked correct and was the one surface in the app that could not follow a token
+  change. `test_the_chart_script_holds_no_hardcoded_colour` scans the script with `//` comments
+  stripped — the rule is about code, and the comment there names the retired literals on purpose
+- ⚠️ **Green/red is legal ONLY with secondary encoding.** Income-vs-expenses separates at
+  ΔE 7.2 under deuteranopia — inside the 6–8 floor band — so it ships with the gap between paired
+  bars and a text legend; the account chart uses position (left/right of zero) instead. Validated
+  with the dataviz skill's `validate_palette.js`, both modes, rather than by eye. Budget-vs-actual
+  deliberately does NOT use green/red: painting Actual red reads as a warning even for a category
+  comfortably under budget
 - **Chart series colours live in `style.css` as `--series-1..8`**, read via `cssVar()` so dark
   mode swaps with no JS; **dark has its own steps** (three light values fail 3:1 on the dark
   card). ⚠️ **The slot ORDER is load-bearing** — adjacent slots are the pairs a reader

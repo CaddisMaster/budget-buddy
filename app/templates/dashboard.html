@@ -1,5 +1,11 @@
 {% extends 'base.html' %}
 {% block title %}Home — Budget Buddy{% endblock %}
+{# ApexCharts' own stylesheet (tooltips, legend, the crosshair). Vendored
+   beside the library at app/static/, like htmx and the typefaces — nothing in
+   this app loads from a CDN. #}
+{% block head %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='apexcharts.css') }}">
+{% endblock %}
 {% block content %}
 {# #223 — the page opens with the month's answer, not with furniture. Order
    is deliberate: header → hero → strip → comparison → detail.
@@ -323,30 +329,30 @@
 
 {% if has_transactions %}
 {# Collapsible on purpose (v10.13 de-scroll): open on desktop, collapsed on
-   mobile. Charts are lazily initialized on first open — Chart.js renders
-   0-height inside a closed <details>. #}
+   mobile. Charts are lazily initialized on first open — a chart library
+   measures its container, and inside a closed <details> that is 0-height. #}
 <details id="charts-details" class="charts-details" open>
 <summary><h2>Charts</h2></summary>
 <div class="chart-grid">
     <div class="chart-card">
         <h3>Account balances</h3>
-        <canvas id="accountBar"></canvas>
+        <div id="accountBar" class="chart-plot"></div>
     </div>
     <div class="chart-card">
         <h3>Spending by day of week</h3>
-        <canvas id="dowBar"></canvas>
+        <div id="dowBar" class="chart-plot"></div>
     </div>
     <div class="chart-card wide">
         <h3>Income vs expenses by month</h3>
-        <canvas id="cashFlowBar"></canvas>
+        <div id="cashFlowBar" class="chart-plot"></div>
     </div>
     <div class="chart-card wide">
         <h3>Net balance over time</h3>
-        <canvas id="netBalanceLine"></canvas>
+        <div id="netBalanceLine" class="chart-plot"></div>
     </div>
     <div class="chart-card wide">
         <h3>Budget vs actual</h3>
-        <canvas id="budgetBar"></canvas>
+        <div id="budgetBar" class="chart-plot"></div>
     </div>
 </div>
 </details>
@@ -355,7 +361,7 @@
 if (window.matchMedia('(max-width: 768px)').matches)
     document.getElementById('charts-details').removeAttribute('open');
 </script>
-<script src="{{ url_for('static', filename='chart.umd.min.js') }}"></script>
+<script src="{{ url_for('static', filename='apexcharts.min.js') }}"></script>
 <script>
 // ⚠️ These two payloads no longer draw anything — #223 replaced the doughnut
 // with server-rendered bars. They stay because they are the CONTRACT that
@@ -373,94 +379,173 @@ const accountData = {{ account_data | tojson }};
 const budgetData = {{ budget_chart_data | tojson }};
 const dowData = {{ day_of_week_data | tojson }};
 
-// Theme Chart.js from the CSS design tokens so charts match the app (incl. dark mode).
+// #234 — ApexCharts, themed from the CSS design tokens so the charts belong to
+// the same app as the rest of the page (and follow dark mode without a second
+// palette here). Chart.js was retired with this change: the problem was never
+// the renderer, it was five charts wearing default chartjunk — a full grid
+// lattice, floating legends and a hardcoded pre-redesign palette.
+//
+// ⚠️ Colours come from CSS custom properties, NEVER literals. The old code
+// hardcoded '#378ADD'/'#1D9E75'/'#E24B4A', which happened to equal --accent,
+// --success and --danger at the time; the charts then silently stopped being
+// the app's colours the moment a token moved. cssVar() is the whole mechanism.
 const _css = getComputedStyle(document.documentElement);
 const cssVar = (n) => _css.getPropertyValue(n).trim();
-// Eight validated categorical hues, read from CSS so dark mode swaps them
-// without a second array here. Order is load-bearing — see style.css.
-Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
-Chart.defaults.font.size = 12;
-Chart.defaults.color = cssVar('--text-muted');
-Chart.defaults.borderColor = cssVar('--border');
-Chart.defaults.plugins.legend.labels.boxWidth = 12;
-Chart.defaults.plugins.legend.labels.usePointStyle = true;
-Chart.defaults.plugins.legend.labels.padding = 14;
-const gridColor = cssVar('--border');
-const gridScales = { x: { grid: { color: gridColor } }, y: { beginAtZero: true, grid: { color: gridColor } } };
+const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
-// Charts are built only once the <details> is open, so canvases always have
-// layout when Chart.js measures them.
-// ⚠️ #223 removed the category doughnut from this function. Everything above
-// this comment — the defaults, the grid colours, the initialization guard — is
-// SHARED by the five charts that remain; it was written above the doughnut and
-// is easy to delete along with it. Doing exactly that left every chart on the
-// page blank while the suite stayed green, because the tests assert the canvas
-// ids in the HTML, not that this script ran.
+const INK        = cssVar('--text-muted');
+const GRID       = cssVar('--border');
+const SUCCESS    = cssVar('--success');
+const DANGER     = cssVar('--danger');
+const SERIES_1   = cssVar('--series-1');
+const SERIES_2   = cssVar('--series-2');
+const FONT       = getComputedStyle(document.body).fontFamily;
+
+const money = (v) => '$' + Math.round(v).toLocaleString();
+// ⚠️ Axis ticks get the SHORT form, tooltips always get the full figure. At
+// 390px the account chart printed "$0 $5,000$10,000$15,000$20,000" as one
+// unreadable run — an axis is a scale, and a scale does not need the cents.
+const moneyTick = (v) => {
+    const n = Math.abs(v);
+    if (n >= 1000) return '$' + (v / 1000).toFixed(n % 1000 ? 1 : 0) + 'k';
+    return '$' + Math.round(v);
+};
+
+// One shape for every chart on the page: no toolbar, no chart-level animation
+// beyond the entrance, our font, and a grid that is a set of faint horizontal
+// rules rather than graph paper. ⚠️ `grid.xaxis.lines` OFF is the single
+// biggest visual difference from the old charts — vertical rules boxed every
+// plot and were what made this section read as a different application.
+const base = {
+    chart: { fontFamily: FONT, foreColor: INK, toolbar: { show: false },
+             animations: { enabled: true, speed: 300 }, parentHeightOffset: 0 },
+    grid: { borderColor: GRID, strokeDashArray: 0,
+            xaxis: { lines: { show: false } }, yaxis: { lines: { show: true } },
+            padding: { left: 4, right: 8, top: 0 } },
+    dataLabels: { enabled: false },
+    tooltip: { theme: isDark ? 'dark' : 'light', style: { fontFamily: FONT } },
+    legend: { fontFamily: FONT, markers: { size: 6 }, itemMargin: { horizontal: 10 } },
+    states: { hover: { filter: { type: 'lighten', value: 0.08 } } },
+};
+// Axis labels are TEXT and wear text tokens, never a series colour.
+const axisText = { style: { colors: INK, fontSize: '12px', fontFamily: FONT } };
+const noAxisLine = { axisBorder: { show: false }, axisTicks: { show: false } };
+
 let chartsInitialized = false;
 function initCharts() {
 if (chartsInitialized) return;
 chartsInitialized = true;
-new Chart(document.getElementById('cashFlowBar'), {
-    type: 'bar',
-    data: {
-        labels: cashFlowData.map(d => d.month),
-        datasets: [
-            {label: 'Income', data: cashFlowData.map(d => d.income), backgroundColor: '#1D9E75', borderRadius: 4},
-            {label: 'Expenses', data: cashFlowData.map(d => d.expenses), backgroundColor: '#E24B4A', borderRadius: 4}
-        ]
-    },
-    options: { aspectRatio: 3.2, scales: gridScales }
-});
-new Chart(document.getElementById('netBalanceLine'), {
-    type: 'line',
-    data: {
-        labels: netBalanceData.map(d => d.month),
-        datasets: [{
-            label: 'Net balance',
-            data: netBalanceData.map(d => d.balance),
-            borderColor: '#378ADD',
-            backgroundColor: 'rgba(55,138,221,0.12)',
-            fill: true,
-            tension: 0.3,
-            pointRadius: 2
-        }]
-    },
-    options: { aspectRatio: 3.2, scales: { x: { grid: { color: gridColor } }, y: { beginAtZero: false, grid: { color: gridColor } } } }
-});
-new Chart(document.getElementById('accountBar'), {
-    type: 'bar',
-    data: {
-        labels: accountData.map(d => d.account),
-        datasets: [{
-            label: 'Balance',
-            data: accountData.map(d => d.balance),
-            backgroundColor: accountData.map(d => d.balance >= 0 ? '#1D9E75' : '#E24B4A'),
-            borderRadius: 4
-        }]
-    },
-    options: { aspectRatio: 1.6, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, grid: { color: gridColor } }, y: { grid: { color: gridColor } } } }
-});
-new Chart(document.getElementById('dowBar'), {
-    type: 'bar',
-    data: {
-        labels: dowData.map(d => d.day),
-        datasets: [{ label: 'Spent', data: dowData.map(d => d.total), backgroundColor: '#378ADD', borderRadius: 4 }]
-    },
-    options: { aspectRatio: 1.6, plugins: { legend: { display: false } }, scales: gridScales }
-});
-new Chart(document.getElementById('budgetBar'), {
-    type: 'bar',
-    data: {
-        labels: budgetData.map(d => d.category),
-        datasets: [
-            {label: 'Budget', data: budgetData.map(d => d.budget), backgroundColor: '#378ADD', borderRadius: 4},
-            {label: 'Actual', data: budgetData.map(d => d.actual), backgroundColor: '#E24B4A', borderRadius: 4}
-        ]
-    },
-    options: { aspectRatio: 3.2, scales: gridScales }
-});
-}
 
+// Account balances — one series, signed. Colour carries POLARITY, and the
+// secondary encoding the green/red pair needs (ΔE 7.2 under deuteranopia, in
+// the 6–8 floor band) is POSITION: a negative balance draws left of zero, a
+// positive one right, against a labelled value axis.
+// ⚠️ This is the one chart whose value axis is X, so it is also the one that
+// wants VERTICAL gridlines — the shared `base` grid is the other way round.
+new ApexCharts(document.querySelector('#accountBar'), {
+    ...base,
+    chart: { ...base.chart, type: 'bar', height: 240 },
+    series: [{ name: 'Balance', data: accountData.map(d => d.balance) }],
+    plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: '58%',
+                          borderRadiusApplication: 'end',
+                          colors: { ranges: [
+                              { from: -1e12, to: -0.0001, color: DANGER },
+                              { from: 0, to: 1e12, color: SUCCESS }] } } },
+    xaxis: { categories: accountData.map(d => d.account), tickAmount: 4,
+             labels: { ...axisText, formatter: moneyTick }, ...noAxisLine },
+    // ⚠️ offsetX, not maxWidth: the space ApexCharts reserves for these labels
+    // is measured from the text, and with this typeface it came up ~3px short —
+    // "Everyday Checking" rendered as "veryday Checking", clipped by the SVG's
+    // own left edge rather than by the card. maxWidth caps a long name with an
+    // ellipsis; the offset is what keeps every name inside the viewport.
+    yaxis: { labels: { ...axisText, maxWidth: 130, offsetX: 6 } },
+    grid: { ...base.grid, xaxis: { lines: { show: true } },
+            yaxis: { lines: { show: false } } },
+    tooltip: { ...base.tooltip, y: { formatter: money } },
+}).render();
+
+// Spending by day of week — one ordered series, one hue. Short day names so
+// the labels never rotate to 45°, which is what the old chart did in this
+// narrow card.
+new ApexCharts(document.querySelector('#dowBar'), {
+    ...base,
+    chart: { ...base.chart, type: 'bar', height: 240 },
+    colors: [SERIES_1],
+    series: [{ name: 'Spent', data: dowData.map(d => d.total) }],
+    plotOptions: { bar: { borderRadius: 4, borderRadiusApplication: 'end',
+                          columnWidth: '58%' } },
+    xaxis: { categories: dowData.map(d => d.day.slice(0, 3)), labels: axisText,
+             ...noAxisLine },
+    yaxis: { labels: { ...axisText, formatter: moneyTick } },
+    tooltip: { ...base.tooltip, y: { formatter: money } },
+}).render();
+
+// Income vs expenses — two series, so a legend is required; the gap between
+// the paired bars plus that legend is the secondary encoding that makes the
+// green/red pair legal for colour-blind readers.
+new ApexCharts(document.querySelector('#cashFlowBar'), {
+    ...base,
+    chart: { ...base.chart, type: 'bar', height: 300 },
+    colors: [SUCCESS, DANGER],
+    series: [
+        { name: 'Income',   data: cashFlowData.map(d => d.income) },
+        { name: 'Expenses', data: cashFlowData.map(d => d.expenses) },
+    ],
+    plotOptions: { bar: { borderRadius: 3, borderRadiusApplication: 'end',
+                          columnWidth: '68%' } },
+    xaxis: { categories: cashFlowData.map(d => d.month), labels: axisText,
+             ...noAxisLine },
+    yaxis: { labels: { ...axisText, formatter: moneyTick } },
+    legend: { ...base.legend, position: 'top', horizontalAlign: 'left',
+              offsetY: -4 },
+    tooltip: { ...base.tooltip, shared: true, intersect: false,
+               y: { formatter: money } },
+}).render();
+
+// Net balance — the same job as the hero sparkline, so the same treatment: one
+// line, a gradient falling away beneath it, and no furniture. A crosshair
+// tooltip replaces the point-per-month labels.
+new ApexCharts(document.querySelector('#netBalanceLine'), {
+    ...base,
+    chart: { ...base.chart, type: 'area', height: 300, zoom: { enabled: false } },
+    colors: [SERIES_1],
+    series: [{ name: 'Net balance', data: netBalanceData.map(d => d.balance) }],
+    stroke: { curve: 'smooth', width: 2 },
+    fill: { type: 'gradient',
+            gradient: { shadeIntensity: 0, opacityFrom: 0.35, opacityTo: 0.02,
+                        stops: [0, 100] } },
+    markers: { size: 0, hover: { size: 5 } },
+    xaxis: { categories: netBalanceData.map(d => d.month), labels: axisText,
+             ...noAxisLine, crosshairs: { stroke: { color: GRID } } },
+    yaxis: { labels: { ...axisText, formatter: moneyTick } },
+    tooltip: { ...base.tooltip, x: { show: true }, y: { formatter: money } },
+}).render();
+
+// Budget vs actual — two categorical series, so the first two validated
+// palette hues in fixed order. ⚠️ NOT green/red: the old chart painted Actual
+// red against a blue Budget, which reads as a warning even for a category
+// comfortably under its budget.
+new ApexCharts(document.querySelector('#budgetBar'), {
+    ...base,
+    chart: { ...base.chart, type: 'bar', height: 300 },
+    colors: [SERIES_1, SERIES_2],
+    series: [
+        { name: 'Budget', data: budgetData.map(d => d.budget) },
+        { name: 'Actual', data: budgetData.map(d => d.actual) },
+    ],
+    plotOptions: { bar: { borderRadius: 3, borderRadiusApplication: 'end',
+                          columnWidth: '62%' } },
+    xaxis: { categories: budgetData.map(d => d.category), labels: axisText,
+             ...noAxisLine },
+    yaxis: { labels: { ...axisText, formatter: moneyTick } },
+    legend: { ...base.legend, position: 'top', horizontalAlign: 'left',
+              offsetY: -4 },
+    tooltip: { ...base.tooltip, shared: true, intersect: false,
+               y: { formatter: money } },
+}).render();
+}
+// ⚠️ Charts are built on FIRST OPEN, never at parse time: a chart library
+// measures its container, and inside a closed <details> that measures 0.
 const chartsDetails = document.getElementById('charts-details');
 if (chartsDetails.open) initCharts();
 chartsDetails.addEventListener('toggle', () => { if (chartsDetails.open) initCharts(); });

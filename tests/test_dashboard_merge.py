@@ -45,11 +45,16 @@ def test_nav_has_no_analytics_link(client_a):
     assert b'href="/analytics"' not in response.data
 
 
-def test_chartjs_is_vendored(client_a):
-    # v10.13: Chart.js ships from /static/, not the jsdelivr CDN.
+def test_the_chart_library_is_vendored(client_a):
+    # v10.13: the chart library ships from /static/, not a CDN. ⚠️ #234 swapped
+    # Chart.js for ApexCharts; what is asserted is the PROPERTY (vendored, no
+    # CDN) plus the file actually referenced, so a future swap fails here loudly
+    # rather than leaving a dead <script> nobody notices.
     response = client_a.get("/")
-    assert b"chart.umd.min.js" in response.data
-    assert b"cdn.jsdelivr" not in response.data
+    assert b"apexcharts.min.js" in response.data
+    assert b"chart.umd.min.js" not in response.data      # the retired library
+    for cdn in (b"cdn.jsdelivr", b"unpkg.com", b"cdnjs."):
+        assert cdn not in response.data
 
 
 def test_charts_section_is_collapsible(client_a):
@@ -58,8 +63,9 @@ def test_charts_section_is_collapsible(client_a):
     # server-rendered.
     # ⚠️ #223 moved the CATEGORY chart out of this section entirely — it is now
     # server-rendered ranked bars in the page's own flow (see
-    # test_dashboard_layout.py). This asserts a canvas that is still in the
+    # test_dashboard_layout.py). This asserts a plot that is still in the
     # drawer, so it keeps testing the drawer rather than the doughnut.
+    # (#234: the plots are ApexCharts <div>s now, not <canvas> — same ids.)
     response = client_a.get("/")
     assert b'id="charts-details"' in response.data
     assert b'id="accountBar"' in response.data

@@ -10,6 +10,10 @@
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='icons/icon.svg') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ css_v }}">
+  {# Page-level <head> additions (the charts stylesheet, so far). Keep it here
+     rather than dropping a <link> into the body, which browsers tolerate and
+     validators do not. #}
+  {% block head %}{% endblock %}
 </head>
 <body hx-headers='{"X-CSRFToken": "{{ csrf_token() }}"}'>
 <div class="app-wrapper">

@@ -175,3 +175,32 @@ def test_entrance_animation_is_opacity_and_transform_only(css_no_comments):
         props = {p.strip() for p in re.findall(r"([a-z-]+):", body)}
         assert props <= {"opacity", "transform"}, \
             f"a keyframe animates layout properties: {sorted(props)}"
+
+
+# --- #234: the chart library is vendored, and its licence is one we can use --
+
+def test_the_chart_library_and_its_licence_are_vendored():
+    """The same self-contained rule the typefaces follow: no CDN, and the
+    licence text ships beside the file it covers.
+
+    ⚠️ The version matters and is not cosmetic. ApexCharts went dual-licensed
+    at 5.x — 6.x carries a LicenseEnforcer that watermarks charts using premium
+    features, and its terms bind on annual revenue. 4.7.0 is the last MIT
+    release, and MIT is why this file can sit in a public repo. If you upgrade
+    this library, read its LICENSE first; this test is the reminder.
+    """
+    lib = STATIC / "apexcharts.min.js"
+    licence = STATIC / "apexcharts.LICENSE.txt"
+    assert lib.is_file(), "the chart library is not vendored"
+    assert licence.is_file(), "the chart library ships without its licence"
+
+    text = licence.read_text()
+    assert "MIT License" in text, "the vendored chart library is no longer MIT"
+    assert "LicenseEnforcer" not in lib.read_text(errors="ignore"), \
+        "this build carries the dual-license watermark enforcer"
+
+
+def test_the_retired_chart_library_is_gone():
+    """Chart.js was replaced, not merely unreferenced — 208KB of dead JS in the
+    image is 208KB every deploy ships and every browser may cache."""
+    assert not (STATIC / "chart.umd.min.js").exists()

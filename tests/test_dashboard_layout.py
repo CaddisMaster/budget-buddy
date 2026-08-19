@@ -150,9 +150,9 @@ def test_the_remaining_charts_stay_in_the_collapsed_section(client_a, users):
     html = client_a.get("/").get_data(as_text=True)
 
     charts = _between(html, 'id="charts-details"', "</details>")
-    for canvas in ("accountBar", "dowBar", "cashFlowBar", "netBalanceLine",
-                   "budgetBar"):
-        assert f'id="{canvas}"' in charts, f"{canvas} left the charts section"
+    for plot in ("accountBar", "dowBar", "cashFlowBar", "netBalanceLine",
+                 "budgetBar"):
+        assert f'id="{plot}"' in charts, f"{plot} left the charts section"
 
 
 # --- 5. the hero opens the page -----------------------------------------------
@@ -215,11 +215,16 @@ def test_the_chart_scaffolding_survives_beside_the_bars(client_a, users):
     # ⚠️ Word-boundary regexes, not substrings: `"const gridScales" in html`
     # passes against `const gridScalesXX`, so the first cut of this test could
     # not tell a rename from a deletion — verified by renaming it.
+    # ⚠️ Renamed with the #234 library swap, NOT loosened: these are the
+    # ApexCharts equivalents of the same scaffolding — the shared option base,
+    # the token reader every colour comes from, and the lazy init guard.
     for pattern in (r"\bfunction initCharts\s*\(",
-                    r"\bconst gridScales\b",
-                    r"\bconst gridColor\b",
-                    r"\bChart\.defaults\.font\.family\b"):
+                    r"\bconst base\s*=",
+                    r"\bconst cssVar\b",
+                    r"\bconst moneyTick\b"):
         assert re.search(pattern, html), f"the chart script lost {pattern!r}"
+    # Every plot is actually constructed — five charts, five constructions.
+    assert len(re.findall(r"new ApexCharts\(", html)) == 5
     # Called and defined, never one without the other.
     assert re.search(r"\binitCharts\(\)", html)
 
@@ -294,3 +299,39 @@ def test_the_band_columns_end_together():
     css = CSS_PATH.read_text()
     band = css.split(".home-band { display: grid;", 1)[1].split("}", 1)[0]
     assert "align-items: stretch" in band
+
+
+# --- 8. #234: the charts wear the design system, not their own palette -------
+
+def test_the_chart_script_holds_no_hardcoded_colour(client_a, users):
+    """⚠️ THE defect this change existed to fix. The old script painted with
+    '#378ADD', '#1D9E75' and '#E24B4A' — literals that happened to equal
+    --accent, --success and --danger when they were written, so the charts
+    looked right and were nonetheless the only surface in the app that could
+    not follow a token change or a mode swap. Every colour now comes through
+    cssVar(); a hex here is a regression, not a shortcut."""
+    _seed_month(users["a"])
+    html = client_a.get("/").get_data(as_text=True)
+    script = _between(html, "// #234 — ApexCharts, themed", "chartsDetails.addEventListener")
+
+    # ⚠️ Strip `//` comments first. The rule is about CODE — the comment above
+    # the script names the three retired literals so the next reader knows what
+    # went wrong, and a naive scan reads that prose as the defect it describes.
+    code = re.sub(r"//[^\n]*", "", script)
+    literals = re.findall(r"#[0-9a-fA-F]{3,8}\b", code)
+    assert literals == [], f"the chart script hardcodes {literals}"
+    # …and the tokens it reads instead are the app's own.
+    for token in ("--series-1", "--success", "--danger", "--border", "--text-muted"):
+        assert f"cssVar('{token}')" in script, f"the chart script stopped reading {token}"
+
+
+def test_every_chart_axis_shows_money_as_money(client_a, users):
+    """A raw 7000 on an axis in an app whose every other figure is $7,000."""
+    _seed_month(users["a"])
+    html = client_a.get("/").get_data(as_text=True)
+    script = _between(html, "// #234 — ApexCharts, themed", "chartsDetails.addEventListener")
+    # Five plots, five value axes, each formatted.
+    assert script.count("formatter: moneyTick") == 5
+    # The tooltip keeps the FULL figure — an abbreviated $15k is a scale, not
+    # an answer to "what is this balance".
+    assert script.count("y: { formatter: money }") == 5

@@ -31,7 +31,8 @@ budget.seandesmet.com on a DigitalOcean Droplet behind Nginx + Gunicorn with Let
 
 - **Backend:** Python / Flask, psycopg2, Flask-Login, Flask-Bcrypt, Flask-Limiter, Gunicorn
 - **Database:** PostgreSQL (Docker container)
-- **Frontend:** Jinja2 templates + HTMX (vendored `htmx.min.js`, inline CRUD), Chart.js (vendored), vanilla CSS
+- **Frontend:** Jinja2 templates + HTMX (vendored `htmx.min.js`, inline CRUD), ApexCharts 4.7.0 (vendored,
+  **MIT — 5.x+ is dual-licensed, do not upgrade blind**), vanilla CSS
 - **Infrastructure:** Docker Compose, DigitalOcean, Nginx, Certbot
 
 ## Project map

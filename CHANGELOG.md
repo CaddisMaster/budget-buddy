@@ -58,6 +58,17 @@ this project uses the `0.x` versioning scheme described in
   glance which part of the page was written for you and which part is your own
   arithmetic.
 
+  **The charts look like part of the app now.** They were the one section that
+  never got the redesign: every plot boxed in graph-paper gridlines, legends
+  floating over charts that had one thing to name, day names printed on a slant
+  because the card was too narrow, raw `7000`s on the axes of an app that
+  writes `$7,000` everywhere else, and a right-hand third of the row left empty.
+  All five are redrawn — one set of faint horizontal rules instead of a
+  lattice, money on every axis, short day names that sit straight, colours taken
+  from the same palette as the rest of the page in both light and dark, and a
+  hover readout on every chart. Net balance over time is now drawn the way the
+  figure at the top of the page is drawn, because it is the same figure.
+
   Your goals now sit under the two columns rather than inside the narrower one,
   side by side rather than stacked — which is what lets the ranked bars and the
   AI panel end on the same line instead of leaving a column of empty page

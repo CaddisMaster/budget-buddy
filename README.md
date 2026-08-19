@@ -31,7 +31,7 @@ finances. Everything here exists because I hit a real need for it.
 
 ### Making sense of it
 
-- **Dashboard** — net position, savings rate, and Chart.js views of spending by category, cash flow, net balance over time, budget performance, and spending by day of week, plus a year-over-year comparison
+- **Dashboard** — net position, savings rate, and charted views of cash flow, net balance over time, budget performance, account balances and spending by day of week, plus ranked category spending and a year-over-year comparison
 - **Smart budgets** — one monthly amount per category, auto-suggested from six months of history; override it or clear it back to the suggestion
 - **Budget report** — a hit/miss grid over the last six complete months, with streaks and a three-versus-three trend
 - **Goals** — savings goals *and* debt-payoff goals, each with a projected completion date and an on-track/behind status; payoff goals fold in the card's APR
@@ -68,7 +68,7 @@ only through a fixed set of read-only, user-scoped, parameter-validated tools.
 |---|---|
 | Backend | Python 3.14, Flask, Gunicorn |
 | Database | PostgreSQL 16 |
-| Frontend | Jinja2, HTMX, Chart.js, hand-written CSS |
+| Frontend | Jinja2, HTMX, ApexCharts, hand-written CSS |
 | AI | Anthropic Claude API |
 | Email | Resend |
 | Containers | Docker, Docker Compose |
