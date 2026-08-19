@@ -5,7 +5,8 @@
 <h2 style="margin-top:2rem;font-size:1.1rem">Budget report</h2>
 <p style="font-size:13px;color:var(--text-muted);margin-bottom:1rem">
     Your last 6 complete months, judged <strong>vs each category's current budget</strong>
-    (budgets don't keep history). Green = stayed under, red = went over.
+    (budgets don't keep history). A cell marked &check; stayed under; one marked
+    &excl; went over.
 </p>
 <div class="table-wrapper">
     <table class="budget-report">
@@ -22,7 +23,7 @@
             {% for cell in row.cells %}
             <td class="{% if cell.verdict == 'hit' %}report-hit{% elif cell.verdict == 'miss' %}report-miss{% endif %}"
                 {% if cell.verdict %}title="${{ cell.spent|money }} spent vs ${{ '%.0f'|format(row.budget) }} budget"{% endif %}>
-                ${{ cell.spent|money }}</td>
+                {% if cell.verdict == 'hit' %}<span class="verdict-mark" aria-label="under budget">&check;</span>{% elif cell.verdict == 'miss' %}<span class="verdict-mark" aria-label="over budget">&excl;</span>{% endif %}${{ cell.spent|money }}</td>
             {% endfor %}
             <td>{% if row.streak %}{{ row.streak.length }} mo {{ row.streak.kind }}{% else %}<span style="color:var(--text-muted)">— no budget —</span>{% endif %}</td>
             <td class="trend-{{ row.trend.direction }}">

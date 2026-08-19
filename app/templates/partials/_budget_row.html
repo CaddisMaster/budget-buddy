@@ -16,7 +16,22 @@
             {% endif %}
         </div>
     </td>
-    <td class="expense">${{ "%.0f"|format(row.actual) }}</td>
+    {# #238 — position, not arithmetic: a bar shows how much of the budget is
+       used, and going over is stated in WORDS as well as colour. Bar only
+       where a budget is actually set — there is no proportion without one. #}
+    <td class="c-actual">
+        <span class="budget-actual-amount">${{ "%.0f"|format(row.actual) }}</span>
+        {% if row.is_set and row.effective %}
+        {% set pct = row.actual / row.effective * 100 %}
+        <div class="budget-bar">
+          <div class="budget-bar-fill {{ 'over' if row.actual > row.effective else '' }}"
+               style="width:{{ [pct, 100]|min }}%"></div>
+        </div>
+        <span class="budget-row-note {{ 'over' if row.actual > row.effective else '' }}">
+          {% if row.actual > row.effective %}Over by ${{ "%.0f"|format(row.actual - row.effective) }}{% else %}{{ "%.0f"|format(pct) }}% used{% endif %}
+        </span>
+        {% endif %}
+    </td>
     <td>
         {% if row.is_set %}
         <button type="button" class="btn btn-sm"

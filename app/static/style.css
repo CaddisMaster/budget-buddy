@@ -393,6 +393,59 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .transfer-direction > span { display: inline; }
 .transfer-arrow { color: var(--accent); font-weight: 600; padding: 0 0.3rem; }
 
+/* #238 — the month's overall budget position, above the per-category detail. */
+.budget-overall { padding: 1rem 1.15rem; margin-bottom: var(--sp-4); background: var(--surface-raise); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); }
+.budget-overall-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.5rem 0.6rem; }
+.budget-overall-spent { font-family: var(--font-display); font-size: var(--fs-lg); font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.budget-overall-of { color: var(--text-muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.budget-overall-note { font-size: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+/* The flag states the verdict in WORDS — the bar's colour is the second
+   encoding, never the only one (#238). */
+.budget-flag { margin-left: auto; border-radius: 999px; padding: 3px 10px; font-size: var(--fs-xs); font-weight: 600; }
+.budget-flag.over { background: var(--danger-soft); color: var(--danger); }
+.budget-flag.under { background: var(--success-soft); color: var(--success); }
+.budget-bar { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin: 0.4rem 0 0.3rem; }
+.budget-bar-fill { height: 100%; border-radius: 999px; background: var(--accent); transition: width var(--dur-1) var(--ease); }
+.budget-bar-fill.over { background: var(--danger); }
+.budget-row-note { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.budget-row-note.over { color: var(--danger); font-weight: 600; }
+.budget-actual-amount { font-variant-numeric: tabular-nums; }
+.c-actual { min-width: 8rem; }
+/* The report's per-month verdict, as a mark rather than a colour (#238). */
+.verdict-mark { font-weight: 700; margin-right: 0.25rem; }
+
+/* #237 — History reads as a ledger.
+   ⚠️ These column rules previously existed ONLY inside the mobile block, so on
+   a desktop every cell rendered at one weight and the two figures people
+   actually scan for — the amount and the running balance — read exactly like
+   the description. Hierarchy is a comparison: the figures are promoted AND the
+   supporting columns demoted, or neither reads as more important.
+   tabular-nums is what lets the decimal points line up; right-alignment alone
+   cannot do it with proportional digits. */
+.txn-table td.c-amount, .txn-table td.c-bal { text-align: right; font-variant-numeric: tabular-nums; font-weight: 650; white-space: nowrap; }
+.txn-table th:nth-child(4), .txn-table th:nth-child(8) { text-align: right; }
+.txn-table td.c-amount { font-size: 14px; }
+.txn-table td.c-bal { font-size: 14px; }
+.txn-table td.c-date, .txn-table td.c-cat, .txn-table td.c-acct, .txn-table td.c-type { color: var(--text-muted); font-size: 13px; }
+.txn-table td.c-date { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.txn-table td.c-desc { font-weight: 500; color: var(--text); }
+
+/* #237 — the filters moved into the page header row; they size to content
+   there rather than filling the width the way a form field does in a page. */
+.header-filter { margin: 0; display: flex; }
+.header-filter input, .header-filter select { margin: 0; width: auto; min-width: 150px; font-size: 13px; padding: 0.4rem 0.6rem; }
+
+/* #237 — the filter actually applied, stated on the page rather than left in
+   the URL. Each chip is a link that clears its own filter and keeps the other. */
+.filter-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem; }
+.filter-chips-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.filter-chip { display: inline-flex; align-items: center; gap: 0.35rem; border-radius: 999px; padding: 3px 10px; background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 600; }
+.filter-chip:hover { background: var(--accent); color: #fff; }
+.filter-chip-x { font-weight: 700; opacity: 0.7; }
+.table-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+
+
+
 
 
 .card.editing { box-shadow: 0 0 0 2px var(--accent); }

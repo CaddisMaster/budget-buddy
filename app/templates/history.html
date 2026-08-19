@@ -1,29 +1,43 @@
 {% extends 'base.html' %}
 {% block title %}Transaction History — Budget Buddy{% endblock %}
 {% block page_heading %}<h1>Transaction history</h1>{% endblock %}
-{% block content %}
-<div class="toolbar">
-  <form method="get">
+{# #237 — the filters were two loose forms above the table; they are page
+   controls, so they live in the page header row (#235's page_actions) beside
+   the Add button. Export and Bulk edit stay with the table they act on. #}
+{% block page_actions %}
+  <form method="get" class="header-filter">
     {% if selected_month %}<input type="hidden" name="month" value="{{ selected_month }}">{% endif %}
-    <div>
-      <label>Search</label>
-      <input type="text" name="search" value="{{ search }}" placeholder="Search descriptions...">
-    </div>
-    <button type="submit" class="btn btn-primary">Search</button>
-    {% if search %}<a href="{{ url_for('transactions.transactions') }}{% if selected_month %}?month={{ selected_month }}{% endif %}" class="btn">Clear</a>{% endif %}
+    <input type="search" name="search" value="{{ search }}" placeholder="Search descriptions…" aria-label="Search descriptions">
   </form>
-  <form method="get">
+  <form method="get" class="header-filter">
     {% if search %}<input type="hidden" name="search" value="{{ search }}">{% endif %}
-    <div>
-      <label>Filter by month</label>
-      <select name="month" onchange="this.form.submit()">
-        <option value="">All months</option>
-        {% for m in months %}
-        <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ m }}</option>
-        {% endfor %}
-      </select>
-    </div>
+    <select name="month" onchange="this.form.submit()" aria-label="Filter by month">
+      <option value="">All months</option>
+      {% for m in months %}
+      <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ m }}</option>
+      {% endfor %}
+    </select>
   </form>
+{% endblock %}
+{% block content %}
+{# #237 — what is being filtered, stated on the page. The URL is not a place
+   a reader should have to look, and a month filter set from the header is
+   otherwise invisible once the select scrolls out of view. Each chip clears
+   only its own filter, keeping the other one applied. #}
+{% if selected_month or search %}
+<div class="filter-chips">
+  <span class="filter-chips-label">Showing</span>
+  {% if selected_month %}
+  <a class="filter-chip" href="{{ url_for('transactions.transactions') }}{% if search %}?search={{ search }}{% endif %}"
+     title="Clear the month filter">{{ selected_month }}<span class="filter-chip-x" aria-hidden="true">&times;</span></a>
+  {% endif %}
+  {% if search %}
+  <a class="filter-chip" href="{{ url_for('transactions.transactions') }}{% if selected_month %}?month={{ selected_month }}{% endif %}"
+     title="Clear the search">&ldquo;{{ search }}&rdquo;<span class="filter-chip-x" aria-hidden="true">&times;</span></a>
+  {% endif %}
+</div>
+{% endif %}
+<div class="table-actions">
   <a href="{{ url_for('transactions.export_transactions') }}{% if selected_month %}?month={{ selected_month }}{% endif %}{% if search %}&search={{ search }}{% endif %}" class="btn">Export CSV</a>
   <button type="button" id="bulk-toggle" class="btn">Bulk edit</button>
 </div>

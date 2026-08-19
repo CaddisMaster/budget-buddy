@@ -21,6 +21,28 @@
 </div>
 <div id="budget-review-panel"></div>
 {% endif %}
+{# #238 — the page states where the month stands before listing categories.
+   Only budgets actually SET are counted; see summarize_budgets(). #}
+{% if overall %}
+<div class="budget-overall">
+  <div class="budget-overall-head">
+    <span class="budget-overall-spent">${{ overall.spent|money }}</span>
+    <span class="budget-overall-of">of ${{ overall.budgeted|money }} budgeted</span>
+    {% if overall.over_count %}
+    <span class="budget-flag over">{{ overall.over_count }} over budget</span>
+    {% else %}
+    <span class="budget-flag under">All within budget</span>
+    {% endif %}
+  </div>
+  <div class="budget-bar">
+    <div class="budget-bar-fill {{ 'over' if overall.spent > overall.budgeted else '' }}"
+         style="width:{{ [overall.pct, 100]|min }}%"></div>
+  </div>
+  <span class="budget-overall-note">
+    {% if overall.remaining >= 0 %}${{ overall.remaining|money }} left this month{% else %}${{ (-overall.remaining)|money }} over across all budgets{% endif %}
+  </span>
+</div>
+{% endif %}
 <div class="table-wrapper">
     <table>
         <thead><tr><th>Category</th><th>Monthly budget</th><th>This month</th><th></th></tr></thead>

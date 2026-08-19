@@ -10,6 +10,26 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **History reads as a ledger.** The amount and the running balance — the two
+  things you actually scan a row for — are now the most legible things in it,
+  and they line up on the decimal point down the column. The date, category and
+  account step back rather than competing. The search box and month filter have
+  moved up into the page header instead of sitting as two loose forms above the
+  table, and whatever you are filtering by is now stated on the page, as a chip
+  you can click to clear, rather than being knowable only from the URL.
+
+- **Budgets shows your position rather than making you work it out.** The page
+  opens with where the month stands overall — spent against budgeted, what is
+  left, and how many categories are over — before the per-category list. Each
+  category with a budget shows how much of it is used as a bar, so being over
+  is a proportion you can see rather than a subtraction you perform.
+
+  **Going over budget no longer depends on noticing a colour.** An over-budget
+  category says "Over by $23" in words, and the budget report's months are
+  marked ✓ or ! rather than only tinted — its legend used to read "Green =
+  stayed under, red = went over", which is an instruction to read by colour and
+  nothing else.
+
 - **Five pages now open with what you have, not with the form for adding more.**
   Accounts, Categories, Goals, Scheduled and Transfer all used to lead with an
   "Add X" form and put your existing things underneath it — so the thing you use
