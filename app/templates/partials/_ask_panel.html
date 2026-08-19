@@ -18,7 +18,7 @@
    Self-gated on ai_enabled so the dashboard just includes it. CSRF is covered
    by the hx-headers on <body> in base.html. #}
 {% if ai_enabled %}
-<div class="card ask-panel" id="ask-panel">
+<div class="card ai-surface ask-panel" id="ask-panel">
   <div class="ask-panel-head">
     {% include 'partials/_ai_spark.html' %}
     <h2>Ask your finances</h2>

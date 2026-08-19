@@ -4,7 +4,7 @@
    forecast and money-agent cards it was built for are gone, and Home's one AI
    panel does not collapse. If this card ever goes too, delete initAiCollapse
    with it rather than leaving dead JS on every page. #}
-<details id="goal-coach-card" class="card ai-card goal-coach-card" data-ai-key="coach"
+<details id="goal-coach-card" class="card ai-card ai-surface goal-coach-card" data-ai-key="coach"
          {%- if coach and coach.created_at %} data-generated="{{ coach.created_at.isoformat() }}"{% endif %}
          {%- if just_generated or not coach %} open{% endif %}>
   <summary class="ai-head">

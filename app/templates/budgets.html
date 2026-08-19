@@ -9,7 +9,7 @@
 </p>
 {% if has_categories %}
 {% if review_enabled %}
-<div class="card ai-card" style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-bottom:1rem">
+<div class="card ai-card ai-surface ai-banner">
     {% include 'partials/_ai_spark.html' %}
     <span><strong>AI budget review</strong> — right-size every category from your recent spending</span>
     <span class="ai-badge">AI</span>
@@ -17,7 +17,10 @@
             hx-post="{{ url_for('budgets.budget_review_scan') }}"
             hx-target="#budget-review-panel" hx-swap="innerHTML"
             hx-indicator="#budget-review-spinner">Review →</button>
-    <span id="budget-review-spinner" class="htmx-indicator" style="color:var(--text-muted)">Reviewing your budgets…</span>
+    {# ⚠️ No inline colour here. This carried style="color:var(--text-muted)",
+       which outranks the .ai-surface ink rules and went near-invisible when the
+       banner became a dark surface. The class inherits the read ink instead. #}
+    <span id="budget-review-spinner" class="htmx-indicator">Reviewing your budgets…</span>
 </div>
 <div id="budget-review-panel"></div>
 {% endif %}
