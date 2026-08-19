@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Transaction History — Budget Buddy{% endblock %}
+{% block page_heading %}<h1>Transaction history</h1>{% endblock %}
 {% block content %}
-<h1>Transaction history</h1>
 <div class="toolbar">
   <form method="get">
     {% if selected_month %}<input type="hidden" name="month" value="{{ selected_month }}">{% endif %}

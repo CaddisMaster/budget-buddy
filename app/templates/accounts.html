@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Accounts — Budget Buddy{% endblock %}
+{% block page_heading %}<h1>Accounts</h1>{% endblock %}
 {% block content %}
-<h1>Accounts</h1>
 <h2>Add account</h2>
 <form hx-post="{{ url_for('accounts.accounts') }}" hx-target="#account-rows" hx-swap="afterbegin"
       hx-on::after-request="if(event.detail.successful){this.reset();this.querySelector('input[name=name]').focus();document.getElementById('acct-empty')?.remove();}">

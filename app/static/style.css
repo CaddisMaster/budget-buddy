@@ -233,7 +233,6 @@ td,
   z-index: 100;
   overflow: hidden;
 }
-.sidebar.collapsed { transform: translateX(calc(-1 * var(--sidebar-width))); }
 .sidebar-header { padding: 1.1rem 1rem; border-bottom: 1px solid var(--sidebar-border); display: flex; align-items: center; justify-content: space-between; }
 .brand { display: flex; align-items: center; gap: 9px; font-family: var(--font-display); font-weight: 600; font-size: var(--fs-md); letter-spacing: -0.02em; color: var(--sidebar-ink); }
 .brand-mark { width: 26px; height: 26px; flex-shrink: 0; display: block; }
@@ -261,15 +260,26 @@ td,
    past the viewport (body pans sideways) instead of scrolling inside its
    .table-wrapper. Zeroing it keeps overflow where the wrappers expect it. */
 .main-content { flex: 1; min-width: 0; margin-left: var(--sidebar-width); padding: 2rem; transition: margin-left 0.25s ease; }
-.main-content.expanded { margin-left: 0; }
 
 /* Hamburger */
-.hamburger { background: none; border: none; cursor: pointer; padding: 4px; color: var(--text); font-size: 20px; display: flex; align-items: center; }
+/* #235 — display: none is the DEFAULT and the mobile block turns it on, not
+   the other way round. Above 768px the sidebar is permanently visible, so a
+   control implying it is hidden is worse than no control. Both ☰ buttons (the
+   header's "open" and the sidebar's own "close") share this class deliberately:
+   one rule governs whether the app has any way to hide its own navigation. */
+.hamburger { background: none; border: none; cursor: pointer; padding: 4px; color: var(--text); font-size: 20px; display: none; align-items: center; }
 .hamburger:hover { color: var(--accent); }
 
-/* v10.13 — the global "Add transaction" entry point: a pill in the topbar on
-   desktop, a floating action button on mobile (see the media block). */
-.page-topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+/* #235 — the one header row: ☰ (mobile) · page title · page actions.
+   min-width: 0 on the heading so a long title wraps within its own column
+   instead of pushing the actions off the row; the actions never shrink. */
+.page-header { display: flex; align-items: center; gap: 1rem; margin-bottom: var(--sp-5); }
+.page-heading { flex: 1; min-width: 0; }
+.page-heading h1 { margin-bottom: 0; }
+.page-actions { display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0; }
+
+/* v10.13 — the global "Add transaction" entry point: a pill in the header row
+   on desktop, a floating action button on mobile (see the media block). */
 .quick-add-btn { display: inline-flex; align-items: center; gap: 6px; padding: 0.5rem 1.15rem; border-radius: 999px; background: var(--grad-accent); color: #fff; font-size: 14px; font-weight: 600; line-height: 1.2; box-shadow: var(--shadow-sm); transition: background var(--dur-1) var(--ease), transform var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease); }
 .quick-add-btn:hover { background: var(--accent-hover); color: #fff; box-shadow: var(--shadow-md); }
 .quick-add-btn:active { transform: translateY(1px); }
@@ -771,11 +781,18 @@ body.bulk-mode td.bulk-col { cursor: pointer; } /* whole cell toggles the box */
     padding-top: calc(1rem + env(safe-area-inset-top));
     padding-bottom: calc(1rem + env(safe-area-inset-bottom));
   }
-  .main-content.expanded {
-    margin-left: 0;
-  }
   h1 { font-size: var(--fs-lg); }
   h2 { font-size: 15px; }
+  /* #235 — the ☰ exists only here, where the sidebar really is a drawer. */
+  .hamburger { display: flex; }
+  /* The row wraps on a phone, and the min-width floor is what makes it wrap
+     rather than SQUEEZE: without it .page-heading's min-width: 0 lets the
+     title crush to ~150px beside the month picker, and "Good afternoon, Dev"
+     becomes four lines of header. Pages whose only action is the Add button
+     never wrap at all — it is a fixed-position FAB here, so nothing in-flow
+     is left to push. */
+  .page-header { gap: 0.75rem; flex-wrap: wrap; }
+  .page-heading { min-width: 60%; }
   .stats-grid { grid-template-columns: 1fr 1fr; }
   .hero { padding: 1.2rem 1.25rem; }
   .hero-net { font-size: var(--fs-xl); }

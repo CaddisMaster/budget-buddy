@@ -6,6 +6,29 @@
 {% block head %}
   <link rel="stylesheet" href="{{ url_for('static', filename='apexcharts.css') }}">
 {% endblock %}
+{# #235 — Home's greeting row WAS a second topbar stacked on base.html's. It is
+   now the one header row every page gets: the greeting is the page title and
+   the month picker is a page action, beside the Add button base.html adds. #}
+{% block page_heading %}
+  {# The time of day is the BROWSER's, not the server's: prod runs on UTC and
+     a "Good evening" at three in the afternoon is worse than no greeting at
+     all. The server renders the neutral form and the script in the content
+     block refines it; with JS off the page still reads correctly. #}
+  <h1 class="page-greeting" id="greeting" style="margin-bottom:2px">Hello, {{ current_user.username|capitalize }}</h1>
+  <p class="page-sub">
+    {% if days_left > 0 %}{{ days_left }} day{{ '' if days_left == 1 else 's' }} left in the month.{% else %}Last day of the month.{% endif %}
+  </p>
+{% endblock %}
+{% block page_actions %}
+  <form method="get" class="month-picker">
+    <select name="month" onchange="this.form.submit()" aria-label="Filter by month">
+        <option value="">All months</option>
+        {% for m in months %}
+        <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ m }}</option>
+        {% endfor %}
+    </select>
+  </form>
+{% endblock %}
 {% block content %}
 {# #223 — the page opens with the month's answer, not with furniture. Order
    is deliberate: header → hero → strip → comparison → detail.
@@ -17,28 +40,6 @@
    body marker, so it split on THIS COMMENT instead of the strip and reported
    the strip as malformed. test_release_prep.py::test_it_parses_the_real_dashboard_strip
    is what caught it. #}
-<div class="page-topbar">
-  <div>
-    {# The time of day is the BROWSER's, not the server's: prod runs on UTC and
-       a "Good evening" at three in the afternoon is worse than no greeting at
-       all. The server renders the neutral form and the script below refines it;
-       with JS off the page still reads correctly. #}
-    <h1 class="page-greeting" id="greeting" style="margin-bottom:2px">Hello, {{ current_user.username|capitalize }}</h1>
-    <p class="page-sub">
-      {% if days_left > 0 %}{{ days_left }} day{{ '' if days_left == 1 else 's' }} left in the month.{% else %}Last day of the month.{% endif %}
-    </p>
-  </div>
-  <div class="topbar-actions">
-    <form method="get" class="month-picker">
-      <select name="month" onchange="this.form.submit()" aria-label="Filter by month">
-          <option value="">All months</option>
-          {% for m in months %}
-          <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ m }}</option>
-          {% endfor %}
-      </select>
-    </form>
-  </div>
-</div>
 <script>
 (() => {
   const h = new Date().getHours();
