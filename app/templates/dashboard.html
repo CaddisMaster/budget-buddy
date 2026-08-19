@@ -262,9 +262,31 @@
 </script>
 {% endif %}
 {% endif %}
+</div><!--/band-main-->
+{# #232 — insight, forecast, the weekly money check and the Ask box were four
+   AI surfaces stacked in one panel, each with its own cache and Generate
+   button. They are ONE feature now: partials/_ask_panel.html renders a single
+   read of the month and the box beneath it, and the three cards, their routes
+   and their <details> read-state machinery are gone.
+   ⚠️ The partial gates itself on ai_enabled — do NOT wrap it in a second gate,
+   or the panel's own three states get a fourth. #}
+{% include 'partials/_ask_panel.html' %}
+</div><!--/home-band-->
+
+{# #233 — Goals sits BELOW the band, full width, cards side by side.
+   ⚠️ It used to live inside .band-main, under the ranked bars. That made the
+   left column ~750px against the panel's ~371 and left a 380px void beside
+   the panel — the void and the tall goal stack were one problem, not two.
+   Out here the two band columns end within ~10px of each other and the goal
+   cards lay out 2-up instead of stacked.
+   The rollup keeps coming from partials/_goal_summary.html (shared with
+   /goals, so the arithmetic has one home); .goals-head just seats it on the
+   heading line instead of giving it a card of its own. #}
 {% if goals %}
-<h2>Goals</h2>
-{% include 'partials/_goal_summary.html' %}
+<div class="goals-head">
+  <h2>Goals</h2>
+  {% include 'partials/_goal_summary.html' %}
+</div>
 {# #225 — a ring instead of a bar. The dash arithmetic: r=20 gives a
    circumference of 2*pi*20 = 125.66, so the drawn arc is percent/100 of that
    and the gap is the remainder. Rotated -90deg so it starts at twelve o'clock.
@@ -296,18 +318,8 @@
     </div>
     {% endfor %}
 </div>
-<p style="margin-bottom:1.5rem"><a href="{{ url_for('goals.goals') }}">Manage goals →</a></p>
+<p class="goals-foot"><a href="{{ url_for('goals.goals') }}">Manage goals →</a></p>
 {% endif %}
-</div><!--/band-main-->
-{# #232 — insight, forecast, the weekly money check and the Ask box were four
-   AI surfaces stacked in one panel, each with its own cache and Generate
-   button. They are ONE feature now: partials/_ask_panel.html renders a single
-   read of the month and the box beneath it, and the three cards, their routes
-   and their <details> read-state machinery are gone.
-   ⚠️ The partial gates itself on ai_enabled — do NOT wrap it in a second gate,
-   or the panel's own three states get a fourth. #}
-{% include 'partials/_ask_panel.html' %}
-</div><!--/home-band-->
 
 {% if has_transactions %}
 {# Collapsible on purpose (v10.13 de-scroll): open on desktop, collapsed on

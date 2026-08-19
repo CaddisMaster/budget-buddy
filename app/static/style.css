@@ -389,7 +389,13 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
    loudest thing above the fold. Capped width keeps one tile looking like one
    tile. */
 .stat-row { display: flex; flex-wrap: wrap; gap: var(--sp-4); margin-bottom: var(--sp-5); }
-.stat-tile { flex: 1 1 210px; max-width: 380px; background: var(--surface-raise); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: var(--sp-4); }
+/* ⚠️ NO max-width (#233). It was 380px, which is right for three tiles and
+   wrong for one: each tile only appears when it has something to say, so a
+   month with just "Budget used" left 776px of the row empty and the page read
+   as broken. flex-grow with no cap means one tile spans the row, two halve it
+   and three thirds it — the same 380px as before at the density it was
+   designed for. */
+.stat-tile { flex: 1 1 210px; background: var(--surface-raise); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: var(--sp-4); }
 .stat-tile-label { font-size: var(--fs-sm); color: var(--text-muted); font-weight: 500; }
 .stat-tile-main { display: flex; align-items: baseline; gap: var(--sp-2); flex-wrap: wrap; margin-top: var(--sp-1); }
 .stat-tile-val { font-family: var(--font-display); font-size: var(--fs-xl); font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
@@ -526,7 +532,11 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 /* Home's two-column band: the bars carry the detail, the read carries the
    words. Single column below the tablet breakpoint (see the media block). */
 @media (min-width: 1100px) {
-  .home-band { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(340px, 1fr); gap: var(--sp-4); align-items: start; }
+  /* ⚠️ stretch, NOT start (#233): the read's length is not fixed, so whichever
+     column is shorter would otherwise leave a ragged gap under it — 380px of
+     one before Goals moved out, ~105px after. Stretching puts that slack
+     INSIDE the shorter card, so the two columns always end on the same line. */
+  .home-band { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(340px, 1fr); gap: var(--sp-4); align-items: stretch; }
   .home-band > * { margin-bottom: 0; }
   /* ⚠️ The left column carries the bars AND the goals. With only the bars in
      it the column ended level with the goals summary and left ~450px of dead
@@ -534,9 +544,9 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
      layout, it is a gap. The goals are the natural filler: they are what the
      month's figures are FOR. */
   .band-main { display: flex; flex-direction: column; }
+  .band-main > .cat-bars-wrap { flex: 1 1 auto; }
   .band-main > :last-child { margin-bottom: 0; }
   /* Inside a narrow column the goal cards stop trying to sit two-up. */
-  .band-main .goal-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* Chart grid — two-up on wide screens, each in its own card */
@@ -681,6 +691,15 @@ body.bulk-mode td.bulk-col { cursor: pointer; } /* whole cell toggles the box */
 .goal-sub { font-size: 13px; color: var(--text-muted); margin: 0.5rem 0 0; line-height: 1.5; }
 .goal-actions { margin-top: 0.7rem; }
 .goal-mini { margin-bottom: 0; }
+/* #233 — the rollup sits ON the Goals heading line rather than in a card of
+   its own. .goal-summary keeps its own card treatment on /goals, where it
+   stands alone; here the surface and border are dropped so the row reads as a
+   heading, not a third card above two cards. */
+.goals-head { display: flex; align-items: baseline; gap: var(--sp-2) var(--sp-4); flex-wrap: wrap; margin: var(--sp-5) 0 var(--sp-3); }
+.goals-head h2 { margin: 0; flex: 0 0 auto; }
+.goals-head .goal-summary { flex: 1 1 320px; margin: 0; padding: 0; background: none; border: none; }
+.goals-foot { margin: var(--sp-3) 0 var(--sp-5); }
+
 .goal-summary { display: flex; align-items: center; gap: 0.6rem 1.1rem; flex-wrap: wrap; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.9rem 1.15rem; margin-bottom: 1rem; }
 .goal-summary-main { display: flex; align-items: baseline; gap: 0.4rem; }
 .goal-summary-saved { font-size: var(--fs-lg); font-weight: 650; letter-spacing: -0.02em; }

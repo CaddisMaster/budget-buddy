@@ -25,7 +25,9 @@ import re
 from datetime import date
 from pathlib import Path
 
-from tests.conftest import create_category, create_transaction
+from tests.conftest import create_category, create_goal, create_transaction
+
+CSS_PATH = Path(__file__).resolve().parents[1] / "app" / "static" / "style.css"
 
 AI_KEY = "ANTHROPIC_API_KEY"
 
@@ -233,3 +235,62 @@ def test_a_hidden_bar_list_is_actually_hidden():
     rule = re.search(r"\.cat-bars\[hidden\]\s*\{([^}]*)\}", css)
     assert rule, ".cat-bars[hidden] has no rule, so `hidden` does nothing here"
     assert "display: none" in rule.group(1)
+
+
+# --- 7. #233: the band balances, and a lone stat tile fills its row ----------
+#
+# Both of these are gaps you can only see in a browser, and both were measured
+# rather than guessed: 380px of void under the AI panel, and 776px of empty row
+# beside a single stat tile.
+
+def test_goals_render_below_the_band_not_inside_it(client_a, users, monkeypatch):
+    """Goals under the ranked bars made the left column ~750px against the
+    panel's ~371 — the void beside the panel and the tall goal stack were one
+    problem. Out of the band the two columns end together and the goal cards
+    lay out 2-up."""
+    a = users["a"]
+    _seed_month(a)
+    create_goal(a["id"], a["account_id"], 1000, baseline=0)
+    monkeypatch.setenv(AI_KEY, "test-key")
+    html = client_a.get("/").get_data(as_text=True)
+
+    band = _between(html, 'class="home-band"', '<!--/home-band-->')
+    assert "goal-grid" not in band, "Goals is back inside the band"
+    assert 'class="goals-head"' in html          # it still renders...
+    assert html.index('<!--/home-band-->') < html.index('class="goals-head"')
+
+
+def test_the_goals_rollup_sits_on_the_heading_line(client_a, users, monkeypatch):
+    """One card, not three: the rollup shares the heading row rather than
+    getting a card above two cards. It still comes from the shared partial, so
+    /goals and Home can never disagree on the arithmetic."""
+    a = users["a"]
+    _seed_month(a)
+    create_goal(a["id"], a["account_id"], 1000, baseline=0)
+    monkeypatch.setenv(AI_KEY, "test-key")
+    html = client_a.get("/").get_data(as_text=True)
+
+    head = _between(html, 'class="goals-head"', "</div>")
+    assert ">Goals<" in head
+    assert "goal-summary" in head
+
+
+def test_a_lone_stat_tile_is_not_capped_to_a_third_of_the_row():
+    """⚠️ Stated against the STYLESHEET, because no request renders CSS and the
+    defect was invisible to every route test: `.stat-tile` had
+    `max-width: 380px`, so a month with only one tile to show left 776px of the
+    row empty. Tiles are flex-grow with no cap now — one spans, two halve,
+    three third it."""
+    css = CSS_PATH.read_text()
+    rule = css.split(".stat-tile {", 1)[1].split("}", 1)[0]
+    assert "flex: 1 1" in rule
+    assert "max-width" not in rule
+
+
+def test_the_band_columns_end_together():
+    """`align-items: start` left whichever column was shorter with a ragged gap
+    under it, and the read's length is not fixed, so neither column can be
+    assumed the taller one."""
+    css = CSS_PATH.read_text()
+    band = css.split(".home-band { display: grid;", 1)[1].split("}", 1)[0]
+    assert "align-items: stretch" in band

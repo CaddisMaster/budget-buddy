@@ -58,8 +58,11 @@ this project uses the `0.x` versioning scheme described in
   glance which part of the page was written for you and which part is your own
   arithmetic.
 
-  Your goals now sit beside that panel rather than below it, so the page ends
-  where the reading does. The six charts are unchanged and still live in
+  Your goals now sit under the two columns rather than inside the narrower one,
+  side by side rather than stacked — which is what lets the ranked bars and the
+  AI panel end on the same line instead of leaving a column of empty page
+  beside one of them. A row of month facts with only one fact to show now
+  spans the row rather than sitting in a third of it. The six charts are unchanged and still live in
   the section at the bottom, which still opens on desktop and stays closed on a
   phone — where the category bars now put each name and amount on one line with
   the bar beneath, instead of squeezing the bar into a stub too small to compare.
