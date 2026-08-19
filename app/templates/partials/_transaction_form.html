@@ -3,55 +3,70 @@
    text to /transactions/parse and dropped a filled copy of this form into
    #txn-form-wrap. That feature was removed in #232 (unused in practice), and
    the `prefill` plumbing went with it: every field here is now blank on render.
-   Do not reintroduce a `prefill` dict without the endpoint that fills it. #}
-<form method="post" action="{{ url_for('transactions.new_transaction') }}">
+   Do not reintroduce a `prefill` dict without the endpoint that fills it.
+
+   #244 — the field order is by how often you touch it. Amount used to sit
+   FOURTH, behind a type select you must choose before anything else; it is the
+   field people come to this page to type.
+
+   ⚠️ The two flags sit behind a disclosure, and that is only safe BECAUSE the
+   form always renders blank: neither can arrive pre-ticked, so a collapsed
+   section can never hide a setting that is already in force. If a prefill is
+   ever reintroduced, this <details> must render open whenever either flag is
+   set. #}
+<form method="post" action="{{ url_for('transactions.new_transaction') }}" class="narrow-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>Type</label>
-    <select name="transaction_type" required>
-        <option value="">-- select type --</option>
-        <option value="expense">Expense</option>
-        <option value="income">Income</option>
-    </select>
-    <label>Amount</label>
-    <input type="number" step="0.01" name="amount" required>
-    <label>Description</label>
-    <input type="text" name="description">
-    <label>Category</label>
-    <select name="category_id">
+    <label for="txn-amount">Amount</label>
+    <input type="number" step="0.01" name="amount" id="txn-amount" required autofocus>
+    <label for="txn-description">Description</label>
+    <input type="text" name="description" id="txn-description">
+    <label for="txn-category">Category</label>
+    <select name="category_id" id="txn-category">
         <option value="">-- select category --</option>
         {% with selected_id = none %}
         {% include 'partials/_category_options.html' %}
         {% endwith %}
     </select>
-    <label>Account</label>
-    <select name="account_id">
+    <label for="txn-type">Type</label>
+    <select name="transaction_type" id="txn-type" required>
+        <option value="">-- select type --</option>
+        <option value="expense">Expense</option>
+        <option value="income">Income</option>
+    </select>
+    <label for="txn-account">Account</label>
+    <select name="account_id" id="txn-account">
         <option value="">-- select account --</option>
         {% for account in accounts %}
         <option value="{{ account.account_id }}">{{ account.account_name }}</option>
         {% endfor %}
     </select>
-    <label>Date</label>
-    <input type="date" name="transaction_date" required>
-    <p style="font-size:12px;color:var(--text-muted);margin-top:0.25rem">
+    <label for="txn-date">Date</label>
+    <input type="date" name="transaction_date" id="txn-date" required>
+    <p class="field-hint">
         Recurring income or bills? Set them up once on the
         <a href="{{ url_for('schedules.scheduled') }}">Scheduled</a> page and they post automatically.
     </p>
-    <label style="display:flex;align-items:center;gap:0.5rem;margin-top:1rem;font-weight:normal">
-        <input type="checkbox" name="is_adjustment" value="true" style="width:auto">
-        Exclude from analytics (opening balance / correction)
-    </label>
-    <p style="font-size:12px;color:var(--text-muted);margin-top:0.25rem">
-        Still counts toward your account balance, but is left out of the analytics charts
-        so first-time setup or fix-up entries don't distort your trends.
-    </p>
-    <label style="display:flex;align-items:center;gap:0.5rem;margin-top:1rem;font-weight:normal">
-        <input type="checkbox" name="is_pending" value="true" style="width:auto">
-        Amount not final yet (pending)
-    </label>
-    <p style="font-size:12px;color:var(--text-muted);margin-top:0.25rem">
-        For a charge whose real amount lands later — a fuel pump that authorises $1.00,
-        a tip, a hotel hold. It stays pinned to the top of your History until you mark it
-        posted, and it counts in every figure in the meantime.
-    </p>
+    <details class="add-panel txn-flags">
+      <summary>Adjustment or pending amount?</summary>
+      <div class="add-panel-body">
+        <label class="flag-check">
+            <input type="checkbox" name="is_adjustment" value="true">
+            Exclude from analytics (opening balance / correction)
+        </label>
+        <p class="field-hint">
+            Still counts toward your account balance, but is left out of the analytics charts
+            so first-time setup or fix-up entries don't distort your trends.
+        </p>
+        <label class="flag-check">
+            <input type="checkbox" name="is_pending" value="true">
+            Amount not final yet (pending)
+        </label>
+        <p class="field-hint">
+            For a charge whose real amount lands later — a fuel pump that authorises $1.00,
+            a tip, a hotel hold. It stays pinned to the top of your History until you mark it
+            posted, and it counts in every figure in the meantime.
+        </p>
+      </div>
+    </details>
     <button type="submit" class="btn btn-primary" style="margin-top:1rem">Add transaction</button>
 </form>
