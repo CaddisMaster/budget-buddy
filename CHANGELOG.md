@@ -10,6 +10,13 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The AI features look like one feature.** Home's "Ask your finances" panel
+  has been a dark purple surface since the redesign, but the Goal Coach on Goals
+  and the AI budget review on Budgets were ordinary cards with a thin purple
+  edge — so the same feature looked like two different things depending on which
+  page you were on. All three now use the same material, in both light and dark
+  mode.
+
 - **The login page looks like the app it opens.** It carries the Budget Buddy
   mark, the same one in the sidebar on every other page, instead of a bare
   heading.

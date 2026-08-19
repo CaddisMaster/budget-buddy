@@ -653,20 +653,47 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
    place on the page where a model is speaking, and making that a change of
    MATERIAL rather than a badge is what the mockup was doing. Its own ink
    tokens, for the same reason the hero has them. */
-.ask-panel {
+/* THE AI MATERIAL, shared by every surface where a model is the one speaking:
+   Home's Ask panel, the Goal Coach on /goals, and the budget-review banner on
+   /budgets. It began as .ask-panel alone; Goals and Budgets carried only
+   `border-left: 3px solid var(--accent-2)`, so one feature looked like two
+   different things depending on which page you were on.
+
+   ⚠️ It is a dark surface in BOTH themes, deliberately — the point is a change
+   of MATERIAL rather than a badge, which is also why it carries its own ink
+   tokens. A dark panel that inherits the light theme's --text and --text-muted
+   is the silent failure here: the background goes dark and the words stay
+   near-black. Every muted descendant inside one of these cards has to be
+   re-inked, not just the body text. */
+.ai-surface {
   background: var(--grad-read); border: none;
-  padding: var(--sp-4) var(--sp-5) var(--sp-5);
   color: var(--on-read); box-shadow: var(--shadow-lg);
 }
-.ask-panel h2, .ask-panel strong { color: var(--on-read); }
-.ask-panel p, .ask-panel li, .ask-panel .ask-read-ts { color: var(--on-read-muted); }
-.ask-panel .ask-foot { border-top-color: var(--read-rule); }
-.ask-panel .btn, .ask-panel .btn-sm { background: var(--read-btn); border-color: var(--read-rule); color: var(--on-read); }
-.ask-panel .btn:hover, .ask-panel .btn-sm:hover { background: var(--read-btn-hover); border-color: var(--on-read-muted); }
-.ask-panel input { background: var(--read-btn); border-color: var(--read-rule); color: var(--on-read); }
-.ask-panel input::placeholder { color: var(--on-read-muted); }
-/* The one ACTION on the panel keeps the accent, so it still reads as one. */
-.ask-panel .ask-foot .btn-primary { background: var(--grad-accent); border-color: transparent; color: #fff; }
+.ai-surface h2, .ai-surface h3, .ai-surface strong { color: var(--on-read); }
+.ai-surface p, .ai-surface li { color: var(--on-read-muted); }
+/* ⚠️ The AI badge keeps --accent-2 on EVERY surface. Do not fold it into a
+   blanket descendant rule: `.ai-surface span` outranks `.ai-badge` and turns
+   the badge into pale ink on its own pale pill. That is how it broke once. */
+.ai-surface .ai-badge { color: var(--accent-2); }
+.ai-surface .btn, .ai-surface .btn-sm { background: var(--read-btn); border-color: var(--read-rule); color: var(--on-read); }
+.ai-surface .btn:hover, .ai-surface .btn-sm:hover { background: var(--read-btn-hover); border-color: var(--on-read-muted); }
+.ai-surface input, .ai-surface select { background: var(--read-btn); border-color: var(--read-rule); color: var(--on-read); }
+.ai-surface input::placeholder { color: var(--on-read-muted); }
+/* The one ACTION on a panel keeps the accent, so it still reads as an action. */
+.ai-surface .btn-primary { background: var(--grad-accent); border-color: transparent; color: #fff; }
+/* ⚠️ These four are the ones that inherit --text-muted from their own rules
+   further down the sheet and would otherwise render near-invisible: the
+   <details> chevron, the right-aligned headline, the facts strip's labels and
+   every "Generated …" timestamp. */
+.ai-surface summary.ai-head::after { border-right-color: var(--on-read-muted); border-bottom-color: var(--on-read-muted); }
+.ai-surface .ai-headline, .ai-surface .fact-label,
+.ai-surface .insight-ts, .ai-surface .insight-spinner,
+.ai-surface .htmx-indicator { color: var(--on-read-muted); }
+.ai-surface .fact-val { color: var(--on-read); }
+.ai-surface .insight-foot, .ai-surface .ask-foot { border-top-color: var(--read-rule); }
+
+.ask-panel { padding: var(--sp-4) var(--sp-5) var(--sp-5); }
+.ask-panel .ask-read-ts { color: var(--on-read-muted); }
 .ask-panel .ask-answer { background: var(--read-btn); }
 .ask-panel-head { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }
 .ask-panel-head h2 { margin: 0; }
@@ -1026,7 +1053,12 @@ body.bulk-mode td.bulk-col { cursor: pointer; } /* whole cell toggles the box */
 /* v10.6 — shared "AI assist" identity across all five AI surfaces (Quick add,
    Insight, Forecast, Ask, Auto-Categorize). One accent (--accent-2), one icon
    (the sparkle in partials/_ai_spark.html), one badge, one header anatomy. */
+/* ⚠️ .ai-card is now only a left rule for anything NOT carrying .ai-surface.
+   The material above replaced it on the three real AI surfaces. */
 .ai-card { border-left: 3px solid var(--accent-2); }
+.ai-card.ai-surface { border-left: none; }
+/* The Budgets review entry point: one row, so it lays itself out. */
+.ai-banner { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem; }
 .ai-head { display: flex; align-items: center; gap: 0.55rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
 .ai-head h2, .ai-head label { margin: 0; }
 /* Read-state collapse (v10.15): the AI cards are <details> and .ai-head is

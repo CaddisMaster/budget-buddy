@@ -204,3 +204,81 @@ def test_the_retired_chart_library_is_gone():
     """Chart.js was replaced, not merely unreferenced — 208KB of dead JS in the
     image is 208KB every deploy ships and every browser may cache."""
     assert not (STATIC / "chart.umd.min.js").exists()
+
+
+# --- the AI material is one material (#225 follow-up) -------------------------
+
+# Every surface where a model is the one speaking, and the element that must
+# carry the shared material. Listed rather than discovered so that ADDING an AI
+# surface without giving it the material fails here.
+TEMPLATES = Path(__file__).resolve().parents[1] / "app" / "templates"
+AI_SURFACES = (
+    ("partials/_ask_panel.html", 'id="ask-panel"'),
+    ("partials/_goal_coach_card.html", 'id="goal-coach-card"'),
+    ("budgets.html", "ai-banner"),
+)
+
+
+@pytest.mark.parametrize("template,marker", AI_SURFACES,
+                         ids=[t for t, _ in AI_SURFACES])
+def test_every_ai_surface_uses_the_shared_material(template, marker):
+    """#225's decision was that a model speaking is a change of MATERIAL, not a
+    badge: Home's panel is a dark surface in both themes, like the hero. Goals
+    and Budgets only ever got `border-left: 3px solid var(--accent-2)`, so one
+    feature looked like two different things depending on the page.
+
+    ⚠️ Asserted on the TEMPLATES, not on the stylesheet — the sharing is a
+    class on an element, and a CSS-side check would pass while a card quietly
+    stopped carrying it.
+    """
+    src = (TEMPLATES / template).read_text()
+    # ⚠️ `class=` is required as well as the marker: _ask_panel.html's header
+    # comment NAMES id="ask-panel" (telling you not to remove it), and matching
+    # the first line containing the marker finds that comment, not the element.
+    line = next((ln for ln in src.splitlines()
+                 if marker in ln and "class=" in ln), None)
+    assert line, f"{template}: no element matching {marker}"
+    assert "ai-surface" in line, \
+        f"{template}: the AI surface does not carry the shared material"
+
+
+def test_the_shared_ai_material_exists_and_is_the_read_surface(css_no_comments):
+    rule = re.search(r"\n\.ai-surface\s*\{([^}]*)\}", css_no_comments)
+    assert rule, "no shared .ai-surface material"
+    assert "--grad-read" in rule.group(1), \
+        ".ai-surface does not use the read gradient Home established"
+
+
+def test_the_ai_material_carries_its_own_ink(css_no_comments):
+    """A dark surface in a light theme inherits light-theme ink, which is the
+    silent way this breaks: the panel goes dark and the text stays near-black.
+    ⚠️ `--text-muted` is the one that bites — it is used by the chevron, the
+    facts strip and every timestamp inside these cards."""
+    body = re.search(r"\n\.ai-surface\s*\{([^}]*)\}", css_no_comments).group(1)
+    assert "--on-read" in body, ".ai-surface sets a background but not its ink"
+
+    scoped = re.findall(r"\.ai-surface[^{}]*\{([^}]*)\}", css_no_comments)
+    joined = " ".join(scoped)
+    assert "--on-read-muted" in joined, \
+        "nothing inside .ai-surface overrides the muted ink for a dark surface"
+
+
+@pytest.mark.parametrize("template,marker", AI_SURFACES,
+                         ids=[t for t, _ in AI_SURFACES])
+def test_the_ai_badge_keeps_its_accent_on_the_dark_material(css_no_comments,
+                                                            template, marker):
+    """⚠️ A regression that actually happened while building this: a blanket
+    `.ai-surface span { color: var(--on-read-muted) }` outranks `.ai-badge`
+    (0,1,1 beats 0,1,0), so the badge rendered pale lilac ink on its own pale
+    lilac pill — on Home too, which the change was not even meant to touch.
+    Caught by reading computed styles in a browser, not by the suite.
+
+    The property: nothing inside the AI material may capture the badge's ink.
+    """
+    blanket = re.search(
+        r"\.ai-surface\s+span\s*\{([^}]*)\}", css_no_comments)
+    assert not blanket, \
+        "a blanket .ai-surface span rule will capture .ai-badge's colour"
+    restore = re.search(r"\.ai-surface \.ai-badge\s*\{([^}]*)\}", css_no_comments)
+    assert restore and "--accent-2" in restore.group(1), \
+        "the badge does not keep the AI accent on the dark material"
