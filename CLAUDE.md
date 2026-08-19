@@ -87,9 +87,9 @@ Full column lists and the reasoning behind each shape are in
 - `account` — ⚠️ **singular, and its PK is `account_id`, not `id`**. Carries `credit_limit`/`apr`
 - `goals` · `users` · `transfer_group_seq`
 - AI caches, narrative only — figures are always recomputed: `insights` (the month read),
-  `agent_runs`. ⚠️ **`forecasts` AND `goal_coach` are both written by nothing** — `forecasts`
-  since #232, `goal_coach` since the Goal Coach was removed in #262. Dropping them is a
-  migration, so it stands alone in its own PR
+  `agent_runs`. ⚠️ **`forecasts` and `goal_coach` are GONE** (`sql/36`) — dead since #232 and
+  #262 respectively, dropped together once nothing referenced either. Older backups still
+  contain them, which is fine: `restore_check.py` has no expected-table list
 - Job/notification bookkeeping: `job_runs` (one row per job, upserted, **no `user_id`**),
   `push_subscriptions` (one row per **device**, `endpoint` globally unique), `reminder_log`
   (append-only idempotency claims)

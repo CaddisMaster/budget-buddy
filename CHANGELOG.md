@@ -10,6 +10,11 @@ this project uses the `0.x` versioning scheme described in
 
 ### Removed
 
+- **Two unused database tables are gone.** `forecasts` and `goal_coach` cached
+  the wording of two AI features that no longer exist — the month-ahead forecast
+  card and the Goal Coach. Both stored narration only; every figure they
+  described was always recalculated, so nothing was lost. No visible change.
+
 - **The Goal Coach is gone.** The AI card on Goals that wrote a short recap of
   how your savings goals were tracking has been retired, along with its
   Generate button. Everything it described — pace, what's behind, what you'd
