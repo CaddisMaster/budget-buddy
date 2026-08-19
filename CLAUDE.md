@@ -87,8 +87,9 @@ Full column lists and the reasoning behind each shape are in
 - `account` — ⚠️ **singular, and its PK is `account_id`, not `id`**. Carries `credit_limit`/`apr`
 - `goals` · `users` · `transfer_group_seq`
 - AI caches, narrative only — figures are always recomputed: `insights` (the month read),
-  `goal_coach`, `agent_runs`. ⚠️ `forecasts` is **written by nothing since #232** — dropping it
-  is a migration, so it stands alone in its own PR
+  `agent_runs`. ⚠️ **`forecasts` AND `goal_coach` are both written by nothing** — `forecasts`
+  since #232, `goal_coach` since the Goal Coach was removed in #262. Dropping them is a
+  migration, so it stands alone in its own PR
 - Job/notification bookkeeping: `job_runs` (one row per job, upserted, **no `user_id`**),
   `push_subscriptions` (one row per **device**, `endpoint` globally unique), `reminder_log`
   (append-only idempotency claims)

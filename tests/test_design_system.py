@@ -214,7 +214,6 @@ def test_the_retired_chart_library_is_gone():
 TEMPLATES = Path(__file__).resolve().parents[1] / "app" / "templates"
 AI_SURFACES = (
     ("partials/_ask_panel.html", 'id="ask-panel"'),
-    ("partials/_goal_coach_card.html", 'id="goal-coach-card"'),
     ("budgets.html", "ai-banner"),
 )
 

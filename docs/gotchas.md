@@ -273,15 +273,14 @@
 - CSRF: Flask-WTF CSRFProtect — token on POST forms, plus a single `hx-headers='{"X-CSRFToken": ...}'` on `<body>` in base.html covering every HTMX post/put/delete
 - **Flex overflow:** `.main-content` is a flex item and MUST keep `min-width: 0` — without it a wide table inflates the column past the viewport instead of scrolling inside its `.table-wrapper`. Same hotfix owns the iOS status-bar rules: `viewport-fit=cover` + `html` background + safe-area paddings (keep `theme-color` for Android; never `black-translucent`)
 - **PWA/iOS testing:** responsive mode does NOT test iOS — installed-PWA bugs only show on the actual phone over HTTPS
-- **AI-card collapse:** ⚠️ **ONE card still uses this** — the goal coach on `/goals`. #232 folded
-  Home's insight, forecast and money-agent cards into a single "Ask your finances" panel that does
-  not collapse, so `initAiCollapse` in base.html now exists for that one card; if it ever loses its
-  `<details>`, delete the script rather than leaving dead JS on every page. The mechanism, while it
-  lasts: `<details>` with `data-ai-key` + `data-generated` (the cache row's `created_at.isoformat()`;
-  `initAiCollapse` + localStorage `bb-ai-seen:<key>` drive read-state). A generate route must get the
-  timestamp via `RETURNING created_at` — a route-local `datetime.today()` makes every regenerate read
-  as new twice. Server renders CLOSED except empty-state (Generate must work without JS) and
-  `just_generated` fragments.
+- ⚠️ **The AI-card read-state collapse is GONE** (#262). It was `<details>` +
+  `data-ai-key`/`data-generated` + a localStorage key, driven by `initAiCollapse` in
+  base.html. #232 folded three of its four cards into Home's one panel; the Goal Coach was
+  the last consumer, and the script, the `summary.ai-head` chevron CSS and
+  `tests/test_ai_collapse.py` were deleted **with** it rather than left as dead JS shipped
+  on every page — which is exactly what the previous version of this entry instructed.
+  ⚠️ A generate route that caches narration no longer needs `RETURNING created_at` for
+  read-state purposes; nothing reads a `data-generated` timestamp any more
 - ⚠️ **Home's AI panel re-renders WHOLE, and its gate is shared** (#232, `partials/_ask_panel.html`).
   Two things are load-bearing and neither is obvious from the markup. **(1)** `POST /insights/read`
   returns the entire panel, Ask box included, and the panel's root keeps `id="ask-panel"` — the
