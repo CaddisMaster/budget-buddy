@@ -448,8 +448,8 @@ def build_seed_plan(today, seed=DEFAULT_SEED, months=DEFAULT_MONTHS):
 # transactions → categories/account are ON DELETE RESTRICT, so the user-row
 # cascade alone is not enough (the same trap tests/conftest.py documents).
 WIPE_ORDER = [
-    'reminder_log', 'push_subscriptions', 'agent_runs', 'goal_coach',
-    'forecasts', 'insights', 'budget_history', 'budgets', 'goals',
+    'reminder_log', 'push_subscriptions', 'agent_runs',
+    'insights', 'budget_history', 'budgets', 'goals',
     'transfer_schedules', 'schedules', 'transactions', 'categories', 'account',
 ]
 
