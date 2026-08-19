@@ -1,29 +1,26 @@
-<tr id="account-{{ account.account_id }}" class="editing">
-  <td><input type="text" name="name" value="{{ account.account_name }}" required></td>
-  <td>
-    <select name="type" required>
-      <option value="Credit Card" {% if account.type == 'Credit Card' %}selected{% endif %}>Credit Card</option>
-      <option value="Debit Card" {% if account.type == 'Debit Card' %}selected{% endif %}>Debit Card</option>
-      <option value="Bank Account" {% if account.type == 'Bank Account' %}selected{% endif %}>Bank Account</option>
-    </select>
-    <input type="number" name="credit_limit" step="0.01" min="0.01"
-           value="{{ account.credit_limit if account.credit_limit is not none else '' }}"
-           placeholder="Credit limit" title="Optional — credit cards only"
-           style="margin-top:0.35rem">
-    <input type="number" name="apr" step="0.01" min="0.01" max="100"
-           value="{{ account.apr if account.apr is not none else '' }}"
-           placeholder="APR %" title="Optional — credit cards only"
-           style="margin-top:0.35rem">
-  </td>
-  <td class="{% if account.balance >= 0 %}income{% else %}expense{% endif %}">${{ account.balance|money }}</td>
-  <td style="color:var(--text-muted)">{{ account.last_checked_in.strftime('%b %-d, %Y') if account.last_checked_in else 'Never' }}</td>
-  <td class="row-actions">
+{# ⚠️ hx-include is "closest .account-card", NOT "closest tr" — this stopped
+   being a table row in #239 and a stale selector would post an empty form. #}
+<div class="account-card editing" id="account-{{ account.account_id }}">
+  <input type="text" name="name" value="{{ account.account_name }}" required aria-label="Account name">
+  <select name="type" required aria-label="Account type">
+    <option value="Credit Card" {% if account.type == 'Credit Card' %}selected{% endif %}>Credit Card</option>
+    <option value="Debit Card" {% if account.type == 'Debit Card' %}selected{% endif %}>Debit Card</option>
+    <option value="Bank Account" {% if account.type == 'Bank Account' %}selected{% endif %}>Bank Account</option>
+  </select>
+  <input type="number" name="credit_limit" step="0.01" min="0.01"
+         value="{{ account.credit_limit if account.credit_limit is not none else '' }}"
+         placeholder="Credit limit" title="Optional — credit cards only" aria-label="Credit limit">
+  <input type="number" name="apr" step="0.01" min="0.01" max="100"
+         value="{{ account.apr if account.apr is not none else '' }}"
+         placeholder="APR %" title="Optional — credit cards only" aria-label="APR percent">
+  <div class="account-balance {% if account.balance >= 0 %}income{% else %}expense{% endif %}">${{ account.balance|money }}</div>
+  <div class="account-actions row-actions">
     <button type="button" class="btn btn-sm btn-primary"
-      hx-post="{{ url_for('accounts.edit_account', account_id=account.account_id) }}" hx-include="closest tr"
+      hx-post="{{ url_for('accounts.edit_account', account_id=account.account_id) }}" hx-include="closest .account-card"
       hx-target="#account-{{ account.account_id }}" hx-swap="outerHTML">Save</button>
     <button type="button" class="btn btn-sm"
       hx-get="{{ url_for('accounts.account_row', account_id=account.account_id) }}"
       hx-target="#account-{{ account.account_id }}" hx-swap="outerHTML">Cancel</button>
     {% if error %}<span class="inline-error">{{ error }}</span>{% endif %}
-  </td>
-</tr>
+  </div>
+</div>

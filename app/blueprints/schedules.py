@@ -37,6 +37,22 @@ SCHEDULE_ROW_SQL = """
 """
 
 
+def pick_next_due(schedules):
+    """The soonest schedule that will actually post, or None. Pure.
+
+    #241 — "what is due next" is the question this page is opened with, and the
+    table answered it only by sorting. The rows are already ordered by
+    transaction_type FIRST, so the top row is not the answer.
+
+    ⚠️ Skips inactive schedules and ones past their end_date (#32's
+    `is_finished`): both still render in the table, deliberately, but neither
+    is going to post again, and naming one as "next due" would be a lie.
+    """
+    live = [s for s in schedules
+            if s.is_active and not s.is_finished and s.next_due]
+    return min(live, key=lambda s: s.next_due) if live else None
+
+
 def compute_initial_semimonthly_due(anchor_day, second_day, today):
     """First semi-monthly pay day on or after `today` — never back-fills.
     Picks the earlier of the two pay days that hasn't passed this month, else
@@ -251,6 +267,7 @@ def scheduled():
         schedules = cursor.fetchall()
         categories, accounts = _form_lists(cursor)
     return render_template('scheduled.html', schedules=schedules,
+                           next_due=pick_next_due(schedules),
                            categories=categories, accounts=accounts,
                            frequency_labels=FREQUENCY_LABELS)
 

@@ -1,0 +1,28 @@
+{# #243 — the whole grouped listing, re-rendered as one unit.
+
+   ⚠️ This is re-rendered WHOLE on add rather than prepending one row, and the
+   reason is the grouping: a new category belongs to whichever group its kind
+   names, so a prepend into a single tbody would file an income category under
+   Expense. That is the same reasoning as History's whole-tbody swap — when the
+   shape of the list depends on the row, one row is not a safe unit to swap.
+
+   Expects `categories` (every category, ordered by name). #}
+{% for kind, label in [('expense', 'Expense'), ('income', 'Income')] %}
+{% set of_kind = categories|selectattr('kind', 'equalto', kind)|list %}
+{% if of_kind %}
+<h2 class="group-head">{{ label }}</h2>
+<div class="table-wrapper">
+    <table>
+        <thead><tr><th>Name</th><th>Description</th><th>Actions</th></tr></thead>
+        <tbody>
+        {% for cat in of_kind %}
+        {% include 'partials/_category_row.html' %}
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% endfor %}
+{% if not categories %}
+<p id="cat-empty" style="color:var(--text-muted)">No categories yet.</p>
+{% endif %}
