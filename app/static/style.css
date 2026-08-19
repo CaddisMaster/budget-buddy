@@ -339,6 +339,62 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 
 /* Cards */
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.35rem; margin-bottom: 1rem; box-shadow: var(--shadow-sm); }
+
+/* #239/#240/#241/#242/#243 — the shared "add" disclosure.
+   Five pages used to open with their "Add X" form and put the things you
+   already have underneath it. The state leads now and the form collapses to
+   one line at the bottom. Rendered OPEN when the collection is empty: a new
+   user must not meet a page that is blank except for a collapsed form. */
+.add-panel { border: 1px dashed var(--border); border-radius: var(--radius); background: var(--surface); margin-top: var(--sp-5); }
+.add-panel > summary { display: flex; align-items: center; gap: 0.5rem; padding: 0.85rem 1.1rem; font-size: 14px; font-weight: 600; color: var(--text-muted); cursor: pointer; list-style: none; border-radius: var(--radius); transition: color var(--dur-1) var(--ease), background var(--dur-1) var(--ease); }
+/* The default triangle is replaced by a + that rotates to an ×, so the
+   control reads as "add" when closed rather than as a generic twisty. */
+.add-panel > summary::-webkit-details-marker { display: none; }
+.add-panel > summary::before { content: "+"; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 15px; font-weight: 600; line-height: 1; transition: transform var(--dur-1) var(--ease); }
+.add-panel[open] > summary::before { transform: rotate(45deg); }
+.add-panel > summary:hover { color: var(--text); background: var(--surface-2); }
+.add-panel[open] > summary { color: var(--text); border-bottom: 1px solid var(--border); border-radius: var(--radius) var(--radius) 0 0; }
+.add-panel-body { padding: 0.25rem 1.1rem 1.25rem; }
+/* The form's own first label would otherwise double the summary's padding. */
+.add-panel-body > form > label:first-child { margin-top: 0.5rem; }
+
+/* #239 — accounts as cards. auto-fill rather than a fixed count so the grid
+   reflows on its own; minmax's floor is what stops a third column appearing
+   too narrow for "$15,225.20" plus the utilization bar. */
+.account-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--sp-4); }
+.account-card { background: var(--surface-raise); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: var(--sp-4); display: flex; flex-direction: column; gap: 0.4rem; }
+.account-card.editing { box-shadow: 0 0 0 2px var(--accent); }
+.account-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+.account-name { font-weight: 600; font-size: 15px; }
+.account-type { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); flex-shrink: 0; }
+.account-balance { font-size: var(--fs-lg); font-weight: 600; }
+.account-checkin { font-size: 12px; color: var(--text-muted); }
+/* margin-top: auto pins the actions to the card's foot, so cards of differing
+   height (a credit card carries two extra lines) still align their buttons. */
+.account-actions { margin-top: auto; padding-top: 0.35rem; display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.page-lede { margin: 0 0 var(--sp-4); color: var(--text-muted); font-size: 14px; }
+/* The kind heading above each group on /categories (#243). */
+.group-head { margin-top: var(--sp-5); }
+.group-head:first-child { margin-top: 0; }
+
+/* #241 — the answer to "what is due next", above the table that used to imply
+   it through sort order alone. */
+.next-due { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.5rem 0.75rem; padding: 0.85rem 1.1rem; margin-bottom: var(--sp-4); background: var(--surface-raise); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius); box-shadow: var(--shadow-sm); }
+.next-due-label { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.next-due-when { font-weight: 600; }
+.next-due-what { color: var(--text-muted); flex: 1; min-width: 0; }
+.next-due-amount { font-weight: 600; }
+
+/* #242 — the two kinds of transfer, told apart by section rather than by two
+   bare forms stacked with nothing between them. */
+.transfer-section { padding-bottom: var(--sp-5); }
+.transfer-section + .transfer-section { border-top: 1px solid var(--border); padding-top: var(--sp-5); }
+.transfer-kind { margin-top: 0; }
+.transfer-direction > span { display: inline; }
+.transfer-arrow { color: var(--accent); font-weight: 600; padding: 0 0.3rem; }
+
+
+
 .card.editing { box-shadow: 0 0 0 2px var(--accent); }
 
 /* Summary stats */

@@ -1,8 +1,11 @@
 {# schedule = a TRANSFER_SCHEDULE_ROW_SQL row (namedtuple — read by field name,
    so the column ORDER here doesn't matter). #}
 <tr id="transfer-schedule-{{ schedule.id }}">
-  <td>{{ schedule.from_account_name or 'No account' }}</td>
-  <td>{{ schedule.to_account_name or 'No account' }}</td>
+  <td colspan="2" class="transfer-direction">
+    <span>{{ schedule.from_account_name or 'No account' }}</span>
+    <span class="transfer-arrow" aria-label="to">&rarr;</span>
+    <span>{{ schedule.to_account_name or 'No account' }}</span>
+  </td>
   <td>${{ schedule.amount|money }}</td>
   <td>{{ schedule.description or '—' }}</td>
   <td>

@@ -10,6 +10,33 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **Five pages now open with what you have, not with the form for adding more.**
+  Accounts, Categories, Goals, Scheduled and Transfer all used to lead with an
+  "Add X" form and put your existing things underneath it — so the thing you use
+  least occupied the top of every one of those pages. Your accounts, categories,
+  goals and schedules come first now, and adding is one line at the bottom that
+  opens when you click it. It opens by itself when you have nothing yet, so a
+  new account still starts on the form.
+
+  **Accounts are cards rather than table rows.** Each account shows its balance,
+  and its credit limit and monthly interest where you have set them, as one
+  object — the utilization bar used to be buried in a table cell. On a phone
+  they stack instead of scrolling sideways.
+
+  **Categories are grouped into Expense and Income** rather than mixed in one
+  list with a Kind column, and adding an income category now files it under
+  Income instead of dropping it at the top of the list.
+
+  **Scheduled says what is due next**, above the table. Its rows are ordered by
+  type first, so the soonest item was routinely not the top row.
+
+  **The two kinds of transfer are told apart.** "Transfer now" and "Transfer
+  every month" are separate sections instead of two forms stacked with nothing
+  between them, and an automatic transfer states its direction as
+  "Everyday Checking → Savings" rather than as two columns to pair up yourself.
+
+  **Goals puts the coach below your goals** rather than above them.
+
 - **Every page has one header row instead of two.** Home stacked two bars before
   any content — a ☰ with an Add button, then a greeting with the month picker —
   which is 133 pixels of furniture for what is really a page title and a page

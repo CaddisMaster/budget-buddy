@@ -16,6 +16,18 @@ CategoryRow = namedtuple('CategoryRow', 'id name description kind')
 KINDS = ('expense', 'income')
 
 
+def _all_categories():
+    """Every category for the current user, name-ordered — the shape both the
+    page and the post-add re-render hand to _category_groups.html."""
+    with db_cursor() as cursor:
+        cursor.execute(
+            "SELECT id, name, description, kind FROM categories "
+            "WHERE user_id = %s ORDER BY name",
+            (current_user.id,),
+        )
+        return cursor.fetchall()
+
+
 def _own_category_or_404(cursor, category_id):
     cursor.execute(
         "SELECT id, name, description, kind FROM categories WHERE id = %s AND user_id = %s",
@@ -50,10 +62,9 @@ def categories():
             with db_cursor(commit=True) as cursor:
                 cursor.execute(
                     "INSERT INTO categories (name, description, kind, user_id) "
-                    "VALUES (%s, %s, %s, %s) RETURNING id, name, description, kind",
+                    "VALUES (%s, %s, %s, %s)",
                     (name, description, kind, current_user.id),
                 )
-                cat = cursor.fetchone()
         except psycopg2.Error:
             current_app.logger.exception('create category failed')
             if is_htmx():
@@ -61,18 +72,16 @@ def categories():
             flash(GENERIC_ERROR)
             return redirect(url_for('categories.categories'))
         if is_htmx():
-            resp = make_response(render_template('partials/_category_row.html', cat=cat))
+            # ⚠️ The whole grouped listing, not the one new row (#243). The row
+            # belongs to whichever group its kind names, so prepending it into
+            # a single tbody would file an income category under Expense.
+            resp = make_response(render_template(
+                'partials/_category_groups.html', categories=_all_categories()))
             return hx_toast(resp, 'Category added')
         flash('Category added successfully')
         return redirect(url_for('categories.categories'))
 
-    with db_cursor() as cursor:
-        cursor.execute(
-            "SELECT id, name, description, kind FROM categories WHERE user_id = %s ORDER BY name",
-            (current_user.id,),
-        )
-        all_categories = cursor.fetchall()
-    return render_template('categories.html', categories=all_categories)
+    return render_template('categories.html', categories=_all_categories())
 
 
 @bp.route('/categories/<int:category_id>/edit', methods=['GET', 'POST'])
@@ -124,10 +133,21 @@ def edit_category(category_id):
             current_app.logger.exception('edit category failed')
             return render_template('partials/_category_edit_row.html',
                                    cat=CategoryRow(category_id, name, description, kind), error=GENERIC_ERROR)
+        message = ('Category updated — its budget was cleared (income categories have no budgets)'
+                   if cleared_budget else 'Category updated')
+        # ⚠️ A changed KIND moves the row to the other group (#243), and a
+        # single-row outerHTML swap would leave it rendered under the heading
+        # it no longer belongs to. Retarget the whole listing in that case
+        # only — a rename or a description edit keeps the cheap row swap.
+        if cat.kind != kind:
+            resp = make_response(render_template(
+                'partials/_category_groups.html', categories=_all_categories()))
+            resp.headers['HX-Retarget'] = '#category-rows'
+            resp.headers['HX-Reswap'] = 'innerHTML'
+            return hx_toast(resp, message)
         resp = make_response(render_template('partials/_category_row.html',
                                              cat=CategoryRow(category_id, name, description, kind)))
-        return hx_toast(resp, 'Category updated — its budget was cleared (income categories have no budgets)'
-                        if cleared_budget else 'Category updated')
+        return hx_toast(resp, message)
 
     return render_template('partials/_category_edit_row.html', cat=cat)
 

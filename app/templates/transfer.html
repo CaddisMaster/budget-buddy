@@ -2,120 +2,138 @@
 {% block title %}Transfer Money — Budget Buddy{% endblock %}
 {% block page_heading %}<h1>Transfer money</h1>{% endblock %}
 {% block content %}
+{# #242 — the two kinds of transfer are the most confusable pair in the app, so
+   they are now two visibly separate sections rather than two bare forms
+   stacked with nothing between them.
+
+   ⚠️ The one-off form deliberately KEEPS the top of the page and is NOT
+   demoted into a disclosure like the other four same-shape pages. Moving money
+   now is what this page is FOR — that form is the page's purpose, not its
+   furniture. Only the automatic-transfer form, which sat above its own table,
+   follows the #239 shape. #}
 {% if accounts|length < 2 %}
 <p style="color:var(--text-muted)">You need at least two <a href="{{ url_for('accounts.accounts') }}">accounts</a> to make a transfer.</p>
 {% else %}
-<form method="post">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>From account</label>
-    <select name="from_account" required>
-        <option value="">-- select account --</option>
-        {% for account in accounts %}
-        <option value="{{ account.account_id }}">{{ account.account_name }}</option>
-        {% endfor %}
-    </select>
-    <label>To account</label>
-    <select name="to_account" required>
-        <option value="">-- select account --</option>
-        {% for account in accounts %}
-        <option value="{{ account.account_id }}">{{ account.account_name }}</option>
-        {% endfor %}
-    </select>
-    <label>Amount</label>
-    <input type="number" step="0.01" name="amount" required>
-    <label>Description</label>
-    <input type="text" name="description" placeholder="Transfer">
-    <label>Date</label>
-    <input type="date" name="transfer_date" required>
-    <p style="font-size:12px;color:var(--text-muted);margin-top:0.5rem">
-        Records a paired expense and income so both account balances move, but is
-        left out of your income/expense analytics.
-    </p>
-    <button type="submit" class="btn btn-primary" style="margin-top:1rem">Make transfer</button>
-</form>
+<section class="transfer-section">
+  <h2 class="transfer-kind">Transfer now</h2>
+  <p class="page-lede">A single movement between two of your accounts, dated today or whenever you choose.</p>
+  <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>From account</label>
+      <select name="from_account" required>
+          <option value="">-- select account --</option>
+          {% for account in accounts %}
+          <option value="{{ account.account_id }}">{{ account.account_name }}</option>
+          {% endfor %}
+      </select>
+      <label>To account</label>
+      <select name="to_account" required>
+          <option value="">-- select account --</option>
+          {% for account in accounts %}
+          <option value="{{ account.account_id }}">{{ account.account_name }}</option>
+          {% endfor %}
+      </select>
+      <label>Amount</label>
+      <input type="number" step="0.01" name="amount" required>
+      <label>Description</label>
+      <input type="text" name="description" placeholder="Transfer">
+      <label>Date</label>
+      <input type="date" name="transfer_date" required>
+      <p style="font-size:12px;color:var(--text-muted);margin-top:0.5rem">
+          Records a paired expense and income so both account balances move, but is
+          left out of your income/expense analytics.
+      </p>
+      <button type="submit" class="btn btn-primary" style="margin-top:1rem">Make transfer</button>
+  </form>
+</section>
 
-<h2 style="margin-top:2rem">Automatic transfers</h2>
-<p style="color:var(--text-muted)">
-    Set up a recurring transfer once — Budget Buddy posts it automatically on each
-    due date, going forward (never back-dated), just like the Scheduled tab does
-    for income and bills.
-</p>
+<section class="transfer-section">
+  <h2 class="transfer-kind">Transfer every month</h2>
+  <p class="page-lede">
+      Set up a recurring transfer once — Budget Buddy posts it automatically on each
+      due date, going forward (never back-dated), just like the Scheduled tab does
+      for income and bills.
+  </p>
+  <div class="table-wrapper">
+      <table>
+          <thead><tr>
+              <th colspan="2">Transfer</th><th>Amount</th><th>Description</th>
+              <th>Frequency</th><th>Next due</th><th>Actions</th>
+          </tr></thead>
+          <tbody id="transfer-schedule-rows">
+          {% for schedule in schedules %}
+          {% include 'partials/_transfer_schedule_row.html' %}
+          {% endfor %}
+          {% if not schedules %}
+          <tr id="auto-transfer-empty"><td colspan="7" style="color:var(--text-muted)">No automatic transfers yet.</td></tr>
+          {% endif %}
+          </tbody>
+      </table>
+  </div>
 
-<form hx-post="{{ url_for('transfers.create_transfer_schedule') }}" hx-target="#transfer-schedule-rows" hx-swap="afterbegin"
-      hx-on::after-request="if(event.detail.successful){this.reset();toggleAutoTransferFields();document.getElementById('auto-transfer-empty')?.remove();}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>From account</label>
-    <select name="from_account" required>
-        <option value="">-- select account --</option>
-        {% for account in accounts %}
-        <option value="{{ account.account_id }}">{{ account.account_name }}</option>
-        {% endfor %}
-    </select>
-    <label>To account</label>
-    <select name="to_account" required>
-        <option value="">-- select account --</option>
-        {% for account in accounts %}
-        <option value="{{ account.account_id }}">{{ account.account_name }}</option>
-        {% endfor %}
-    </select>
-    <label>Amount</label>
-    <input type="number" step="0.01" name="amount" required>
-    <label>Description</label>
-    <input type="text" name="description" placeholder="Transfer">
-    <label>Frequency</label>
-    <select name="frequency" id="autoTransferFreq" onchange="toggleAutoTransferFields()">
-        <option value="weekly">Weekly (every week)</option>
-        <option value="biweekly">Bi-weekly (every 2 weeks)</option>
-        <option value="semimonthly">Semi-monthly (twice a month)</option>
-        <option value="monthly" selected>Monthly</option>
-        <option value="quarterly">Quarterly (every 3 months)</option>
-        <option value="annually">Annually</option>
-    </select>
-    <div id="autoTransferSemiDiv" style="display:none">
-        <label>Days of the month</label>
-        <div style="display:flex;gap:0.5rem;align-items:center">
-            <input type="number" name="anchor_day" min="1" max="31" placeholder="e.g. 1" style="margin:0">
-            <span>and</span>
-            <input type="number" name="second_day" min="1" max="31" placeholder="e.g. 15" style="margin:0">
-        </div>
-        <p style="font-size:12px;color:var(--text-muted);margin-top:0.25rem">
-            The two days each month to move the money. Use 31 for "last day." We'll
-            start from the next upcoming day — nothing back-dated.
-        </p>
+  <details class="add-panel"{% if not schedules %} open{% endif %}>
+    <summary>Add an automatic transfer</summary>
+    <div class="add-panel-body">
+      <form hx-post="{{ url_for('transfers.create_transfer_schedule') }}" hx-target="#transfer-schedule-rows" hx-swap="afterbegin"
+            hx-on::after-request="if(event.detail.successful){this.reset();toggleAutoTransferFields();document.getElementById('auto-transfer-empty')?.remove();}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label>From account</label>
+          <select name="from_account" required>
+              <option value="">-- select account --</option>
+              {% for account in accounts %}
+              <option value="{{ account.account_id }}">{{ account.account_name }}</option>
+              {% endfor %}
+          </select>
+          <label>To account</label>
+          <select name="to_account" required>
+              <option value="">-- select account --</option>
+              {% for account in accounts %}
+              <option value="{{ account.account_id }}">{{ account.account_name }}</option>
+              {% endfor %}
+          </select>
+          <label>Amount</label>
+          <input type="number" step="0.01" name="amount" required>
+          <label>Description</label>
+          <input type="text" name="description" placeholder="Transfer">
+          <label>Frequency</label>
+          <select name="frequency" id="autoTransferFreq" onchange="toggleAutoTransferFields()">
+              <option value="weekly">Weekly (every week)</option>
+              <option value="biweekly">Bi-weekly (every 2 weeks)</option>
+              <option value="semimonthly">Semi-monthly (twice a month)</option>
+              <option value="monthly" selected>Monthly</option>
+              <option value="quarterly">Quarterly (every 3 months)</option>
+              <option value="annually">Annually</option>
+          </select>
+          <div id="autoTransferSemiDiv" style="display:none">
+              <label>Days of the month</label>
+              <div style="display:flex;gap:0.5rem;align-items:center">
+                  <input type="number" name="anchor_day" min="1" max="31" placeholder="e.g. 1" style="margin:0">
+                  <span>and</span>
+                  <input type="number" name="second_day" min="1" max="31" placeholder="e.g. 15" style="margin:0">
+              </div>
+              <p style="font-size:12px;color:var(--text-muted);margin-top:0.25rem">
+                  The two days each month to move the money. Use 31 for "last day." We'll
+                  start from the next upcoming day — nothing back-dated.
+              </p>
+          </div>
+          <div id="autoTransferDateDiv">
+              <label>Next date</label>
+              <input type="date" name="next_due">
+              <p style="font-size:12px;color:var(--text-muted);margin-top:0.25rem">
+                  The first date this should run. Must be today or later.
+              </p>
+          </div>
+          {# #32 — outside autoTransferDateDiv so it stays visible for semi-monthly too. #}
+          <label>End date (optional)</label>
+          <input type="date" name="end_date">
+          <p style="font-size:12px;color:var(--text-muted);margin-top:0.25rem">
+              The last day this should run. Leave blank to run indefinitely.
+          </p>
+          <button type="submit" class="btn btn-primary" style="margin-top:1rem">Add automatic transfer</button>
+      </form>
     </div>
-    <div id="autoTransferDateDiv">
-        <label>Next date</label>
-        <input type="date" name="next_due">
-        <p style="font-size:12px;color:var(--text-muted);margin-top:0.25rem">
-            The first date this should run. Must be today or later.
-        </p>
-    </div>
-    {# #32 — outside autoTransferDateDiv so it stays visible for semi-monthly too. #}
-    <label>End date (optional)</label>
-    <input type="date" name="end_date">
-    <p style="font-size:12px;color:var(--text-muted);margin-top:0.25rem">
-        The last day this should run. Leave blank to run indefinitely.
-    </p>
-    <button type="submit" class="btn btn-primary" style="margin-top:1rem">Add automatic transfer</button>
-</form>
-
-<h3 style="margin-top:1.5rem">Your automatic transfers</h3>
-<div class="table-wrapper">
-    <table>
-        <thead><tr>
-            <th>From</th><th>To</th><th>Amount</th><th>Description</th>
-            <th>Frequency</th><th>Next due</th><th>Actions</th>
-        </tr></thead>
-        <tbody id="transfer-schedule-rows">
-        {% for schedule in schedules %}
-        {% include 'partials/_transfer_schedule_row.html' %}
-        {% endfor %}
-        {% if not schedules %}
-        <tr id="auto-transfer-empty"><td colspan="7" style="color:var(--text-muted)">No automatic transfers yet. Add one above.</td></tr>
-        {% endif %}
-        </tbody>
-    </table>
-</div>
+  </details>
+</section>
 
 <script>
 // Show the two-day inputs for semi-monthly, the Next-date picker otherwise.

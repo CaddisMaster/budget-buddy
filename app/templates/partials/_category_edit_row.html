@@ -1,7 +1,10 @@
+{# The Kind select stays, stacked under the name — the table no longer has a
+   Kind column, but kind is still the thing most worth changing here, and
+   dropping the control would make a category's kind uneditable. #}
 <tr id="category-{{ cat.id }}" class="editing">
-  <td><input type="text" name="name" value="{{ cat.name }}" required></td>
   <td>
-    <select name="kind">
+    <input type="text" name="name" value="{{ cat.name }}" required>
+    <select name="kind" style="margin-top:0.35rem">
       <option value="expense" {% if cat.kind != 'income' %}selected{% endif %}>Expense</option>
       <option value="income" {% if cat.kind == 'income' %}selected{% endif %}>Income</option>
     </select>

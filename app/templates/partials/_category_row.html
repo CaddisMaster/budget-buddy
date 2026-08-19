@@ -1,6 +1,8 @@
+{# #243 — three columns: the Kind cell went with the grouping (the heading the
+   row sits under states its kind). Editing kind is still possible — see the
+   edit-row partial — and a kind change re-renders the whole grouped listing. #}
 <tr id="category-{{ cat.id }}">
   <td>{{ cat.name }}</td>
-  <td>{{ cat.kind | capitalize }}</td>
   <td>{{ cat.description }}</td>
   <td class="row-actions">
     <button type="button" class="btn btn-sm"

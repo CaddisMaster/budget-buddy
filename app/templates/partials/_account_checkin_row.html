@@ -1,21 +1,21 @@
-<tr id="account-{{ account.account_id }}" class="editing">
-  <td>{{ account.account_name }}</td>
-  <td>{{ account.type }}</td>
-  <td class="{% if account.balance >= 0 %}income{% else %}expense{% endif %}">
+{# ⚠️ hx-include is "closest .account-card" — see the edit partial. #}
+<div class="account-card editing" id="account-{{ account.account_id }}">
+  <div class="account-card-head">
+    <span class="account-name">{{ account.account_name }}</span>
+    <span class="account-type">{{ account.type }}</span>
+  </div>
+  <div class="account-balance {% if account.balance >= 0 %}income{% else %}expense{% endif %}">
     App says ${{ account.balance|money }}
-  </td>
-  <td>
-    <input type="number" name="actual_balance" step="0.01" required
-      placeholder="Bank says…" aria-label="Actual bank balance"
-      style="max-width:9rem">
-  </td>
-  <td class="row-actions">
+  </div>
+  <input type="number" name="actual_balance" step="0.01" required
+    placeholder="Bank says…" aria-label="Actual bank balance">
+  <div class="account-actions row-actions">
     <button type="button" class="btn btn-sm btn-primary"
-      hx-post="{{ url_for('accounts.checkin_account', account_id=account.account_id) }}" hx-include="closest tr"
+      hx-post="{{ url_for('accounts.checkin_account', account_id=account.account_id) }}" hx-include="closest .account-card"
       hx-target="#account-{{ account.account_id }}" hx-swap="outerHTML">Check in</button>
     <button type="button" class="btn btn-sm"
       hx-get="{{ url_for('accounts.account_row', account_id=account.account_id) }}"
       hx-target="#account-{{ account.account_id }}" hx-swap="outerHTML">Cancel</button>
     {% if error %}<span class="inline-error">{{ error }}</span>{% endif %}
-  </td>
-</tr>
+  </div>
+</div>
