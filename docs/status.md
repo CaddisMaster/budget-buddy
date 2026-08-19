@@ -5,7 +5,38 @@
 
 ## Current Status
 
-### On `main` — level with production (2026-08-17)
+### On `main`, not yet deployed (2026-08-18)
+
+Two PRs merged after `0.7.0`, both under the open **`0.8.0`** milestone:
+
+- **#226 — the design system (#225 phase 1).** Two vendored typefaces (`app/static/fonts/`,
+  ~52 KB, latin subset, OFL texts beside them), tabular figures on every money surface, a dark
+  nav rail in both themes, a gradient hero, one entrance + one hover, and a single
+  `prefers-reduced-motion` block. `tests/test_design_system.py` (10 tests) asserts the
+  stylesheet itself; 7 were red against `main` first. ⚠️ `--accent` deliberately still holds
+  the exact brand blue — `icons/icon.svg` hardcodes it and the PNG rasters have no build step.
+- **#229 — automated triage inverted to opt-in.** The `triage` label now runs
+  `claude-triage.yml`; the two issue templates and `app/blueprints/feedback.py` apply it
+  themselves. Verified after merge: a hand-filed unlabelled issue produced a successful run
+  with **0 comments** and both model steps skipped. `skip-triage` is left in place and now
+  does nothing.
+
+**Open and deliberately held: PR #227** (`223-home-declutter`) — the Home page declutter plus
+the composition rebuilt against the Option A artboard. Green, 954 passing, three commits.
+Sean is holding it to make further changes. ⚠️ It has **one conflict with `main` in
+`CHANGELOG.md`** — the normal two-PRs-in-a-day case, neither side wrong.
+
+Tests: **932** on `main`; **954** on the #227 branch.
+
+⚠️ **Three defects shipped through a green suite this session** and were caught only by
+screenshotting the running app: every chart blank (deleting the doughnut took the shared
+`Chart.defaults`/`gridScales`/`initCharts` scaffolding with it), a `hidden` list rendering
+anyway (`[hidden]` is user-agent origin and loses to any author `display` rule), and bars
+squeezed to a stub on a phone. A Flask test client returns markup — it applies no CSS and runs
+no JS. Headless Chromium now lives in `~/.tools/bb-shots/` (outside the repo); `check.mjs`
+reports page errors, ink per canvas and real visibility.
+
+### Level with production before this session (2026-08-17)
 
 **Prod runs `0.7.0`, shipped and verified.** `main` carries nothing unreleased beyond the docs
 commit recording this session. The `0.7.0` milestone is **closed** (19 issues); **no milestone

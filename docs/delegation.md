@@ -1,19 +1,23 @@
 # Delegation and automated issue triage
 
-> Split out of `CLAUDE.md` on 2026-08-17. Read before spawning a worker agent
-> or touching `.github/workflows/claude-triage.yml`.
+> Split out of `CLAUDE.md` on 2026-08-17. **Read before you run `gh issue create`**, before you
+> edit `.github/workflows/claude-triage.yml`, and before you spawn a worker agent.
+> ⚠️ The first of those triggers was added 2026-08-18: this file previously said "touching issue
+> triage", which a session filing an issue did not recognise as describing itself.
 
 ## Automated issue triage (`.github/workflows/claude-triage.yml`)
 
-A newly opened issue gets an automated first-pass comment in ~2 minutes. Two prompts behind a
-label branch, resolved by querying the issue's labels:
+An issue **carrying the `triage` label** gets an automated first-pass comment in ~2 minutes; one
+without it gets nothing (see the opt-in note below). Two prompts behind a label branch, resolved
+by querying the issue's labels:
 
 - **`enhancement` → SPECIFY** — restates the idea against real files, drafts Gherkin acceptance
   criteria, names the file surface, lists the applicable gotchas from this file, and raises the
   open design questions. Built for a rough idea filed from the GitHub phone app; it is instructed
   NOT to invent requirements and to put real choices in Open questions instead.
-- **anything else (incl. unlabelled) → TRIAGE** — diagnoses: what the code actually does, whether
-  a stated cause holds, what a fix would touch.
+- **anything else → TRIAGE** — diagnoses: what the code actually does, whether a stated cause
+  holds, what a fix would touch. (An issue with no labels at all only reaches this branch via a
+  dispatch, since the automatic run now requires `triage`.)
 
 **READ-ONLY by construction**, and it is enforced in two independent places: `permissions:` gives
 `contents: read` with no `pull-requests` at all, and `--allowedTools` grants exactly
@@ -23,16 +27,30 @@ or opens a PR. **Do not widen the allowlist to `Bash(gh:*)`** — that reaches `
 was constraining it. `contents: read` blocks the git half; the allowlist is the only thing
 blocking the API half.
 
-- **`skip-triage` suppresses the automatic run** — apply it to every issue you file from a
-  session (see Current Status for the measurement behind this). A **dispatch deliberately ignores
-  it**: hand-written issues are exactly the ones worth a second read, so honouring it there would
-  make them the only issues that could never be reviewed.
+- ⚠️ **TRIAGE IS OPT-IN — the `triage` label runs it** (inverted 2026-08-18; it was `skip-triage`
+  opt-OUT before). The two `ISSUE_TEMPLATE` files carry `labels: [..., "triage"]` and
+  `app/blueprints/feedback.py` adds `TRIAGE_LABEL`, so **anything filed through the web UI, the
+  mobile app or the in-app form reviews itself**. An issue filed by hand with `gh issue create`
+  carries only what you pass — and that is the set that should NOT be reviewed, because the code
+  was just read in the session that filed it.
+  - **Why it was inverted:** the opt-out was forgotten on the very issue that proposed fixing
+    this (#225, 2026-08-18) — the run fired four seconds after creation, spent ~$0.50 and posted
+    a comment restating analysis from the same session. The rule was correct, documented, and in
+    a file that is not auto-loaded; the failure was that following it required recognising
+    "filing an issue" as "touching issue triage" *before* acting. **Inverting the default removes
+    the decision instead of documenting it** — forgetting the label now costs a review nobody
+    asked for rather than money.
+  - `skip-triage` still exists as a label and now does nothing. Left in place deliberately: it is
+    on historical issues, and deleting it would rewrite their record.
+  - A **dispatch deliberately ignores the label**, as it always did: hand-written issues are
+    exactly the ones worth a second read, so honouring it there would make them the only issues
+    that could never be reviewed.
 - **Manual run:** `gh workflow run claude-triage.yml -f issue=<n>` — the only way to review an
   issue opened before the workflow existed, since `issues: opened` cannot reach it and reopening
   is not `opened`.
 - **Cost ~$0.50 / ~9 turns per run**, billed against the Claude **subscription** (via
   `claude_code_oauth_token`), so it competes with local Claude Code usage — hence `opened`-only,
-  the turn cap, and `skip-triage`.
+  the turn cap, and the opt-in label.
 
 ⚠️ **A change to this workflow CANNOT be verified before merge, and the failure is silent.**
 `claude-code-action` refuses to run when the workflow file differs from the copy on the default

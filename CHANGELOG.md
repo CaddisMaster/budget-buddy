@@ -67,6 +67,12 @@ this project uses the `0.x` versioning scheme described in
   phone — where the category bars now put each name and amount on one line with
   the bar beneath, instead of squeezing the bar into a stub too small to compare.
 
+- **A bug report or suggestion sent from inside the app now asks for an automated
+  first look.** Nothing about what you send changes, and nothing more is
+  collected — the issue it files simply carries a label that runs an automated
+  first pass over the relevant code, so a report arrives with some of the
+  groundwork already done rather than waiting for someone to start from scratch.
+
 - **Budget Buddy looks like something now, rather than like a form.** The app has
   always been legible — sensible colours, a real dark mode, charts you can read —
   but every surface carried the same weight, the same one blue and the same

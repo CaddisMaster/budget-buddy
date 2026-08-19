@@ -104,7 +104,7 @@ def test_bug_report_creates_an_issue(client_a, enabled, seam):
     payload = seam.calls[0]['payload']
     assert payload['title'] == 'Balance is wrong on the history page'
     assert 'It shows a dash where a number should be.' in payload['body']
-    assert set(payload['labels']) == {'bug', 'from-app'}
+    assert set(payload['labels']) == {'bug', 'from-app', 'triage'}
     assert '4242' in response.get_data(as_text=True)
 
 
@@ -112,7 +112,7 @@ def test_suggestion_carries_the_enhancement_label(client_a, enabled, seam):
     client_a.post('/feedback', data={
         'kind': 'enhancement', 'title': 'Add tags', 'description': 'Please.'},
         follow_redirects=True)
-    assert set(seam.calls[0]['payload']['labels']) == {'enhancement', 'from-app'}
+    assert set(seam.calls[0]['payload']['labels']) == {'enhancement', 'from-app', 'triage'}
 
 
 def test_every_issue_carries_the_from_app_label(client_a, enabled, seam):
@@ -129,7 +129,7 @@ def test_an_arbitrary_kind_never_becomes_a_label(client_a, enabled, seam):
     through — a form value must not be able to apply `security` or invent one."""
     client_a.post('/feedback', data={
         'kind': 'security', 'title': 't', 'description': 'd'}, follow_redirects=True)
-    assert set(seam.calls[0]['payload']['labels']) == {'bug', 'from-app'}
+    assert set(seam.calls[0]['payload']['labels']) == {'bug', 'from-app', 'triage'}
 
 
 # --- the privacy decision (#64, settled 2026-07-30) -------------------------
@@ -270,3 +270,22 @@ def test_feedback_is_rate_limited():
 
     marked = {name.rsplit('.', 1)[-1] for name in limiter._marked_for_limiting}
     assert 'submit' in marked, 'no rate limit registered on /feedback'
+
+
+def test_every_issue_opts_in_to_the_automated_review(client_a, enabled, seam):
+    """`triage` is what runs .github/workflows/claude-triage.yml on an issue.
+
+    ⚠️ It is applied HERE and by the two ISSUE_TEMPLATE files, never by the
+    workflow's own default — triage was opt-OUT until 2026-08-18, and the
+    opt-out was forgotten on the very issue that proposed fixing it, spending
+    ~$0.50 of subscription budget to restate analysis that had just been done in
+    the session that filed it.
+
+    A report typed by a user is the opposite case: no code has been read at all,
+    so it is exactly the kind that benefits from the automated first pass. If
+    this label ever stops being sent, in-app reports silently stop being
+    reviewed — which looks like nothing at all, which is why it is asserted."""
+    for kind in ('bug', 'enhancement'):
+        client_a.post('/feedback', data={
+            'kind': kind, 'title': 't', 'description': 'd'}, follow_redirects=True)
+    assert all('triage' in c['payload']['labels'] for c in seam.calls)
