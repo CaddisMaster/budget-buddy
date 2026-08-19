@@ -5,10 +5,52 @@
 
 ## Current Status
 
-### On `main`, not yet deployed (2026-08-19)
+### On `main`, not yet deployed (2026-08-19, evening — #225 COMPLETE)
 
-**Three PRs merged after `0.7.0`, all under the open `0.8.0` milestone. Prod still runs
-`0.7.0` (2026-08-17) — nothing here is deployed.**
+**The `0.8.0` milestone is 35 closed / 0 OPEN. Prod still runs `0.7.0` (2026-08-17) —
+nothing merged since PR #217 is deployed.** (`git log a80d583..main` is the set; a number
+written here would be wrong the moment this file is committed.)
+
+⚠️ **`0.8.0` has not been cut.** An empty milestone is not a release.
+
+**#225 — the front-end overhaul — is CLOSED.** Both halves of its plan shipped: the design
+system (#226) and then every page. Ten PRs this evening:
+
+| PR | Closed |
+|---|---|
+| #252 | #235 — one header row per page; the desktop hamburger removed |
+| #253 | #239 #240 #241 #242 #243 — the five same-shape pages lead with state |
+| #254 | #237 #238 — History reads as a ledger; Budgets states its position |
+| #255 | #244 #249 #250 — password rules up front; Add transaction leads with the amount |
+| #256 | #245 #246 #247 #248 — Profile grouped; one status vocabulary; Login carries the mark |
+| #259 | #258 — two tests that depended on xdist scheduling |
+| #261 | #260 — Goal Coach + budget review get Home's AI material |
+| #263 | #262 — the Goal Coach removed entirely |
+| #265 | #236 — `forecasts` and `goal_coach` DROPPED (`sql/36`) |
+
+Suite **1084** (was 953 at the start of the evening; measured 2026-08-19 — recount rather
+than trusting it).
+
+⚠️ **`sql/36` is unapplied in production.** It drops `forecasts` and `goal_coach`. It deploys
+**AFTER** the image pull (a DROP is the mirror of an additive migration), needs a `pg_dump`
+first, and must be `scp`'d to the deploy dir, which has no git.
+
+⚠️ **The `css_v` verification gap from `0.7.0` has closed itself** — `app/static/style.css`
+changed in nearly every PR above, so the next deploy IS verifiable from outside. Do not
+re-file it.
+
+⚠️ **`initAiCollapse` and the whole read-state collapse mechanism are GONE** (#262). The Goal
+Coach was its last consumer. `.ai-card` survives (cleanup banner, budget-review banner);
+`.ai-head`, `.ai-headline`, `.facts-strip`, `.fact*` and most of the `.insight-*` run do not.
+
+⚠️ **Open, deliberately not on the milestone:** **#257** (Categories cannot show "the colour
+it is drawn with" — a category has no stable colour; #243's other half, with the evidence)
+and **#264** (`./test.sh` runs pytest but not ruff, so lint can only fail in CI). Older:
+#224, #222, #36.
+
+### Superseded — the morning of the same day (2026-08-19)
+
+**Three PRs merged after `0.7.0`, all under the then-open `0.8.0` milestone.**
 
 - **#226 — the design system** (#225 phase 1). See the 2026-08-18 block below.
 - **#229 — automated triage inverted to opt-in.** See below.
@@ -31,8 +73,9 @@ both lost their routes; 18 registered, was 20. The forecast arithmetic feeds the
 read and an Ask tool; the money agent runs inside the weekly digest, which is deliberately
 untouched.
 
-⚠️ **The `forecasts` TABLE is now dead** — no reader, no writer. Dropping it is **#236**,
-and it is a migration, so it stands alone in its own PR.
+⚠️ ~~**The `forecasts` TABLE is now dead** — dropping it is **#236**~~ — **DONE**, dropped
+with `goal_coach` in `sql/36` (PR #265). Kept here because the reasoning still applies to the
+next dead table: a migration stands alone in its own PR.
 
 ⚠️ **ApexCharts is pinned at 4.7.0 for a LICENCE reason, not inertia.** 5.x is dual-licensed
 and 6.x ships a `LicenseEnforcer` that watermarks charts, with terms binding on annual
@@ -66,7 +109,7 @@ actually is today. Three things worth knowing before picking one up:
   fault; Login is the second shell and must not leak whether a username exists.
 
 Also open: **#235** (two stacked topbars, ~49px and a hamburger the desktop does not need —
-touches `base.html`, so every page) and **#236** (the `forecasts` drop).
+touches `base.html`, so every page) and **#236** (the `forecasts` drop). **Both shipped that evening — see the block at the top.**
 
 ⚠️ **#225 stays OPEN** — it is the umbrella, and its own plan is "design-system PR, then
 per-page PRs". #226 and Home are done; the 14 are the rest.
