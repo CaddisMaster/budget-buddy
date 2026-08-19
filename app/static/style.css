@@ -68,6 +68,16 @@
   --on-dark-pos: #6EE7B7;
   --on-dark-neg: #FCA5A5;
   --hero-rule: rgba(255,255,255,0.18);
+  --chip-up-bg: rgba(16,185,129,0.18);
+  --chip-down-bg: rgba(244,63,94,0.18);
+  --spark-line: #7DD3FC;
+  /* The read panel's own surface — dark in both themes, like the hero. */
+  --grad-read: linear-gradient(160deg, #1B1236 0%, #2E1F5E 100%);
+  --on-read: #ffffff;
+  --on-read-muted: #C9BEF2;
+  --read-rule: rgba(196,181,253,0.22);
+  --read-btn: rgba(255,255,255,0.10);
+  --read-btn-hover: rgba(255,255,255,0.18);
 
   /* The sidebar is dark in BOTH themes (#225) — it is the app's frame, and a
      white rail beside a white page had nothing to say. */
@@ -328,26 +338,230 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .stat-value { font-size: var(--fs-xl); font-weight: 650; letter-spacing: -0.02em; margin-top: 4px; }
 
 /* Dashboard hero — this-month at a glance */
-/* The hero is the one surface that states the month's answer, so it is the one
-   surface that looks unlike a card: a deep gradient in BOTH themes, with its own
-   ink tokens because --text/--text-muted would be unreadable on it. */
-.hero { background: var(--grad-hero); border: none; border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); padding: 1.75rem 1.8rem; margin-bottom: 1.5rem; color: var(--on-dark); animation: bb-rise var(--dur-2) var(--ease) both; }
-.hero-top { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+/* ── #225 Home composition ───────────────────────────────────────────────────
+   The hero states the month's answer, and two cards beside it break that answer
+   into its parts. They are peers on one band rather than one panel repeating
+   itself, which is what the pre-#223 hero did. */
+.hero-band { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(230px, 1fr); gap: var(--sp-4); margin-bottom: var(--sp-4); align-items: stretch; }
+
+.hero {
+  position: relative; overflow: hidden;
+  background: var(--grad-hero); border: none; border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg); padding: var(--sp-5) var(--sp-5) 0;
+  color: var(--on-dark);
+  display: flex; flex-direction: column;
+  animation: bb-rise var(--dur-2) var(--ease) both;
+}
 .hero-label { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.12em; font-weight: 600; color: var(--on-dark-muted); }
-.hero-net { font-size: var(--fs-3xl); font-weight: 700; letter-spacing: -0.03em; margin: 0.35rem 0 0.2rem; line-height: 1.05; color: var(--on-dark); }
+.hero-net { font-size: var(--fs-3xl); font-weight: 700; letter-spacing: -0.03em; margin: var(--sp-2) 0 var(--sp-1); line-height: 1.05; color: var(--on-dark); }
 /* ⚠️ pos/neg are the SAME two hues as everywhere else, re-stepped for a dark
    fill — --success and --danger themselves fail contrast on the gradient. */
 .hero-net.pos { color: var(--on-dark-pos); }
 .hero-net.neg { color: var(--on-dark-neg); }
+.hero-meta { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); }
 .hero-caption { font-size: var(--fs-sm); color: var(--on-dark-muted); }
-.hero-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.9rem; margin-top: 1.4rem; padding-top: 1.3rem; border-top: 1px solid var(--hero-rule); }
-.hero-stat .hero-stat-label { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; color: var(--on-dark-muted); }
-.hero-stat .hero-stat-val { font-size: var(--fs-lg); font-weight: 650; letter-spacing: -0.02em; margin-top: 3px; color: var(--on-dark); }
-.hero-stat .hero-stat-val.pos { color: var(--on-dark-pos); }
-.hero-stat .hero-stat-val.neg { color: var(--on-dark-neg); }
+.hero-chip { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 10px; font-size: var(--fs-sm); font-weight: 600; font-variant-numeric: tabular-nums; }
+.hero-chip svg { width: 12px; height: 12px; }
+.hero-chip.up { background: var(--chip-up-bg); color: var(--on-dark-pos); }
+.hero-chip.down { background: var(--chip-down-bg); color: var(--on-dark-neg); }
+/* Bleeds to the card's edges: it is a texture describing the figure above it,
+   not a chart to read values off. margin-top:auto pins it to the bottom however
+   tall the band's other column makes the hero. */
+.hero-spark { display: block; width: calc(100% + var(--sp-5) * 2); margin: var(--sp-4) calc(var(--sp-5) * -1) 0; height: 64px; margin-top: auto; }
+
+.flow-cards { display: flex; flex-direction: column; gap: var(--sp-4); }
+.flow-card { flex: 1; background: var(--surface-raise); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: var(--sp-4) var(--sp-4); display: flex; flex-direction: column; justify-content: center; }
+.flow-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.flow-head svg { width: 15px; height: 15px; flex-shrink: 0; }
+.flow-label { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; color: var(--text-muted); }
+.flow-val { font-family: var(--font-display); font-size: var(--fs-xl); font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin-top: var(--sp-1); }
+.flow-val.pos { color: var(--success); }
+.flow-val.neg { color: var(--danger); }
+.flow-track { height: 6px; border-radius: 999px; background: var(--surface-2); margin-top: var(--sp-3); overflow: hidden; }
+.flow-fill { display: block; height: 100%; border-radius: 999px; }
+.flow-fill.pos { background: var(--success); }
+.flow-fill.neg { background: var(--danger); }
+
+/* Three peer facts about the month. */
+/* flex, not auto-fit grid: these tiles are each optional (no history last year,
+   no budgets set, nothing left to post), and an auto-fit grid stretches a LONE
+   survivor across the full page, which makes the least interesting state the
+   loudest thing above the fold. Capped width keeps one tile looking like one
+   tile. */
+.stat-row { display: flex; flex-wrap: wrap; gap: var(--sp-4); margin-bottom: var(--sp-5); }
+/* ⚠️ NO max-width (#233). It was 380px, which is right for three tiles and
+   wrong for one: each tile only appears when it has something to say, so a
+   month with just "Budget used" left 776px of the row empty and the page read
+   as broken. flex-grow with no cap means one tile spans the row, two halve it
+   and three thirds it — the same 380px as before at the density it was
+   designed for. */
+.stat-tile { flex: 1 1 210px; background: var(--surface-raise); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: var(--sp-4); }
+.stat-tile-label { font-size: var(--fs-sm); color: var(--text-muted); font-weight: 500; }
+.stat-tile-main { display: flex; align-items: baseline; gap: var(--sp-2); flex-wrap: wrap; margin-top: var(--sp-1); }
+.stat-tile-val { font-family: var(--font-display); font-size: var(--fs-xl); font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.stat-tile-sub { font-size: var(--fs-sm); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.stat-tile-track { height: 6px; border-radius: 999px; background: var(--surface-2); margin-top: var(--sp-3); overflow: hidden; }
+.stat-tile-fill { display: block; height: 100%; border-radius: 999px; background: var(--grad-accent); }
+.stat-tile-fill.over { background: var(--danger); }
+
+@media (max-width: 900px) {
+  .hero-band { grid-template-columns: minmax(0, 1fr); }
+  .flow-cards { flex-direction: row; }
+  .flow-card { flex: 1 1 0; }
+}
+@media (max-width: 520px) {
+  .flow-cards { flex-direction: column; }
+}
+
+/* The month picker sits in the header row beside the title, not as a labelled
+   form above the fold. */
+.month-picker { margin: 0; }
+.month-picker select { width: auto; min-width: 150px; margin: 0; }
+
+/* Ranked category bars — the doughnut's replacement. Readable without a legend,
+   which is the whole point: the name sits ON the row it describes. */
+/* Carded like the panel beside it: a naked list next to a bordered card read
+   as though the page had forgotten to finish it. */
+.cat-bars-wrap {
+  background: var(--surface-raise); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-sm);
+  padding: var(--sp-4) var(--sp-5); margin-bottom: var(--sp-4);
+}
+.cat-bars-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+.cat-bars-head h2 { margin: 0; }
+.cat-bars { display: flex; flex-direction: column; gap: var(--sp-2); }
+/* ⚠️ Required, not defensive: the UA stylesheet's `[hidden] { display: none }`
+   lives in the user-agent origin, so ANY author `display` declaration beats it.
+   Without this the income list renders straight under the expense list and the
+   page shows Salary as though it were a cost. */
+.cat-bars[hidden] { display: none; }
+
+.cat-bar-row { display: grid; grid-template-columns: minmax(90px, 130px) 1fr minmax(72px, auto); align-items: center; gap: var(--sp-3); }
+.cat-bar-name { font-size: var(--fs-sm); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-bar-folded { color: var(--text-muted); font-weight: 400; }
+.cat-bar-track { background: var(--surface-2); border-radius: 999px; height: 12px; overflow: hidden; }
+.cat-bar-fill { display: block; height: 100%; border-radius: 999px; transition: width var(--dur-2) var(--ease); }
+/* One rule per palette slot rather than an inline var(--series-{{ n }}) in the
+   template: a token name assembled in Jinja is invisible to
+   test_param_hardening.py's undefined-custom-property scan, which is the only
+   thing standing between a typo'd token and a bar that silently paints
+   nothing. The row carries its slot as a class; the palette stays here.
+   ⚠️ .s-other is NOT a ninth slot — it is the #108 folded tail, painted from
+   the achromatic token so it reads as "not a category", and it is chosen off
+   the row's is_other FLAG, never its label (a user may own a real category
+   named "Other"). */
+.cat-bar-fill.s1 { background: var(--series-1); }
+.cat-bar-fill.s2 { background: var(--series-2); }
+.cat-bar-fill.s3 { background: var(--series-3); }
+.cat-bar-fill.s4 { background: var(--series-4); }
+.cat-bar-fill.s5 { background: var(--series-5); }
+.cat-bar-fill.s6 { background: var(--series-6); }
+.cat-bar-fill.s7 { background: var(--series-7); }
+.cat-bar-fill.s8 { background: var(--series-8); }
+.cat-bar-fill.s-other { background: var(--series-other); }
+.cat-bar-amount { font-family: var(--font-display); font-size: var(--fs-sm); font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+/* On a phone the three-column row leaves the track about 100px wide, so a
+   category at 17% of the largest draws a 17-pixel stub and the ranking stops
+   being readable — which is the only thing these bars are for. Below 560px the
+   row becomes two lines: the name and the amount on one, the full-width track
+   under them. */
+@media (max-width: 560px) {
+  .cat-bar-row { grid-template-columns: 1fr auto; row-gap: var(--sp-1); }
+  .cat-bar-name { grid-column: 1; }
+  .cat-bar-amount { grid-column: 2; }
+  .cat-bar-track { grid-column: 1 / -1; grid-row: 2; }
+}
+
+/* Goal rings (#225) — a bar told you how far along you were; a ring says it in
+   the space of an icon, which is what lets a goal sit in the band's column. */
+.goal-ring-row { display: flex; align-items: center; gap: var(--sp-4); }
+.goal-ring { width: 62px; height: 62px; flex-shrink: 0; }
+.goal-ring-arc { stroke: var(--accent); transition: stroke-dasharray var(--dur-2) var(--ease); }
+.goal-ring-arc.done { stroke: var(--success); }
+.goal-ring-arc.behind { stroke: var(--warning); }
+.goal-ring-pct { font-family: var(--font-display); font-size: 11px; font-weight: 700; fill: var(--text); text-anchor: middle; }
+.goal-ring-text { min-width: 0; }
+.goal-ring-text .goal-name { display: block; }
+.goal-ring-text .goal-figures { margin: 2px 0 0; }
+.goal-state { margin: var(--sp-1) 0 0; }
+.goal-flag { font-size: 11px; font-weight: 600; letter-spacing: 0.02em; }
+.goal-flag.on, .goal-flag.done { color: var(--success); }
+.goal-flag.behind { color: var(--warning); }
+
+/* "Ask your finances" (#232) — Home's ONE AI surface: a short read of the month
+   and the box, in one panel. It replaced four stacked <details> cards, so the
+   collapse chrome, the per-section heads and the facts strip that used to live
+   here are all gone rather than restyled.
+   The panel is a dark surface in BOTH themes, like the hero — it is the one
+   place on the page where a model is speaking, and making that a change of
+   MATERIAL rather than a badge is what the mockup was doing. Its own ink
+   tokens, for the same reason the hero has them. */
+.ask-panel {
+  background: var(--grad-read); border: none;
+  padding: var(--sp-4) var(--sp-5) var(--sp-5);
+  color: var(--on-read); box-shadow: var(--shadow-lg);
+}
+.ask-panel h2, .ask-panel strong { color: var(--on-read); }
+.ask-panel p, .ask-panel li, .ask-panel .ask-read-ts { color: var(--on-read-muted); }
+.ask-panel .ask-foot { border-top-color: var(--read-rule); }
+.ask-panel .btn, .ask-panel .btn-sm { background: var(--read-btn); border-color: var(--read-rule); color: var(--on-read); }
+.ask-panel .btn:hover, .ask-panel .btn-sm:hover { background: var(--read-btn-hover); border-color: var(--on-read-muted); }
+.ask-panel input { background: var(--read-btn); border-color: var(--read-rule); color: var(--on-read); }
+.ask-panel input::placeholder { color: var(--on-read-muted); }
+/* The one ACTION on the panel keeps the accent, so it still reads as one. */
+.ask-panel .ask-foot .btn-primary { background: var(--grad-accent); border-color: transparent; color: #fff; }
+.ask-panel .ask-answer { background: var(--read-btn); }
+.ask-panel-head { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.ask-panel-head h2 { margin: 0; }
+
+/* The read itself: the first thing the panel says, so it carries the panel's
+   full ink rather than the muted tone the rest of the prose uses. */
+.ask-read { font-size: var(--fs-base); line-height: 1.55; margin: var(--sp-2) 0 0; color: var(--on-read) !important; }
+.ask-read-waiting { color: var(--on-read-muted) !important; }
+.ask-read-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); flex-wrap: wrap; margin-top: var(--sp-2); }
+.ask-read-ts { font-size: var(--fs-xs); }
+.read-spinner { font-size: var(--fs-xs); color: var(--on-read-muted); }
+
+.ask-foot { display: flex; flex-direction: column; gap: var(--sp-2); border-top: 1px solid var(--border); margin-top: var(--sp-3); padding-top: var(--sp-3); }
+.ask-label { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--on-read); }
+.ask-row { display: flex; gap: var(--sp-2); align-items: center; }
+.ask-row input { flex: 1; margin: 0; }
+.ask-row .btn { margin: 0; white-space: nowrap; }
+.ask-spinner { font-size: var(--fs-xs); color: var(--on-read-muted); }
+
+/* Home's two-column band: the bars carry the detail, the read carries the
+   words. Single column below the tablet breakpoint (see the media block). */
+@media (min-width: 1100px) {
+  /* ⚠️ stretch, NOT start (#233): the read's length is not fixed, so whichever
+     column is shorter would otherwise leave a ragged gap under it — 380px of
+     one before Goals moved out, ~105px after. Stretching puts that slack
+     INSIDE the shorter card, so the two columns always end on the same line. */
+  .home-band { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(340px, 1fr); gap: var(--sp-4); align-items: stretch; }
+  .home-band > * { margin-bottom: 0; }
+  /* ⚠️ The left column carries the bars AND the goals. With only the bars in
+     it the column ended level with the goals summary and left ~450px of dead
+     space beside a much taller panel — two columns of unequal content is not a
+     layout, it is a gap. The goals are the natural filler: they are what the
+     month's figures are FOR. */
+  .band-main { display: flex; flex-direction: column; }
+  /* ⚠️ Named explicitly, and the margin reset repeated here, because
+     `.band-main > :last-child` does NOT reach this card: the category toggle's
+     inline <script> is the last child of .band-main. It has no box, so the
+     rule appeared to be doing its job while the card kept a 16px .card margin
+     and stopped 16px short of the AI panel beside it — the "slightly bigger
+     box" that survived align-items: stretch. */
+  .band-main > .cat-bars-wrap { flex: 1 1 auto; margin-bottom: 0; }
+  .band-main > :last-child { margin-bottom: 0; }
+  /* Inside a narrow column the goal cards stop trying to sit two-up. */
+}
 
 /* Chart grid — two-up on wide screens, each in its own card */
-.chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.1rem; margin-bottom: 1.5rem; }
+/* ⚠️ TWO columns, stated explicitly (#234). `auto-fit, minmax(320px, 1fr)`
+   resolved to THREE at desktop width while only two cards are narrow, so the
+   top row always ended with an empty third — the same hole the stat row had.
+   `.wide` spans both, so the layout is 2-up then full-width. */
+.chart-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.1rem; margin-bottom: 1.5rem; }
+@media (min-width: 760px) { .chart-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .chart-card { background: var(--surface-raise); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: 1.2rem 1.25rem; }
 .chart-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 0.9rem; color: var(--text); }
 .chart-card.wide { grid-column: 1 / -1; }
@@ -488,6 +702,15 @@ body.bulk-mode td.bulk-col { cursor: pointer; } /* whole cell toggles the box */
 .goal-sub { font-size: 13px; color: var(--text-muted); margin: 0.5rem 0 0; line-height: 1.5; }
 .goal-actions { margin-top: 0.7rem; }
 .goal-mini { margin-bottom: 0; }
+/* #233 — the rollup sits ON the Goals heading line rather than in a card of
+   its own. .goal-summary keeps its own card treatment on /goals, where it
+   stands alone; here the surface and border are dropped so the row reads as a
+   heading, not a third card above two cards. */
+.goals-head { display: flex; align-items: baseline; gap: var(--sp-2) var(--sp-4); flex-wrap: wrap; margin: var(--sp-5) 0 var(--sp-3); }
+.goals-head h2 { margin: 0; flex: 0 0 auto; }
+.goals-head .goal-summary { flex: 1 1 320px; margin: 0; padding: 0; background: none; border: none; }
+.goals-foot { margin: var(--sp-3) 0 var(--sp-5); }
+
 .goal-summary { display: flex; align-items: center; gap: 0.6rem 1.1rem; flex-wrap: wrap; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.9rem 1.15rem; margin-bottom: 1rem; }
 .goal-summary-main { display: flex; align-items: baseline; gap: 0.4rem; }
 .goal-summary-saved { font-size: var(--fs-lg); font-weight: 650; letter-spacing: -0.02em; }
@@ -652,9 +875,10 @@ details.ai-card:not([open]) > summary.ai-head { margin-bottom: 0; }
 .ask-answer p { margin: 0; white-space: pre-line; }
 .ask-answer .ask-tools { font-size: 11px; color: var(--text-muted); margin: 0.5rem 0 0; }
 
-/* v10.1 Insight / v10.2 Forecast cards — now share the .ai-card border above.
-   .insight-* layout classes are still reused by both. */
-.insight-head { display: flex; align-items: center; gap: 0.6rem; }
+/* ⚠️ These .insight-* / .fact* classes outlived the cards they were named for
+   (#232 removed Insight, Forecast and the money agent). Their remaining
+   consumers are the goal-coach card and the budget-review banner — rename them
+   only together with those two templates. */
 .insight-spinner { font-size: 12px; color: var(--text-muted); }
 .insight-intro { color: var(--text-muted); font-size: 14px; margin: 0.5rem 0 0.9rem; }
 .facts-strip { display: flex; flex-wrap: wrap; gap: 0.75rem 1.5rem; margin: 0.9rem 0; }
@@ -663,21 +887,11 @@ details.ai-card:not([open]) > summary.ai-head { margin-bottom: 0; }
 .fact-val { font-size: 18px; font-weight: 600; }
 .fact-val.pos { color: var(--success); }
 .fact-val.neg { color: var(--danger); }
-.insight-meta { font-size: 13px; color: var(--text-muted); margin: 0.2rem 0; }
-.insight-warn { color: var(--danger); }
 .insight-summary { font-size: 15px; line-height: 1.5; margin: 0.9rem 0; }
 .insight-tips { margin: 0.5rem 0 0.9rem; padding-left: 1.2rem; font-size: 14px; }
 .insight-tips li { margin: 0.25rem 0; }
 .insight-foot { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
 .insight-ts { font-size: 12px; color: var(--text-muted); }
-/* Money agent card (v10.10) — the weekly-check findings list. Reuses the
-   .ai-card identity + .insight-* layout classes; these style the findings. */
-.agent-findings { list-style: none; margin: 0.9rem 0 0; padding: 0; }
-.agent-finding { padding: 0.7rem 0.9rem; margin: 0.5rem 0; background: var(--surface-2); border-left: 3px solid var(--warning); border-radius: 6px; }
-.agent-finding strong { font-size: 14px; }
-.agent-detail { font-size: 14px; line-height: 1.5; margin: 0.3rem 0 0; }
-.agent-evidence { font-size: 12px; color: var(--text-muted); margin: 0.35rem 0 0; }
-
 /* Budget report (v10.9): hit/miss month cells + trend words. The tr:hover
    overrides keep the verdict tint from being wiped by the global hover rule. */
 .budget-report td { white-space: nowrap; }
@@ -688,13 +902,6 @@ tr:hover td.report-miss { background: var(--danger-soft); }
 .trend-rising { color: var(--danger); }
 .trend-easing { color: var(--success); }
 .trend-steady { color: var(--text-muted); }
-
-/* v10.9 merged dashboard — Insight + Forecast share a row on wide screens;
-   a lone card (only one of the two showing) stretches full width. */
-.ai-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 1rem; align-items: start; margin-bottom: 1rem; }
-/* No height:100% here (was pre-v10.15): a collapsed card must not stretch to
-   match an expanded sibling — align-items:start sizes each to its content. */
-.ai-row .card { margin-bottom: 0; }
 
 /* Reduced motion (#225) — the whole of the above, switched off in one place.
    ⚠️ Written as `!important` against a wildcard on purpose: this must beat every

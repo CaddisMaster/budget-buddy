@@ -31,7 +31,8 @@ budget.seandesmet.com on a DigitalOcean Droplet behind Nginx + Gunicorn with Let
 
 - **Backend:** Python / Flask, psycopg2, Flask-Login, Flask-Bcrypt, Flask-Limiter, Gunicorn
 - **Database:** PostgreSQL (Docker container)
-- **Frontend:** Jinja2 templates + HTMX (vendored `htmx.min.js`, inline CRUD), Chart.js (vendored), vanilla CSS
+- **Frontend:** Jinja2 templates + HTMX (vendored `htmx.min.js`, inline CRUD), ApexCharts 4.7.0 (vendored,
+  **MIT — 5.x+ is dual-licensed, do not upgrade blind**), vanilla CSS
 - **Infrastructure:** Docker Compose, DigitalOcean, Nginx, Certbot
 
 ## Project map
@@ -41,7 +42,7 @@ Full detail — every module's responsibilities and its traps — is in
 
 ```
 app/
-  __init__.py      # app + extensions; registers the 20 blueprints; security headers; scheduler; |money filter; css_v/brand_svg globals
+  __init__.py      # app + extensions; registers the 18 blueprints; security headers; scheduler; |money filter; css_v/brand_svg globals
   db.py            # get_db_connection() + db_cursor() context manager (NamedTupleCursor)
   helpers.py       # is_htmx/hx_toast/ai_enabled; THE param + amount validators; GENERIC_ERROR
   models.py        # User (UserMixin)
@@ -63,7 +64,13 @@ docs/              # the reference detail this file points at
 **Blueprints** (`app/blueprints/`, all registered with no `url_prefix`): `auth`, `main` (`/` IS the
 dashboard), `transactions`, `categories`, `accounts`, `budgets`, `analytics` (redirect stub),
 `admin`, `transfers`, `goals`, `push`, `feedback`, `announce`, `reminders` (the daily job),
-`schedules`, `insights`, `forecasts`, `ask` (the tool-use security boundary), `digests`, `agent`.
+`schedules`, `insights` (the month read behind Home's one AI panel), `ask` (the tool-use
+security boundary), `digests`.
+
+⚠️ `blueprints/forecasts.py` and `blueprints/agent.py` are in that directory but define **no
+blueprint** and are registered nowhere (#232): both lost their routes when Home's four AI
+surfaces became one. The forecast arithmetic feeds the month read and an Ask tool; the money
+agent runs inside the weekly digest.
 
 ## Database tables
 
@@ -79,8 +86,9 @@ Full column lists and the reasoning behind each shape are in
   (append-only, nothing reads it yet)
 - `account` — ⚠️ **singular, and its PK is `account_id`, not `id`**. Carries `credit_limit`/`apr`
 - `goals` · `users` · `transfer_group_seq`
-- AI caches, narrative only — figures are always recomputed: `insights`, `forecasts`,
-  `goal_coach`, `agent_runs`
+- AI caches, narrative only — figures are always recomputed: `insights` (the month read),
+  `goal_coach`, `agent_runs`. ⚠️ `forecasts` is **written by nothing since #232** — dropping it
+  is a migration, so it stands alone in its own PR
 - Job/notification bookkeeping: `job_runs` (one row per job, upserted, **no `user_id`**),
   `push_subscriptions` (one row per **device**, `endpoint` globally unique), `reminder_log`
   (append-only idempotency claims)

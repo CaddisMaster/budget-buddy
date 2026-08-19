@@ -1,0 +1,64 @@
+{# #232 — the ONE AI surface on Home. Replaces four stacked cards (insight,
+   forecast, weekly money check, Ask box) with a single panel: a short read of
+   the month, then the box.
+
+   ⚠️ This partial is BOTH the page-load render and the swap target of
+   POST /insights/read — the route re-renders the whole thing, so the read and
+   the Ask input can never come apart. Keep `id="ask-panel"` on the root: it is
+   the hx-target, and a swap that loses it strands every later Refresh.
+
+   Three states:
+     read          → the cached paragraph + Refresh
+     read_pending  → nothing cached for this month; the panel asks for one
+                     itself after load, so the dashboard GET never waits on a
+                     model call (and never pays for one it may not need)
+     neither       → nothing worth narrating, or the read just failed. The box
+                     still works, and there is deliberately no auto-retry.
+
+   Self-gated on ai_enabled so the dashboard just includes it. CSRF is covered
+   by the hx-headers on <body> in base.html. #}
+{% if ai_enabled %}
+<div class="card ask-panel" id="ask-panel">
+  <div class="ask-panel-head">
+    {% include 'partials/_ai_spark.html' %}
+    <h2>Ask your finances</h2>
+    <span class="ai-badge">AI</span>
+    <span id="read-spinner" class="htmx-indicator read-spinner">Reading…</span>
+  </div>
+
+  {% if read %}
+  <p class="ask-read">{{ read.summary }}</p>
+  <div class="ask-read-foot">
+    <span class="ask-read-ts">
+      {%- if read.created_at %}Read {{ read.created_at.strftime('%b %d, %H:%M') }}{% endif -%}
+    </span>
+    <button class="btn-sm" hx-post="{{ url_for('insights.read') }}"
+            hx-target="#ask-panel" hx-swap="outerHTML"
+            hx-indicator="#read-spinner">Refresh</button>
+  </div>
+  {% elif read_pending %}
+  <p class="ask-read ask-read-waiting"
+     hx-post="{{ url_for('insights.read') }}" hx-trigger="load"
+     hx-target="#ask-panel" hx-swap="outerHTML">
+    Reading your month&hellip;
+  </p>
+  {% endif %}
+
+  <div class="ask-foot">
+    <label for="ask-question" class="ask-label">Ask about your money</label>
+    <div class="ask-row">
+      <input type="text" id="ask-question" name="question"
+             placeholder="how much did I spend on groceries last month?"
+             hx-post="{{ url_for('ask.ask') }}" hx-target="#ask-answer" hx-swap="innerHTML"
+             hx-trigger="keyup[key=='Enter']" hx-indicator="#ask-spinner">
+      <button type="button" class="btn btn-primary"
+              hx-post="{{ url_for('ask.ask') }}" hx-include="#ask-question"
+              hx-target="#ask-answer" hx-swap="innerHTML" hx-indicator="#ask-spinner">
+        Ask
+      </button>
+    </div>
+    <span id="ask-spinner" class="htmx-indicator ask-spinner">Thinking&hellip;</span>
+    <div id="ask-answer"></div>
+  </div>
+</div><!--/ask-panel-->
+{% endif %}

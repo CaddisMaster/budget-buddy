@@ -1,21 +1,126 @@
 {% extends 'base.html' %}
 {% block title %}Home — Budget Buddy{% endblock %}
+{# ApexCharts' own stylesheet (tooltips, legend, the crosshair). Vendored
+   beside the library at app/static/, like htmx and the typefaces — nothing in
+   this app loads from a CDN. #}
+{% block head %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='apexcharts.css') }}">
+{% endblock %}
 {% block content %}
-<h1>Home</h1>
+{# #223 — the page opens with the month's answer, not with furniture. Order
+   is deliberate: header → hero → strip → comparison → detail.
+   ⚠️ The What's-new strip below MOVED but its markup is byte-identical on
+   purpose: scripts/release_prep.py rewrites it by string surgery. Move it
+   freely; do not restyle it here.
+   ⚠️⚠️ And do NOT name that tool's marker strings in a comment — this one
+   originally spelled them out, and release_prep partitions the file on the
+   body marker, so it split on THIS COMMENT instead of the strip and reported
+   the strip as malformed. test_release_prep.py::test_it_parses_the_real_dashboard_strip
+   is what caught it. #}
+<div class="page-topbar">
+  <div>
+    {# The time of day is the BROWSER's, not the server's: prod runs on UTC and
+       a "Good evening" at three in the afternoon is worse than no greeting at
+       all. The server renders the neutral form and the script below refines it;
+       with JS off the page still reads correctly. #}
+    <h1 class="page-greeting" id="greeting" style="margin-bottom:2px">Hello, {{ current_user.username|capitalize }}</h1>
+    <p class="page-sub">
+      {% if days_left > 0 %}{{ days_left }} day{{ '' if days_left == 1 else 's' }} left in the month.{% else %}Last day of the month.{% endif %}
+    </p>
+  </div>
+  <div class="topbar-actions">
+    <form method="get" class="month-picker">
+      <select name="month" onchange="this.form.submit()" aria-label="Filter by month">
+          <option value="">All months</option>
+          {% for m in months %}
+          <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ m }}</option>
+          {% endfor %}
+      </select>
+    </form>
+  </div>
+</div>
+<script>
+(() => {
+  const h = new Date().getHours();
+  const part = h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening';
+  const el = document.getElementById('greeting');
+  el.textContent = `Good ${part}, ${el.textContent.replace(/^Hello, /, '')}`;
+})();
+</script>
 
+
+
+{% if has_transactions %}
+<div class="hero-band">
+  <div class="hero">
+      <div class="hero-label">Net position · {{ summary.label }}</div>
+      <div class="hero-net {{ 'pos' if summary.net >= 0 else 'neg' }}">
+          {{ '−' if summary.net < 0 else '+' }}${{ summary.net|abs|money }}
+      </div>
+      <div class="hero-meta">
+        {% if hero_delta is not none %}
+        <span class="hero-chip {{ 'up' if hero_delta >= 0 else 'down' }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            {% if hero_delta >= 0 %}<path d="M12 19V5M5 12l7-7 7 7"></path>{% else %}<path d="M12 5v14M5 12l7 7 7-7"></path>{% endif %}
+          </svg>
+          {{ hero_delta|abs }}%
+        </span>
+        {% endif %}
+        <span class="hero-caption">
+          {% if hero_delta is not none %}vs. the month before{% if summary.savings_rate is not none %} · {% endif %}{% endif %}
+          {% if summary.savings_rate is not none %}{{ "%.0f"|format(summary.savings_rate) }}% of income kept{% endif %}
+        </span>
+      </div>
+      {% if hero_spark %}
+      {# Server-rendered so it needs no JS and no Chart.js — see main.sparkline(). #}
+      <svg class="hero-spark" viewBox="0 0 420 64" preserveAspectRatio="none" role="img" aria-label="Net balance over the months shown">
+        <defs>
+          <linearGradient id="sparkFade" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="var(--spark-line)" stop-opacity="0.38"></stop>
+            <stop offset="100%" stop-color="var(--spark-line)" stop-opacity="0"></stop>
+          </linearGradient>
+        </defs>
+        <path d="{{ hero_spark.area }}" fill="url(#sparkFade)"></path>
+        <polyline points="{{ hero_spark.line }}" fill="none" stroke="var(--spark-line)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></polyline>
+        <circle cx="{{ hero_spark.last[0] }}" cy="{{ hero_spark.last[1] }}" r="3.5" fill="#fff"></circle>
+      </svg>
+      {% endif %}
+  </div><!--/hero-->
+  <div class="flow-cards">
+    <div class="flow-card">
+      <div class="flow-head">
+        <span class="flow-label">Money in</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"></path></svg>
+      </div>
+      <div class="flow-val pos">${{ summary.income|money }}</div>
+      <div class="flow-track"><span class="flow-fill pos" style="width:100%"></span></div>
+    </div>
+    <div class="flow-card">
+      <div class="flow-head">
+        <span class="flow-label">Money out</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"></path></svg>
+      </div>
+      <div class="flow-val neg">${{ summary.expenses|money }}</div>
+      {# Width is expenses as a share of income, capped: past 100% the bar is
+         full and the figure above it is what tells you by how much. #}
+      <div class="flow-track"><span class="flow-fill neg" style="width:{{ [100, (summary.expenses / summary.income * 100)|round|int] | min if summary.income > 0 else 100 }}%"></span></div>
+    </div>
+  </div>
+</div><!--/hero-band-->
+{% endif %}
 {# ── What's new — ONE strip per release (released whenever Sean calls it). On the
    first feature commit after a release ships, REPLACE the strip's contents with
    the CURRENT release: the RELEASE VERSION in the heading + data-version, the
    release date in the badge (set/corrected at ship), and one .whatsnew-block per
    feature. One bundle per strip; only ever one strip here at a time. Dismiss is
    per-device (localStorage, keyed by version) — a new version resurfaces it. #}
-{# ⚠️ Never name the weekly agent card in here — the exact two-word label
-   ("Money" followed by "agent"). This strip renders on '/' whether or not AI is
-   configured, and test_dashboard_hides_card_without_key asserts that label is
-   ABSENT from the page when there is no API key, so writing it here turns that
-   test red. Say "weekly money check", as the v10.15.0 strip did. (This comment
-   deliberately avoids the literal too — a Jinja comment never renders, but it
-   would still show up in a grep and read as a violation.) #}
+{# ⚠️ The old rule here — never name the weekly agent card in this strip,
+   because a test asserted that label was absent from an AI-less page — RETIRED
+   with #232: the card and that test are both gone, and the panel that replaced
+   them renders nothing named after a model. Kept as a note because the shape
+   recurs: this strip renders on '/' whether or not AI is configured, so any
+   copy naming an AI-gated element can make an absence assertion elsewhere fail
+   from the one place on the page that ignores the gate. #}
 <div class="card whatsnew" id="whatsnew" data-version="v0.7.0" hidden>
   <div class="whatsnew-head">
     <strong>What's new in v0.7.0</strong>
@@ -68,142 +173,186 @@
   });
 })();
 </script>
+{# #225 — three facts about the month at the same weight, which is right
+   BECAUSE they are peers: what you spent against last year, how far through the
+   budget you are, and what has not left the account yet. The year-over-year
+   trio this replaced said one thing three times. #}
+{% if yoy or budget_used or bills_due.count %}
+<div class="stat-row">
+  {% if yoy %}
+  <div class="stat-tile">
+    <div class="stat-tile-label">vs. the same month last year</div>
+    <div class="stat-tile-main">
+      <span class="stat-tile-val {% if yoy.change <= 0 %}income{% else %}expense{% endif %}">{{ '+' if yoy.change > 0 }}{{ yoy.change }}%</span>
+      <span class="stat-tile-sub">${{ yoy.last_year|money }} → ${{ yoy.this_year|money }}</span>
+    </div>
+  </div>
+  {% endif %}
+  {% if budget_used %}
+  <div class="stat-tile">
+    <div class="stat-tile-label">Budget used</div>
+    <div class="stat-tile-main">
+      <span class="stat-tile-val {{ 'expense' if budget_used.pct > 100 }}">{{ budget_used.pct }}%</span>
+      <span class="stat-tile-sub">of ${{ budget_used.total|money }}</span>
+    </div>
+    <div class="stat-tile-track"><span class="stat-tile-fill{{ ' over' if budget_used.pct > 100 }}" style="width:{{ [100, budget_used.pct] | min }}%"></span></div>
+  </div>
+  {% endif %}
+  {% if bills_due.count %}
+  <div class="stat-tile">
+    <div class="stat-tile-label">Still to post</div>
+    <div class="stat-tile-main">
+      <span class="stat-tile-val">{{ bills_due.count }}</span>
+      <span class="stat-tile-sub">bill{{ '' if bills_due.count == 1 else 's' }} · ${{ bills_due.total|money }}</span>
+    </div>
+  </div>
+  {% endif %}
+</div><!--/stat-row-->
+{% endif %}
+{# #223 — the figures and the words about them, side by side on a wide
+   screen and stacked below 1100px (see .home-band). #}
+<div class="home-band">
+<div class="band-main">
+{# #223 — "Spending by category" was a doughnut behind a legend; it is now
+   ranked bars, readable at a glance and without one. Rendered SERVER-SIDE from
+   the same rows that build the chart payload, so a Jinja typo is caught by a
+   content assertion rather than rendering as an empty string.
+   ⚠️ Colour still comes from the row's own `slot` (main.py's
+   assign_series_slots, #111) — slots are 0-indexed and the tokens are 1-based,
+   hence slot + 1. A folded row (#108) carries no slot and paints from the
+   achromatic --series-other, which is what makes it read as "not a category". #}
+{% if has_transactions and category_bars %}
+<section class="cat-bars-wrap">
+  {% set view_titles = {'expense': 'Spending by category', 'income': 'Income by category'} %}
+  {% set first_view = (category_bars.keys() | list)[0] %}
+  <div class="cat-bars-head">
+    <h2 id="categoryChartTitle">{{ view_titles[first_view] }}</h2>
+    {% if category_bars | length > 1 %}
+    <div class="chart-toggle" id="categoryChartToggle">
+        <button type="button" class="active" data-view="expense">Expenses</button>
+        <button type="button" data-view="income">Income</button>
+    </div>
+    {% endif %}
+  </div>
+  {% for view, rows in category_bars.items() %}
+  <div class="cat-bars" data-view="{{ view }}"{% if not loop.first %} hidden{% endif %}>
+    {% for r in rows %}
+    <div class="cat-bar-row">
+      <span class="cat-bar-name">{{ r.category }}{% if r.folded %} <span class="cat-bar-folded">({{ r.folded }})</span>{% endif %}</span>
+      <span class="cat-bar-track">
+        <span class="cat-bar-fill {{ 's-other' if r.is_other else 's' ~ (r.slot + 1) }}" style="width: {{ r.pct }}%"></span>
+      </span>
+      <span class="cat-bar-amount">${{ r.total|money }}</span>
+    </div>
+    {% endfor %}
+  </div><!--/cat-bars-->
+  {% endfor %}
+</section>
+{% if category_bars | length > 1 %}
+<script>
+(() => {
+  // Both lists are already in the DOM, server-rendered; the toggle only flips
+  // which one is hidden. No payload, no redraw, and it works on first paint
+  // rather than waiting on Chart.js.
+  const titles = {expense: 'Spending by category', income: 'Income by category'};
+  const lists = document.querySelectorAll('.cat-bars');
+  document.querySelectorAll('#categoryChartToggle button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      lists.forEach(l => { l.hidden = l.dataset.view !== btn.dataset.view; });
+      document.getElementById('categoryChartTitle').textContent = titles[btn.dataset.view];
+      document.querySelectorAll('#categoryChartToggle button').forEach(
+        b => b.classList.toggle('active', b === btn));
+    });
+  });
+})();
+</script>
+{% endif %}
+{% endif %}
+</div><!--/band-main-->
+{# #232 — insight, forecast, the weekly money check and the Ask box were four
+   AI surfaces stacked in one panel, each with its own cache and Generate
+   button. They are ONE feature now: partials/_ask_panel.html renders a single
+   read of the month and the box beneath it, and the three cards, their routes
+   and their <details> read-state machinery are gone.
+   ⚠️ The partial gates itself on ai_enabled — do NOT wrap it in a second gate,
+   or the panel's own three states get a fourth. #}
+{% include 'partials/_ask_panel.html' %}
+</div><!--/home-band-->
 
-{% include 'partials/_quick_add.html' %}
-{# Pre-filled form appears here after a quick-add parse; empty until then. #}
-<div id="txn-form-wrap"></div>
-
-<form method="get" style="margin-bottom:1rem">
-    <label>Filter by month</label>
-    <select name="month" onchange="this.form.submit()">
-        <option value="">All months</option>
-        {% for m in months %}
-        <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ m }}</option>
-        {% endfor %}
-    </select>
-</form>
-{% if has_transactions %}
-<div class="hero">
-    <div class="hero-top">
-        <div>
-            <div class="hero-label">Net position · {{ summary.label }}</div>
-            <div class="hero-net {{ 'pos' if summary.net >= 0 else 'neg' }}">
-                {{ '−' if summary.net < 0 else '+' }}${{ summary.net|abs|money }}
-            </div>
-            <div class="hero-caption">
-                {% if summary.savings_rate is not none %}
-                    {{ "%.0f"|format(summary.savings_rate) }}% of income kept
-                {% else %}
-                    Income vs. expenses
-                {% endif %}
-            </div>
-        </div>
-    </div>
-    <div class="hero-stats">
-        <div class="hero-stat">
-            <div class="hero-stat-label">Income</div>
-            <div class="hero-stat-val pos">${{ summary.income|money }}</div>
-        </div>
-        <div class="hero-stat">
-            <div class="hero-stat-label">Expenses</div>
-            <div class="hero-stat-val neg">${{ summary.expenses|money }}</div>
-        </div>
-        <div class="hero-stat">
-            <div class="hero-stat-label">Net</div>
-            <div class="hero-stat-val {{ 'pos' if summary.net >= 0 else 'neg' }}">
-                {{ '−' if summary.net < 0 else '' }}${{ summary.net|abs|money }}
-            </div>
-        </div>
-    </div>
-</div>
-{% endif %}
-{% include 'partials/_ask.html' %}
-{% if ai_enabled and (show_insight or show_forecast) %}
-<div class="ai-row">
-    {% if show_insight %}{% include 'partials/_insight_card.html' %}{% endif %}
-    {% if show_forecast %}{% include 'partials/_forecast_card.html' %}{% endif %}
-</div>
-{% endif %}
-{% if ai_enabled %}
-{% include 'partials/_agent_card.html' %}
-{% endif %}
-{% if yoy %}
-<h2>Year over year</h2>
-<div class="stats-grid">
-    <div class="stat-card">
-        <div class="stat-label">{{ selected_month }} spending</div>
-        <div class="stat-value {% if yoy.this_year <= yoy.last_year %}income{% else %}expense{% endif %}">${{ yoy.this_year|money }}</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-label">Same month last year</div>
-        <div class="stat-value">${{ yoy.last_year|money }}</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-label">Change</div>
-        <div class="stat-value {% if yoy.change <= 0 %}income{% else %}expense{% endif %}">{{ '+' if yoy.change > 0 }}{{ yoy.change }}%</div>
-    </div>
-</div>
-{% endif %}
+{# #233 — Goals sits BELOW the band, full width, cards side by side.
+   ⚠️ It used to live inside .band-main, under the ranked bars. That made the
+   left column ~750px against the panel's ~371 and left a 380px void beside
+   the panel — the void and the tall goal stack were one problem, not two.
+   Out here the two band columns end within ~10px of each other and the goal
+   cards lay out 2-up instead of stacked.
+   The rollup keeps coming from partials/_goal_summary.html (shared with
+   /goals, so the arithmetic has one home); .goals-head just seats it on the
+   heading line instead of giving it a card of its own. #}
 {% if goals %}
-<h2>Goals</h2>
-{% include 'partials/_goal_summary.html' %}
+<div class="goals-head">
+  <h2>Goals</h2>
+  {% include 'partials/_goal_summary.html' %}
+</div>
+{# #225 — a ring instead of a bar. The dash arithmetic: r=20 gives a
+   circumference of 2*pi*20 = 125.66, so the drawn arc is percent/100 of that
+   and the gap is the remainder. Rotated -90deg so it starts at twelve o'clock.
+   Capped at 100 so an overfunded goal draws a full ring rather than wrapping
+   round and reading as though it were barely started. #}
 <div class="goal-grid">
     {% for g in goals %}
+    {% set pct = [100, g.percent] | min %}
     <div class="card goal-card goal-mini">
-        <div class="goal-head">
+        <div class="goal-ring-row">
+          <svg class="goal-ring" viewBox="0 0 48 48" role="img" aria-label="{{ g.percent }}% of {{ g.name }}">
+            <circle cx="24" cy="24" r="20" fill="none" stroke="var(--surface-2)" stroke-width="5"></circle>
+            <circle cx="24" cy="24" r="20" fill="none" stroke-width="5" stroke-linecap="round"
+                    class="goal-ring-arc{% if g.complete %} done{% elif g.on_track is false %} behind{% endif %}"
+                    stroke-dasharray="{{ (125.66 * pct / 100) | round(2) }} 125.66"
+                    transform="rotate(-90 24 24)"></circle>
+            <text x="24" y="27" class="goal-ring-pct">{{ g.percent }}%</text>
+          </svg>
+          <div class="goal-ring-text">
             <strong class="goal-name">{{ g.name }}</strong>
-            {% if g.complete %}<span class="transfer-badge">{{ '✓ Paid off' if g.type == 'payoff' else '✓ Reached' }}</span>
-            {% elif g.on_track is true %}<span class="transfer-badge">On track</span>
-            {% elif g.on_track is false %}<span class="recurring-badge">Behind</span>{% endif %}
+            <p class="goal-figures">${{ g.saved|money }} <span class="goal-pct">of ${{ g.target_amount|money }}</span></p>
+            <p class="goal-state">
+              {% if g.complete %}<span class="goal-flag done">{{ 'Paid off' if g.type == 'payoff' else 'Reached' }}</span>
+              {% elif g.on_track is true %}<span class="goal-flag on">On track</span>
+              {% elif g.on_track is false %}<span class="goal-flag behind">Behind</span>{% endif %}
+            </p>
+          </div>
         </div>
-        <div class="goal-bar"><div class="goal-bar-fill" style="width:{{ g.percent }}%"></div></div>
-        <p class="goal-figures">
-            ${{ g.saved|money }} / ${{ g.target_amount|money }}
-            <span class="goal-pct">({{ g.percent }}%)</span>
-        </p>
     </div>
     {% endfor %}
 </div>
-<p style="margin-bottom:1.5rem"><a href="{{ url_for('goals.goals') }}">Manage goals →</a></p>
+<p class="goals-foot"><a href="{{ url_for('goals.goals') }}">Manage goals →</a></p>
 {% endif %}
+
 {% if has_transactions %}
 {# Collapsible on purpose (v10.13 de-scroll): open on desktop, collapsed on
-   mobile. Charts are lazily initialized on first open — Chart.js renders
-   0-height inside a closed <details>. #}
+   mobile. Charts are lazily initialized on first open — a chart library
+   measures its container, and inside a closed <details> that is 0-height. #}
 <details id="charts-details" class="charts-details" open>
 <summary><h2>Charts</h2></summary>
 <div class="chart-grid">
     <div class="chart-card">
-        <div class="chart-head">
-            <h3 id="categoryChartTitle">Spending by category</h3>
-            {% if income_by_category_data %}
-            <div class="chart-toggle" id="categoryChartToggle">
-                <button type="button" class="active" data-view="expense">Expenses</button>
-                <button type="button" data-view="income">Income</button>
-            </div>
-            {% endif %}
-        </div>
-        <canvas id="spendingPie"></canvas>
-    </div>
-    <div class="chart-card">
         <h3>Account balances</h3>
-        <canvas id="accountBar"></canvas>
+        <div id="accountBar" class="chart-plot"></div>
     </div>
     <div class="chart-card">
         <h3>Spending by day of week</h3>
-        <canvas id="dowBar"></canvas>
+        <div id="dowBar" class="chart-plot"></div>
     </div>
     <div class="chart-card wide">
         <h3>Income vs expenses by month</h3>
-        <canvas id="cashFlowBar"></canvas>
+        <div id="cashFlowBar" class="chart-plot"></div>
     </div>
     <div class="chart-card wide">
         <h3>Net balance over time</h3>
-        <canvas id="netBalanceLine"></canvas>
+        <div id="netBalanceLine" class="chart-plot"></div>
     </div>
     <div class="chart-card wide">
         <h3>Budget vs actual</h3>
-        <canvas id="budgetBar"></canvas>
+        <div id="budgetBar" class="chart-plot"></div>
     </div>
 </div>
 </details>
@@ -212,8 +361,16 @@
 if (window.matchMedia('(max-width: 768px)').matches)
     document.getElementById('charts-details').removeAttribute('open');
 </script>
-<script src="{{ url_for('static', filename='chart.umd.min.js') }}"></script>
+<script src="{{ url_for('static', filename='apexcharts.min.js') }}"></script>
 <script>
+// ⚠️ These two payloads no longer draw anything — #223 replaced the doughnut
+// with server-rendered bars. They stay because they are the CONTRACT that
+// test_dashboard_merge.py asserts against: #108's fold (never more than seven
+// entries, the total conserved, only the synthetic row flagged) and #111's slot
+// distinctness are both read off these literals. Moving those assertions onto
+// the rendered bars would mean rewriting the extraction helper of a file that
+// encodes two production regressions, for no gain. Delete them only together
+// with that file's `_chart_rows`.
 const spendingData = {{ spending_data | tojson }};
 const incomeByCategoryData = {{ income_by_category_data | tojson }};
 const cashFlowData = {{ cash_flow_data | tojson }};
@@ -222,144 +379,173 @@ const accountData = {{ account_data | tojson }};
 const budgetData = {{ budget_chart_data | tojson }};
 const dowData = {{ day_of_week_data | tojson }};
 
-// Theme Chart.js from the CSS design tokens so charts match the app (incl. dark mode).
+// #234 — ApexCharts, themed from the CSS design tokens so the charts belong to
+// the same app as the rest of the page (and follow dark mode without a second
+// palette here). Chart.js was retired with this change: the problem was never
+// the renderer, it was five charts wearing default chartjunk — a full grid
+// lattice, floating legends and a hardcoded pre-redesign palette.
+//
+// ⚠️ Colours come from CSS custom properties, NEVER literals. The old code
+// hardcoded '#378ADD'/'#1D9E75'/'#E24B4A', which happened to equal --accent,
+// --success and --danger at the time; the charts then silently stopped being
+// the app's colours the moment a token moved. cssVar() is the whole mechanism.
 const _css = getComputedStyle(document.documentElement);
 const cssVar = (n) => _css.getPropertyValue(n).trim();
-// Eight validated categorical hues, read from CSS so dark mode swaps them
-// without a second array here. Order is load-bearing — see style.css.
-const PALETTE = Array.from({length: 8}, (_, i) => cssVar(`--series-${i + 1}`));
-// Each drawn row carries its own palette slot, assigned SERVER-SIDE per view
-// (main.py's assign_series_slots). Creation order is the preference, so a
-// category keeps its familiar hue; a category that would have collided is moved
-// to the lowest free slot instead.
-//
-// ⚠️ This replaced `slot = creation_index % 8`, which WRAPPED — a user's 1st and
-// 9th categories painted the same hex, and with both drawn the chart showed two
-// identical slices (seen in production on 0.3.0). The fix is only safe because
-// the #108 fold caps the chart at 6 real slices against 8 hues, so a free slot
-// always exists. Do not reintroduce a shared name->slot map: the expense and
-// income views must be assigned independently, since their union can exceed the
-// palette while neither view alone does.
-const colorsFor = (data) => data.map(
-    d => d.is_other ? cssVar('--series-other') : PALETTE[(d.slot ?? 0) % PALETTE.length]);
-Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
-Chart.defaults.font.size = 12;
-Chart.defaults.color = cssVar('--text-muted');
-Chart.defaults.borderColor = cssVar('--border');
-Chart.defaults.plugins.legend.labels.boxWidth = 12;
-Chart.defaults.plugins.legend.labels.usePointStyle = true;
-Chart.defaults.plugins.legend.labels.padding = 14;
-const gridColor = cssVar('--border');
-const gridScales = { x: { grid: { color: gridColor } }, y: { beginAtZero: true, grid: { color: gridColor } } };
+const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
-// Charts (and the pill-toggle listeners that reference them) are built only
-// once the <details> is open, so canvases always have layout when Chart.js
-// measures them.
+const INK        = cssVar('--text-muted');
+const GRID       = cssVar('--border');
+const SUCCESS    = cssVar('--success');
+const DANGER     = cssVar('--danger');
+const SERIES_1   = cssVar('--series-1');
+const SERIES_2   = cssVar('--series-2');
+const FONT       = getComputedStyle(document.body).fontFamily;
+
+const money = (v) => '$' + Math.round(v).toLocaleString();
+// ⚠️ Axis ticks get the SHORT form, tooltips always get the full figure. At
+// 390px the account chart printed "$0 $5,000$10,000$15,000$20,000" as one
+// unreadable run — an axis is a scale, and a scale does not need the cents.
+const moneyTick = (v) => {
+    const n = Math.abs(v);
+    if (n >= 1000) return '$' + (v / 1000).toFixed(n % 1000 ? 1 : 0) + 'k';
+    return '$' + Math.round(v);
+};
+
+// One shape for every chart on the page: no toolbar, no chart-level animation
+// beyond the entrance, our font, and a grid that is a set of faint horizontal
+// rules rather than graph paper. ⚠️ `grid.xaxis.lines` OFF is the single
+// biggest visual difference from the old charts — vertical rules boxed every
+// plot and were what made this section read as a different application.
+const base = {
+    chart: { fontFamily: FONT, foreColor: INK, toolbar: { show: false },
+             animations: { enabled: true, speed: 300 }, parentHeightOffset: 0 },
+    grid: { borderColor: GRID, strokeDashArray: 0,
+            xaxis: { lines: { show: false } }, yaxis: { lines: { show: true } },
+            padding: { left: 4, right: 8, top: 0 } },
+    dataLabels: { enabled: false },
+    tooltip: { theme: isDark ? 'dark' : 'light', style: { fontFamily: FONT } },
+    legend: { fontFamily: FONT, markers: { size: 6 }, itemMargin: { horizontal: 10 } },
+    states: { hover: { filter: { type: 'lighten', value: 0.08 } } },
+};
+// Axis labels are TEXT and wear text tokens, never a series colour.
+const axisText = { style: { colors: INK, fontSize: '12px', fontFamily: FONT } };
+const noAxisLine = { axisBorder: { show: false }, axisTicks: { show: false } };
+
 let chartsInitialized = false;
 function initCharts() {
 if (chartsInitialized) return;
 chartsInitialized = true;
-// Tracks whichever payload the pill toggle currently has on the canvas, so the
-// tooltip can look the row up by index and report how many categories a folded
-// slice stands for.
-let categoryRows = spendingData;
-const categoryPie = new Chart(document.getElementById('spendingPie'), {
-    type: 'doughnut',
-    data: {
-        labels: spendingData.map(d => d.category),
-        datasets: [{ data: spendingData.map(d => d.total), backgroundColor: colorsFor(spendingData), borderColor: cssVar('--surface'), borderWidth: 2 }]
-    },
-    options: {
-        aspectRatio: 1.6,
-        cutout: '58%',
-        plugins: {
-            legend: { position: 'right' },
-            tooltip: { callbacks: { label: (ctx) => {
-                const base = `${ctx.label}: ${ctx.formattedValue}`;
-                const row = categoryRows[ctx.dataIndex];
-                return row && row.folded ? `${base} (${row.folded} categories)` : base;
-            } } }
-        }
-    }
-});
-// Expense/Income toggle on the category card (buttons only render when the
-// user has categorized income).
-const categoryViews = { expense: spendingData, income: incomeByCategoryData };
-const categoryTitles = { expense: 'Spending by category', income: 'Income by category' };
-document.querySelectorAll('#categoryChartToggle button').forEach(btn => {
-    btn.addEventListener('click', () => {
-        const data = categoryViews[btn.dataset.view];
-        categoryRows = data;
-        categoryPie.data.labels = data.map(d => d.category);
-        categoryPie.data.datasets[0].data = data.map(d => d.total);
-        categoryPie.data.datasets[0].backgroundColor = colorsFor(data);
-        categoryPie.update();
-        document.getElementById('categoryChartTitle').textContent = categoryTitles[btn.dataset.view];
-        document.querySelectorAll('#categoryChartToggle button').forEach(
-            b => b.classList.toggle('active', b === btn));
-    });
-});
-new Chart(document.getElementById('cashFlowBar'), {
-    type: 'bar',
-    data: {
-        labels: cashFlowData.map(d => d.month),
-        datasets: [
-            {label: 'Income', data: cashFlowData.map(d => d.income), backgroundColor: '#1D9E75', borderRadius: 4},
-            {label: 'Expenses', data: cashFlowData.map(d => d.expenses), backgroundColor: '#E24B4A', borderRadius: 4}
-        ]
-    },
-    options: { aspectRatio: 3.2, scales: gridScales }
-});
-new Chart(document.getElementById('netBalanceLine'), {
-    type: 'line',
-    data: {
-        labels: netBalanceData.map(d => d.month),
-        datasets: [{
-            label: 'Net balance',
-            data: netBalanceData.map(d => d.balance),
-            borderColor: '#378ADD',
-            backgroundColor: 'rgba(55,138,221,0.12)',
-            fill: true,
-            tension: 0.3,
-            pointRadius: 2
-        }]
-    },
-    options: { aspectRatio: 3.2, scales: { x: { grid: { color: gridColor } }, y: { beginAtZero: false, grid: { color: gridColor } } } }
-});
-new Chart(document.getElementById('accountBar'), {
-    type: 'bar',
-    data: {
-        labels: accountData.map(d => d.account),
-        datasets: [{
-            label: 'Balance',
-            data: accountData.map(d => d.balance),
-            backgroundColor: accountData.map(d => d.balance >= 0 ? '#1D9E75' : '#E24B4A'),
-            borderRadius: 4
-        }]
-    },
-    options: { aspectRatio: 1.6, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, grid: { color: gridColor } }, y: { grid: { color: gridColor } } } }
-});
-new Chart(document.getElementById('dowBar'), {
-    type: 'bar',
-    data: {
-        labels: dowData.map(d => d.day),
-        datasets: [{ label: 'Spent', data: dowData.map(d => d.total), backgroundColor: '#378ADD', borderRadius: 4 }]
-    },
-    options: { aspectRatio: 1.6, plugins: { legend: { display: false } }, scales: gridScales }
-});
-new Chart(document.getElementById('budgetBar'), {
-    type: 'bar',
-    data: {
-        labels: budgetData.map(d => d.category),
-        datasets: [
-            {label: 'Budget', data: budgetData.map(d => d.budget), backgroundColor: '#378ADD', borderRadius: 4},
-            {label: 'Actual', data: budgetData.map(d => d.actual), backgroundColor: '#E24B4A', borderRadius: 4}
-        ]
-    },
-    options: { aspectRatio: 3.2, scales: gridScales }
-});
-}
 
+// Account balances — one series, signed. Colour carries POLARITY, and the
+// secondary encoding the green/red pair needs (ΔE 7.2 under deuteranopia, in
+// the 6–8 floor band) is POSITION: a negative balance draws left of zero, a
+// positive one right, against a labelled value axis.
+// ⚠️ This is the one chart whose value axis is X, so it is also the one that
+// wants VERTICAL gridlines — the shared `base` grid is the other way round.
+new ApexCharts(document.querySelector('#accountBar'), {
+    ...base,
+    chart: { ...base.chart, type: 'bar', height: 240 },
+    series: [{ name: 'Balance', data: accountData.map(d => d.balance) }],
+    plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: '58%',
+                          borderRadiusApplication: 'end',
+                          colors: { ranges: [
+                              { from: -1e12, to: -0.0001, color: DANGER },
+                              { from: 0, to: 1e12, color: SUCCESS }] } } },
+    xaxis: { categories: accountData.map(d => d.account), tickAmount: 4,
+             labels: { ...axisText, formatter: moneyTick }, ...noAxisLine },
+    // ⚠️ offsetX, not maxWidth: the space ApexCharts reserves for these labels
+    // is measured from the text, and with this typeface it came up ~3px short —
+    // "Everyday Checking" rendered as "veryday Checking", clipped by the SVG's
+    // own left edge rather than by the card. maxWidth caps a long name with an
+    // ellipsis; the offset is what keeps every name inside the viewport.
+    yaxis: { labels: { ...axisText, maxWidth: 130, offsetX: 6 } },
+    grid: { ...base.grid, xaxis: { lines: { show: true } },
+            yaxis: { lines: { show: false } } },
+    tooltip: { ...base.tooltip, y: { formatter: money } },
+}).render();
+
+// Spending by day of week — one ordered series, one hue. Short day names so
+// the labels never rotate to 45°, which is what the old chart did in this
+// narrow card.
+new ApexCharts(document.querySelector('#dowBar'), {
+    ...base,
+    chart: { ...base.chart, type: 'bar', height: 240 },
+    colors: [SERIES_1],
+    series: [{ name: 'Spent', data: dowData.map(d => d.total) }],
+    plotOptions: { bar: { borderRadius: 4, borderRadiusApplication: 'end',
+                          columnWidth: '58%' } },
+    xaxis: { categories: dowData.map(d => d.day.slice(0, 3)), labels: axisText,
+             ...noAxisLine },
+    yaxis: { labels: { ...axisText, formatter: moneyTick } },
+    tooltip: { ...base.tooltip, y: { formatter: money } },
+}).render();
+
+// Income vs expenses — two series, so a legend is required; the gap between
+// the paired bars plus that legend is the secondary encoding that makes the
+// green/red pair legal for colour-blind readers.
+new ApexCharts(document.querySelector('#cashFlowBar'), {
+    ...base,
+    chart: { ...base.chart, type: 'bar', height: 300 },
+    colors: [SUCCESS, DANGER],
+    series: [
+        { name: 'Income',   data: cashFlowData.map(d => d.income) },
+        { name: 'Expenses', data: cashFlowData.map(d => d.expenses) },
+    ],
+    plotOptions: { bar: { borderRadius: 3, borderRadiusApplication: 'end',
+                          columnWidth: '68%' } },
+    xaxis: { categories: cashFlowData.map(d => d.month), labels: axisText,
+             ...noAxisLine },
+    yaxis: { labels: { ...axisText, formatter: moneyTick } },
+    legend: { ...base.legend, position: 'top', horizontalAlign: 'left',
+              offsetY: -4 },
+    tooltip: { ...base.tooltip, shared: true, intersect: false,
+               y: { formatter: money } },
+}).render();
+
+// Net balance — the same job as the hero sparkline, so the same treatment: one
+// line, a gradient falling away beneath it, and no furniture. A crosshair
+// tooltip replaces the point-per-month labels.
+new ApexCharts(document.querySelector('#netBalanceLine'), {
+    ...base,
+    chart: { ...base.chart, type: 'area', height: 300, zoom: { enabled: false } },
+    colors: [SERIES_1],
+    series: [{ name: 'Net balance', data: netBalanceData.map(d => d.balance) }],
+    stroke: { curve: 'smooth', width: 2 },
+    fill: { type: 'gradient',
+            gradient: { shadeIntensity: 0, opacityFrom: 0.35, opacityTo: 0.02,
+                        stops: [0, 100] } },
+    markers: { size: 0, hover: { size: 5 } },
+    xaxis: { categories: netBalanceData.map(d => d.month), labels: axisText,
+             ...noAxisLine, crosshairs: { stroke: { color: GRID } } },
+    yaxis: { labels: { ...axisText, formatter: moneyTick } },
+    tooltip: { ...base.tooltip, x: { show: true }, y: { formatter: money } },
+}).render();
+
+// Budget vs actual — two categorical series, so the first two validated
+// palette hues in fixed order. ⚠️ NOT green/red: the old chart painted Actual
+// red against a blue Budget, which reads as a warning even for a category
+// comfortably under its budget.
+new ApexCharts(document.querySelector('#budgetBar'), {
+    ...base,
+    chart: { ...base.chart, type: 'bar', height: 300 },
+    colors: [SERIES_1, SERIES_2],
+    series: [
+        { name: 'Budget', data: budgetData.map(d => d.budget) },
+        { name: 'Actual', data: budgetData.map(d => d.actual) },
+    ],
+    plotOptions: { bar: { borderRadius: 3, borderRadiusApplication: 'end',
+                          columnWidth: '62%' } },
+    xaxis: { categories: budgetData.map(d => d.category), labels: axisText,
+             ...noAxisLine },
+    yaxis: { labels: { ...axisText, formatter: moneyTick } },
+    legend: { ...base.legend, position: 'top', horizontalAlign: 'left',
+              offsetY: -4 },
+    tooltip: { ...base.tooltip, shared: true, intersect: false,
+               y: { formatter: money } },
+}).render();
+}
+// ⚠️ Charts are built on FIRST OPEN, never at parse time: a chart library
+// measures its container, and inside a closed <details> that measures 0.
 const chartsDetails = document.getElementById('charts-details');
 if (chartsDetails.open) initCharts();
 chartsDetails.addEventListener('toggle', () => { if (chartsDetails.open) initCharts(); });

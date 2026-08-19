@@ -10,13 +10,79 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The Home page opens with the answer now.** It used to open with a What's-new
+  strip, a quick-add box and a month dropdown, and only then tell you where the
+  month stood — and it printed your net position twice, three lines apart, in the
+  same panel. The page now leads with the month's net position; the strip sits
+  underneath it, and Net is stated once, with income and expenses beside it
+  rather than repeated below.
+
+  **Where your money went is now a ranked list rather than a doughnut.** Six
+  categories, longest first, each with its name on the row and its amount beside
+  it — no legend to read across, and the same colours as before. The
+  expenses/income switch works exactly as it did.
+
+  **The four AI features are one feature now: "Ask your finances".** The monthly
+  insight, the month-ahead forecast, the weekly money check and the Ask box were
+  four separate cards, each with its own Generate button, saying four things
+  about one month. There is one panel instead. It opens with a short read of
+  where your month stands and where it is heading — how it compares with last
+  month, and what is still to leave the account before the month ends — and the
+  question box sits underneath it.
+
+  The read writes itself the first time you open Home in a new month, and
+  Refresh rewrites it whenever you want a fresh one; loading the page never
+  waits on it. Asking a question can now reach everything the three retired
+  cards showed, because the same figures they were built on are wired straight
+  into the box — so "am I on pace to make it to the end of the month, and how
+  does that compare with last month?" is one question rather than two cards to
+  read and reconcile yourself.
+
+  **Your weekly digest email is unchanged.** The money check still runs there,
+  with its findings, exactly as before — it is only the card on Home that has
+  gone.
+
+  **The year-over-year comparison is one line** instead of three full-height
+  cards, leading with the percentage, which is the number the comparison exists
+  to give you.
+
+  **The page now leads with a composed summary rather than a list of panels.**
+  The month's net position sits on a gradient panel with the shape of your
+  balance behind it and, when you are looking at a single month, how it compares
+  with the month before. Money in and money out are two cards beside it rather
+  than small print underneath. Below them sit up to three facts of equal weight
+  — how this month compares with the same month last year, how far through your
+  budget you are, and what is still due to leave the account — each appearing
+  only when there is something to say. Goals are rings rather than bars, and
+  "Ask your finances" is a panel of its own material, so it is obvious at a
+  glance which part of the page was written for you and which part is your own
+  arithmetic.
+
+  **The charts look like part of the app now.** They were the one section that
+  never got the redesign: every plot boxed in graph-paper gridlines, legends
+  floating over charts that had one thing to name, day names printed on a slant
+  because the card was too narrow, raw `7000`s on the axes of an app that
+  writes `$7,000` everywhere else, and a right-hand third of the row left empty.
+  All five are redrawn — one set of faint horizontal rules instead of a
+  lattice, money on every axis, short day names that sit straight, colours taken
+  from the same palette as the rest of the page in both light and dark, and a
+  hover readout on every chart. Net balance over time is now drawn the way the
+  figure at the top of the page is drawn, because it is the same figure.
+
+  Your goals now sit under the two columns rather than inside the narrower one,
+  side by side rather than stacked — which is what lets the ranked bars and the
+  AI panel end on the same line instead of leaving a column of empty page
+  beside one of them. A row of month facts with only one fact to show now
+  spans the row rather than sitting in a third of it. The six charts are unchanged and still live in
+  the section at the bottom, which still opens on desktop and stays closed on a
+  phone — where the category bars now put each name and amount on one line with
+  the bar beneath, instead of squeezing the bar into a stub too small to compare.
+
 - **A bug report or suggestion sent from inside the app now asks for an automated
   first look.** Nothing about what you send changes, and nothing more is
   collected — the issue it files simply carries a label that runs an automated
   first pass over the relevant code, so a report arrives with some of the
   groundwork already done rather than waiting for someone to start from scratch.
-
-### Changed
 
 - **Budget Buddy looks like something now, rather than like a form.** The app has
   always been legible — sensible colours, a real dark mode, charts you can read —
@@ -42,6 +108,14 @@ this project uses the `0.x` versioning scheme described in
   Nothing about what any page *does* has changed, and no figure is computed
   differently. The Home page's own layout — which is a separate complaint, and a
   fair one — is next.
+
+### Removed
+
+- **The natural-language quick-add box is gone**, from both Home and the Add
+  Transaction page. You could type "spent 42 on groceries at Safeway yesterday"
+  and have the form filled in for you; in practice nobody did, and it took up
+  the space at the top of both pages. Adding a transaction by hand is unchanged,
+  and so is everything else the app does with your text.
 
 ## [0.7.0] - 2026-08-17
 

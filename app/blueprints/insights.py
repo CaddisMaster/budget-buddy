@@ -1,29 +1,40 @@
-"""v10.1 — monthly "Insight" digest (Budget Buddy's second AI feature).
+"""#232 — the month read: the ONE narrated line in Home's "Ask your finances".
 
-An on-demand, cached AI recap of the current month shown at the top of the
-dashboard. The split of responsibility is the whole point:
+Supersedes the v10.1 "Insight" card. Home used to stack four AI surfaces — the
+monthly insight, the month-ahead forecast, the weekly money check and the Ask
+box — each with its own card, cache and Generate button. They are one panel now:
+a single read of the month, then the box.
 
-  * compute_month_facts() produces every NUMBER, deterministically, from the
-    user's own rows (reusing compute_budget_vs_actual for overruns). This is the
-    only source of figures.
-  * app.ai.generate_insight() turns those facts into prose + tips — it never
-    does arithmetic, so nothing it returns is trusted as a figure.
+The split of responsibility is unchanged and is the whole point:
 
-The result is cached one-row-per-(user, month) in `insights` so it shows
-instantly on later loads; "Regenerate" overwrites via the unique upsert. The
-feature is gated on ai_enabled() and degrades gracefully (an error toast, never
-a broken page) when the key/model is unavailable.
+  * build_read_facts() produces every NUMBER, deterministically, by merging the
+    two existing builders — compute_month_facts() (this month, last month,
+    overruns, cards) and forecasts.compute_forecast() (what is still to land).
+    This is the only source of figures.
+  * app.ai.generate_month_read() turns those facts into ONE short paragraph — it
+    never does arithmetic, so nothing it returns is trusted as a figure.
+
+Cached one-row-per-(user, month) in `insights`, as the insight card was, so the
+dashboard renders it instantly and a page load never calls the model; the panel
+asks for a missing read itself (hx-trigger="load"), and Refresh overwrites via
+the unique upsert. Gated on ai_enabled() and degrades gracefully (an error toast
+and a still-usable Ask box, never a broken page).
+
+⚠️ compute_month_facts() and category_spending() are ALSO the Ask tools'
+`month_summary` / `spending_by_category` feeders — the read and the box are
+wired to the same numbers on purpose, so they can never disagree.
 """
 import json
 from datetime import datetime
 
-from flask import Blueprint, make_response, render_template, request
+from flask import Blueprint, make_response, render_template
 from flask_login import current_user, login_required
 
 from app import limiter
-from app.ai import MODEL, ParseError, generate_insight
+from app.ai import MODEL, ParseError, generate_month_read
 from app.blueprints.accounts import credit_card_utilization_facts
 from app.blueprints.budgets import compute_budget_vs_actual
+from app.blueprints.forecasts import compute_forecast
 from app.db import db_cursor
 from app.helpers import hx_toast
 
@@ -133,9 +144,49 @@ def compute_month_facts(user_id, year, month):
     }
 
 
-def load_insight(cursor, user_id, year, month):
-    """Return the cached digest for (user, month) as {summary, tips, created_at},
-    or None. Takes an existing cursor so the dashboard reuses its connection."""
+
+def build_read_facts(user_id, year, month):
+    """Every number the month read describes, from BOTH deterministic builders.
+
+    The month's own figures sit at the top level (compute_month_facts) and the
+    rest of the month hangs under `projection` (forecasts.compute_forecast), so
+    one model call sees what the Insight card and the Forecast card saw between
+    them. ⚠️ Keep the nesting — the prompt names `projection` and instructs the
+    model to frame anything inside it as a projection rather than a fact.
+    """
+    facts = compute_month_facts(user_id, year, month)
+    projection = compute_forecast(user_id, year, month)
+    # Drop the keys the month half already carries, so the model is never handed
+    # two spellings of one figure to choose between.
+    facts['projection'] = {k: v for k, v in projection.items()
+                           if k not in ('year', 'month')}
+    return facts
+
+
+def month_worth_reading(income, expenses, remaining_items):
+    """True when the month is worth narrating: any activity, or anything still
+    scheduled to land. An empty month gets the Ask box with no read rather than
+    a paid call that can only say "nothing has happened yet".
+
+    ⚠️ Pure, and shared by BOTH callers on purpose — the dashboard decides
+    whether the panel should ask for a read, and this route decides whether to
+    answer. Two separately-written gates would eventually disagree, and the
+    failure is a panel that asks on every single load and is refused every time.
+    The dashboard passes month-TO-DATE totals (it has the forecast facts in
+    hand); the route passes the whole month's, which is a superset — so the
+    route can never refuse a read the dashboard just asked for.
+    """
+    return bool(income or expenses or remaining_items)
+
+
+def load_read(cursor, user_id, year, month):
+    """Return the cached read for (user, month) as {summary, created_at}, or
+    None. Takes an existing cursor so the dashboard reuses its connection.
+
+    ⚠️ Rows written before #232 also carry a `tips` list. It is ignored rather
+    than migrated — the panel renders `summary` only, and the next Refresh
+    overwrites the row.
+    """
     cursor.execute("""
         SELECT content, created_at FROM insights
         WHERE user_id = %s AND year = %s AND month = %s
@@ -148,38 +199,40 @@ def load_insight(cursor, user_id, year, month):
     return data
 
 
-@bp.route('/insights/generate', methods=['POST'])
+@bp.route('/insights/read', methods=['POST'])
 @limiter.limit("10 per minute")
 @login_required
-def generate():
-    """Generate (or Regenerate) the current month's digest: compute the facts,
-    have Claude narrate them once, cache the result, and swap the card.
+def read():
+    """Generate (or Refresh) this month's read and swap the whole panel.
 
-    Page-agnostic HTMX endpoint — the dashboard card posts here and swaps itself
-    (#insight-card) with the returned fragment. Any failure falls back to the
-    un-generated card + an error toast, so the dashboard never breaks."""
+    Always the CURRENT month — the panel is Home's "how is this month going",
+    and taking a month from the form would be a tamperable parameter with no
+    caller. The dashboard renders a cached read directly; this endpoint is hit
+    two ways, both HTMX: the panel's own hx-trigger="load" when nothing is
+    cached yet, and the Refresh button.
+
+    ⚠️ It returns the ENTIRE panel, Ask box included — the read and the box are
+    one feature, and a fragment carrying only the paragraph would swap the input
+    out of the page.
+    """
     today = datetime.today()
-    year = request.form.get('year', type=int) or today.year
-    month = request.form.get('month', type=int) or today.month
-    if not (1 <= month <= 12 and 1 <= year <= 9999):
-        # Tamperable hidden fields (the forecasts twin's clamp) — fall back to now.
-        year, month = today.year, today.month
-    facts = compute_month_facts(current_user.id, year, month)
+    year, month = today.year, today.month
 
-    def _card(insight, just_generated=False):
+    def _panel(read_row, just_generated=False):
         return make_response(render_template(
-            'partials/_insight_card.html',
-            insight=insight, facts=facts,
-            insight_year=year, insight_month=month, ai_enabled=True,
+            'partials/_ask_panel.html',
+            read=read_row, ai_enabled=True, read_pending=False,
             just_generated=just_generated))
 
-    if facts['income'] == 0 and facts['expenses'] == 0:
-        return hx_toast(_card(None), 'Not enough data for this month yet', 'error')
+    facts = build_read_facts(current_user.id, year, month)
+    if not month_worth_reading(facts['income'], facts['expenses'],
+                               facts['projection']['remaining_items']):
+        return hx_toast(_panel(None), 'Not enough data this month yet', 'error')
 
     try:
-        result = generate_insight(facts)
+        result = generate_month_read(facts)
     except ParseError:
-        return hx_toast(_card(None), "Couldn't generate an insight right now", 'error')
+        return hx_toast(_panel(None), "Couldn't read this month right now", 'error')
 
     with db_cursor(commit=True) as cursor:
         cursor.execute("""
@@ -192,9 +245,8 @@ def generate():
         """, (current_user.id, year, month, json.dumps(result), MODEL))
         created_at = cursor.fetchone().created_at
 
-    insight = dict(result)
-    # The DB timestamp, not datetime.today() — data-generated must render the
-    # same value the next dashboard load reads back, or the read-state collapse
-    # treats the card as new once more.
-    insight['created_at'] = created_at
-    return hx_toast(_card(insight, just_generated=True), 'Insight ready')
+    read_row = dict(result)
+    # The DB timestamp, not datetime.today() — the panel prints it, and a
+    # route-local clock would disagree with what the next page load reads back.
+    read_row['created_at'] = created_at
+    return _panel(read_row, just_generated=True)

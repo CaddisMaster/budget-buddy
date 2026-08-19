@@ -1,35 +1,28 @@
-"""v10.2 — month-ahead "Forecast" projection (Budget Buddy's third AI feature).
+"""The month-ahead projection: every NUMBER behind "where is this month going".
 
-The forward-looking twin of Insight: an on-demand, cached AI projection of how
-the current month is likely to end, shown right below the Insight card on the
-dashboard. The same split of responsibility is the whole point:
+Was the v10.2 "Forecast" card — a cached AI narration of its own, sitting under
+the Insight card on Home. #232 removed the card, the `/forecasts/generate` route
+and the narration; the deterministic arithmetic here SURVIVED it and now feeds
+two callers instead of one:
 
-  * compute_forecast() produces every NUMBER, deterministically, from the user's
-    own rows — month-to-date actuals, a day-weighted spend projection, and the
-    remaining scheduled income/bills (the payoff of v10 Scheduled). This is the
-    only source of figures.
-  * app.ai.generate_forecast() turns those figures into a plain-English outlook +
-    tips — it never does arithmetic, so nothing it returns is trusted as a figure.
+  * insights.build_read_facts() — the projection half of the one month read
+  * ask.py's `month_projection` tool — the same figures, on demand
 
-Cached one-row-per-(user, month) in `forecasts`; "Regenerate" overwrites via the
-unique upsert. Gated on ai_enabled() and degrades gracefully (an error toast,
-never a broken page) when the key/model is unavailable.
+compute_forecast() produces month-to-date actuals, a day-weighted spend
+projection and the remaining scheduled income/bills. It is pure of models and
+always has been: nothing here calls Claude, and no figure it returns was ever
+written by one.
+
+⚠️ This module no longer defines a blueprint — it has no routes. The `forecasts`
+TABLE still exists and is now unread; dropping it is a migration, and a migration
+stands alone in its own PR.
 """
 import calendar
-import json
-from datetime import date, datetime
+from datetime import date
 
-from flask import Blueprint, make_response, render_template, request
-from flask_login import current_user, login_required
-
-from app import limiter
-from app.ai import MODEL, ParseError, generate_forecast
 from app.blueprints.budgets import compute_budget_vs_actual
 from app.blueprints.transactions import compute_next_due
 from app.db import db_cursor
-from app.helpers import hx_toast
-
-bp = Blueprint('forecasts', __name__)
 
 # Day-weighted projection guards. Below this much trailing spend, or this small a
 # cumulative fraction (≈ the first day or two of a month), the curve is too noisy
@@ -217,74 +210,3 @@ def compute_forecast(user_id, year, month):
         'total_budget': total_budget,
         'projected_over_budget': projected_over_budget,
     }
-
-
-def load_forecast(cursor, user_id, year, month):
-    """Return the cached forecast for (user, month) as {summary, tips,
-    created_at}, or None. Takes an existing cursor so the dashboard reuses its
-    connection. No model call."""
-    cursor.execute("""
-        SELECT content, created_at FROM forecasts
-        WHERE user_id = %s AND year = %s AND month = %s
-    """, (user_id, int(year), int(month)))
-    row = cursor.fetchone()
-    if row is None:
-        return None
-    data = json.loads(row[0])
-    data['created_at'] = row[1]
-    return data
-
-
-@bp.route('/forecasts/generate', methods=['POST'])
-@limiter.limit("10 per minute")
-@login_required
-def generate():
-    """Generate (or Regenerate) the current month's forecast: compute the
-    projection, have Claude narrate it once, cache the result, and swap the card.
-
-    Page-agnostic HTMX endpoint — the dashboard card posts here and swaps itself
-    (#forecast-card) with the returned fragment. Any failure falls back to the
-    un-generated card + an error toast, so the dashboard never breaks."""
-    today = datetime.today()
-    year = request.form.get('year', type=int) or today.year
-    month = request.form.get('month', type=int) or today.month
-    if not (1 <= month <= 12 and 1 <= year <= 9999):
-        # The card posts hidden year/month, but they're tamperable — month=13
-        # would blow up in calendar.monthrange. Fall back to now.
-        year, month = today.year, today.month
-    facts = compute_forecast(current_user.id, year, month)
-
-    def _card(forecast, just_generated=False):
-        return make_response(render_template(
-            'partials/_forecast_card.html',
-            forecast=forecast, forecast_facts=facts,
-            forecast_year=year, forecast_month=month, ai_enabled=True,
-            just_generated=just_generated))
-
-    if (facts['income_to_date'] == 0 and facts['expenses_to_date'] == 0
-            and not facts['remaining_items']):
-        # Nothing logged this month AND nothing scheduled still to come — there's
-        # genuinely nothing to project. (A scheduled paycheck due later this month
-        # is enough to forecast from, even with zero activity so far.)
-        return hx_toast(_card(None), 'Not enough activity this month to forecast yet', 'error')
-
-    try:
-        result = generate_forecast(facts)
-    except ParseError:
-        return hx_toast(_card(None), "Couldn't generate a forecast right now", 'error')
-
-    with db_cursor(commit=True) as cursor:
-        cursor.execute("""
-            INSERT INTO forecasts (user_id, year, month, content, model)
-            VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (user_id, year, month)
-            DO UPDATE SET content = EXCLUDED.content, model = EXCLUDED.model,
-                          created_at = now()
-            RETURNING created_at
-        """, (current_user.id, year, month, json.dumps(result), MODEL))
-        created_at = cursor.fetchone().created_at
-
-    forecast = dict(result)
-    # DB timestamp, not datetime.today() — see insights.generate.
-    forecast['created_at'] = created_at
-    return hx_toast(_card(forecast, just_generated=True), 'Forecast ready')

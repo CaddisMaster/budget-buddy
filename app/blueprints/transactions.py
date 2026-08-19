@@ -12,7 +12,7 @@ from flask import Blueprint, abort, current_app, flash, make_response, redirect,
 from flask_login import current_user, login_required
 
 from app import limiter
-from app.ai import ParseError, classify_transactions, parse_transaction_text
+from app.ai import ParseError, classify_transactions
 from app.db import db_cursor
 from app.helpers import (
     GENERIC_ERROR,
@@ -202,42 +202,6 @@ def new_transaction():
         all_accounts = cursor.fetchall()
     return render_template('new_transaction.html', categories=all_categories,
                            accounts=all_accounts, ai_enabled=ai_enabled())
-
-
-@bp.route('/transactions/parse', methods=['POST'])
-@limiter.limit("10 per minute")
-@login_required
-def parse_transaction():
-    """v9.0 NL quick-add: parse free text into a pre-filled Add form fragment.
-
-    Page-agnostic — both Home and the Add page post here and swap the result
-    into #txn-form-wrap. Any failure (no key, API error, unparseable) falls back
-    to an empty form + an error toast, so the manual form is always usable."""
-    text = request.form.get('text', '').strip()
-    with db_cursor() as cursor:
-        cursor.execute("SELECT id, name, kind FROM categories WHERE user_id = %s ORDER BY name", (current_user.id,))
-        all_categories = cursor.fetchall()
-        # Dual-named on purpose: the form partial reads .account_id/.account_name
-        # (the canonical account columns), ai.py's _match_id reads .id/.name (its
-        # one attribute contract across category AND account rows).
-        cursor.execute("""
-            SELECT account_id, account_name, account_id AS id, account_name AS name
-            FROM account WHERE user_id = %s ORDER BY account_name
-        """, (current_user.id,))
-        all_accounts = cursor.fetchall()
-
-    def _form(prefill):
-        return make_response(render_template(
-            'partials/_transaction_form.html',
-            categories=all_categories, accounts=all_accounts, prefill=prefill))
-
-    if not text:
-        return hx_toast(_form({}), 'Type what you bought first', 'error')
-    try:
-        prefill = parse_transaction_text(text, all_categories, all_accounts)
-    except ParseError:
-        return hx_toast(_form({}), "Couldn't parse that — fill it in manually", 'error')
-    return hx_toast(_form(prefill), 'Parsed — review and save')
 
 
 PER_PAGE = 25

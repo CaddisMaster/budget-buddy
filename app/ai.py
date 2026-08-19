@@ -1,140 +1,35 @@
-"""v9.0 — natural-language transaction parsing via Claude.
+"""Every model call the app makes, and nothing else.
 
-A single isolated entry point, parse_transaction_text(), turns a free-text note
-("spent 42 on groceries at Safeway yesterday") into structured transaction
-fields, then validates and resolves them against the user's own categories and
-accounts. Kept apart from the blueprint so it stays unit-testable (tests
-monkeypatch parse_transaction_text) and so a missing ANTHROPIC_API_KEY — or the
-anthropic package not being installed — never breaks app import.
+One isolated `_call_*_model()` seam per feature, so tests monkeypatch a single
+function per beat and a missing ANTHROPIC_API_KEY — or the anthropic package not
+being installed — degrades to a ParseError instead of breaking app import.
+
+⚠️ This module NEVER touches the database and is NEVER handed a user id. The
+tool-use beats (Ask, the money agent) drive their loop here and reach data only
+through a `dispatch` callback the blueprint supplies — blueprints/ask.py is the
+security boundary, not this file.
+
+⚠️ The v9 natural-language quick-add (`parse_transaction_text`) was REMOVED in
+#232 along with its surface: it went unused, and every AI feature on Home is now
+the one Ask panel. `_match_id` below survived it — auto-categorize and the budget
+proposer both resolve model-chosen names through it.
 """
 import json
 import math
 import os
-from datetime import date, datetime
+from datetime import date
 
 from pydantic import BaseModel
 
-# Cheap model on purpose — Sean's explicit cost call for this feature. The whole
-# point of NL quick-add is pennies-per-parse, so don't "upgrade" to Opus/Sonnet.
+# Cheap model on purpose — Sean's explicit cost call for the narration beats (the
+# month read, the digest, the goal coach) and for Ask. Don't "upgrade" to Opus.
 MODEL = "claude-haiku-4-5"
 
 
 class ParseError(Exception):
     """Raised on any failure (no key, package missing, API error, bad output).
-    The caller falls back to the empty manual form, so the feature degrades
-    gracefully instead of erroring the page."""
-
-
-class _ParsedTransaction(BaseModel):
-    """The shape we ask Claude to return (structured outputs). Everything here
-    is treated as untrusted and re-validated in _normalize()."""
-    transaction_type: str            # "expense" | "income"
-    amount: float
-    description: str
-    category: str | None          # one of the user's category names, or null
-    account: str | None           # one of the user's account names, or null
-    transaction_date: str            # YYYY-MM-DD
-
-
-def parse_transaction_text(text, categories, accounts, *, today=None):
-    """Parse free-text into resolved, ready-to-prefill transaction fields.
-
-    `categories` and `accounts` are the user's own rows carrying .id/.name
-    attributes (the account feeder aliases account_id/account_name). Returns:
-
-        {transaction_type, amount, description,
-         category_id, account_id, transaction_date}
-
-    category_id / account_id are None when the model didn't name a row the user
-    actually owns (validated server-side, case-insensitive). amount is None when
-    the model didn't give a usable positive number. Raises ParseError on any
-    failure so the caller can fall back to the manual form.
-    """
-    today = today or date.today()
-    text = (text or "").strip()
-    if not text:
-        raise ParseError("No text to parse")
-
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise ParseError("ANTHROPIC_API_KEY is not set")
-
-    category_names = [c.name for c in categories]
-    account_names = [a.name for a in accounts]
-
-    parsed = _call_model(text, category_names, account_names, today, api_key)
-    if parsed is None:
-        raise ParseError("Model returned no structured output")
-
-    return _normalize(parsed, categories, accounts, today)
-
-
-def _call_model(text, category_names, account_names, today, api_key):
-    """The single network call to Claude — isolated so tests can stub it without
-    hitting the API. Returns a _ParsedTransaction (or None); wraps any SDK,
-    network, or missing-package error in ParseError."""
-    system = (
-        "You convert a short free-text note into a single personal-finance "
-        f"transaction. Today's date is {today.isoformat()}; resolve relative "
-        "dates like 'yesterday' or 'last friday' to an absolute YYYY-MM-DD "
-        "date. Use transaction_type 'income' for money received and 'expense' "
-        "for money spent. amount is a positive number with no currency symbol. "
-        "Pick category and account ONLY from the provided lists, matching the "
-        "user's wording to the closest option; if nothing fits, use null. Write "
-        "a short, human description of what the money was for.\n"
-        f"Categories: {category_names}\n"
-        f"Accounts: {account_names}"
-    )
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        response = client.messages.parse(
-            model=MODEL,
-            max_tokens=512,
-            system=system,
-            messages=[{"role": "user", "content": text}],
-            output_format=_ParsedTransaction,
-        )
-        return response.parsed_output
-    except Exception as e:  # network, auth, malformed output, missing package
-        raise ParseError(str(e)) from e
-
-
-def _normalize(parsed, categories, accounts, today):
-    """Coerce/validate the model's output into safe form values. Pure — no API,
-    so the resolution and validation logic is directly unit-testable."""
-    ttype = (parsed.transaction_type or "").strip().lower()
-    if ttype not in ("income", "expense"):
-        ttype = "expense"
-
-    try:
-        amount = round(float(parsed.amount), 2)
-        if amount <= 0:
-            amount = None
-    except (TypeError, ValueError):
-        amount = None
-
-    description = (parsed.description or "").strip()
-
-    txn_date = today.isoformat()
-    if parsed.transaction_date:
-        try:
-            txn_date = (
-                datetime.strptime(parsed.transaction_date.strip(), "%Y-%m-%d")
-                .date()
-                .isoformat()
-            )
-        except (TypeError, ValueError):
-            pass  # leave as today on anything unparseable
-
-    return {
-        "transaction_type": ttype,
-        "amount": amount,
-        "description": description,
-        "category_id": _match_id(parsed.category, categories),
-        "account_id": _match_id(parsed.account, accounts),
-        "transaction_date": txn_date,
-    }
+    Every caller degrades gracefully — an error toast, a section left out of an
+    email — instead of erroring the page."""
 
 
 def _match_id(name, rows):
@@ -153,67 +48,81 @@ def _match_id(name, rows):
 
 
 # ---------------------------------------------------------------------------
-# v10.1 — monthly "Insight" digest.
+# #232 — the month read: the ONE narrated line on Home.
 #
-# The same isolated-seam pattern as the v9 parser, but for summarization: the
-# app computes every figure deterministically (compute_month_facts) and hands
-# them to Claude as JSON; the model only writes a plain-English recap + a tip or
-# two. It must NOT recompute or invent numbers — so nothing the model returns is
-# ever used as a figure, only as prose. Kept in this module so a missing key or
-# package degrades gracefully (ParseError) instead of breaking the dashboard.
+# Supersedes v10.1 "Insight" and v10.2 "Forecast", which were two cards narrating
+# two halves of one month (and, with the v10.10 money agent, three AI surfaces
+# stacked in one panel). The app still computes every figure deterministically —
+# insights.build_read_facts() merges compute_month_facts() with
+# compute_forecast() — and the model only writes prose over them. It must NOT
+# recompute or invent numbers, so nothing it returns is ever used as a figure.
+# Kept in this module so a missing key or package degrades gracefully
+# (ParseError) instead of breaking the dashboard.
+#
+# ⚠️ There is deliberately NO `tips` field. The panel is one short line and then
+# the Ask box; coaching is what the box is for, on demand, rather than two tips
+# nobody asked for on every load. Re-adding tips here re-creates the card.
 # ---------------------------------------------------------------------------
 
-class _Insight(BaseModel):
+class _MonthRead(BaseModel):
     """The narrative shape we ask Claude to return (structured outputs). Treated
-    as untrusted text — coerced/trimmed in generate_insight()."""
-    summary: str            # 2–3 sentence plain-English recap
-    tips: list[str]         # 1–2 short coaching tips
+    as untrusted text — coerced/trimmed in generate_month_read()."""
+    summary: str            # 2-3 sentence plain-English read of the month
 
 
-def generate_insight(facts, *, today=None):
-    """Turn already-computed monthly figures into a short narrative digest.
+def generate_month_read(facts, *, today=None):
+    """Turn already-computed month figures + projection into one short read.
 
-    `facts` is the deterministic dict from compute_month_facts(). Returns
-    {"summary": str, "tips": [str, ...]} (tips capped at 2). Raises ParseError on
-    any failure (no key, package missing, API/output error) so the caller can
-    fall back to the un-generated card + an error toast.
+    `facts` is the deterministic dict from insights.build_read_facts(): the
+    month's own figures at the top level, the forward projection under
+    `projection`. Returns {"summary": str}. Raises ParseError on any failure (no
+    key, package missing, API/output error) so the caller can fall back to the
+    panel with no read + an error toast.
     """
     today = today or date.today()
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         raise ParseError("ANTHROPIC_API_KEY is not set")
 
-    parsed = _call_insight_model(facts, today, api_key)
+    parsed = _call_month_read_model(facts, today, api_key)
     if parsed is None:
         raise ParseError("Model returned no structured output")
 
     summary = (parsed.summary or "").strip()
     if not summary:
         raise ParseError("Model returned an empty summary")
-    tips = [t.strip() for t in (parsed.tips or []) if t and t.strip()][:2]
-    return {"summary": summary, "tips": tips}
+    return {"summary": summary}
 
 
-def _call_insight_model(facts, today, api_key):
-    """The single network call for the digest — isolated so tests stub it without
-    hitting the API. Returns an _Insight (or None); wraps any SDK, network, or
-    missing-package error in ParseError."""
+def _call_month_read_model(facts, today, api_key):
+    """The single network call for the month read — isolated so tests stub it
+    without hitting the API. Returns a _MonthRead (or None); wraps any SDK,
+    network, or missing-package error in ParseError."""
     system = (
-        "You are a friendly, encouraging personal-finance coach writing a short "
-        "monthly digest. You are given the month's already-computed figures as "
-        "JSON. Do NOT recompute, re-add, or invent any numbers — treat the "
-        "figures as ground truth and only describe them. Write a warm 2-3 "
-        "sentence plain-English recap of how the month is going (income vs "
-        "spending, net, notable categories or budget overruns), then 1-2 short, "
-        "specific, actionable tips. Be supportive, not preachy. If the "
-        "credit_cards list has entries, you may note a card's utilization — "
-        "these are CURRENT balances against each card's limit (e.g. 'your "
-        "Discover is at 72% of its limit'), not month-specific figures. Where "
-        "an entry has an est_monthly_interest figure, you may note roughly "
-        "what carrying that balance costs (e.g. 'carrying that balance costs "
-        "about $25 a month in interest'). If the credit_cards list is empty, "
-        "do not mention credit cards, limits, utilization, or interest at "
-        "all. Today is "
+        "You are a friendly, encouraging personal-finance coach. You are given "
+        "one month's already-computed figures as JSON: the month itself at the "
+        "top level (income, expenses, net, savings_rate, top_categories, budget "
+        "overruns, the previous month under `prev`, and any credit cards), and "
+        "the rest of the month under `projection` (month-to-date actuals, "
+        "projected end-of-month income/expenses/net, and the scheduled items "
+        "still to land). Do NOT recompute, re-add, or invent any numbers — treat "
+        "the figures as ground truth and only describe them. Write AT MOST 3 "
+        "sentences and FEWER THAN 60 WORDS in total — this is one short "
+        "paragraph at the top of a page, not a report. Open with where the "
+        "month stands, then where it is heading: how it compares with the "
+        "month before, and what is still to leave the account before the month "
+        "ends. Lead with the single most useful thing and leave the rest out — "
+        "you are choosing what matters, not listing every figure. Frame "
+        "anything from `projection` as a projection ('on pace to…', 'that "
+        "would leave you…'), never as a fact. NEVER give advice, suggestions, "
+        "next steps or an instruction of any kind, even a gentle one, and "
+        "never close with a question — a separate Ask box handles all of that, "
+        "and a tip here duplicates it. If the "
+        "credit_cards list has entries you may note a card's utilization (these "
+        "are CURRENT balances against each card's limit, not month-specific "
+        "figures) or roughly what carrying it costs where an "
+        "est_monthly_interest figure is given; if the list is empty, do not "
+        "mention cards, limits, utilization or interest at all. Today is "
         f"{today.isoformat()} and the month may still be in progress."
     )
     try:
@@ -224,85 +133,7 @@ def _call_insight_model(facts, today, api_key):
             max_tokens=400,
             system=system,
             messages=[{"role": "user", "content": json.dumps(facts, default=str)}],
-            output_format=_Insight,
-        )
-        return response.parsed_output
-    except Exception as e:  # network, auth, malformed output, missing package
-        raise ParseError(str(e)) from e
-
-
-# ---------------------------------------------------------------------------
-# v10.2 — month-ahead "Forecast" projection.
-#
-# The capstone of the AI arc and the twin of Insight: where Insight recaps the
-# month behind you, Forecast looks forward. The app computes every figure
-# deterministically (compute_forecast — month-to-date actuals, a day-weighted
-# spend projection, and remaining scheduled income) and hands them to Claude as
-# JSON; the model only narrates the outlook + a tip or two. Same isolated-seam,
-# graceful-degradation contract as Insight — it must NOT recompute or invent
-# numbers, and a missing key/package degrades to a ParseError, never a broken
-# dashboard.
-# ---------------------------------------------------------------------------
-
-class _Forecast(BaseModel):
-    """The narrative shape we ask Claude to return (structured outputs). Treated
-    as untrusted text — coerced/trimmed in generate_forecast()."""
-    summary: str            # 2–3 sentence plain-English month-ahead outlook
-    tips: list[str]         # 1–2 short, forward-looking tips
-
-
-def generate_forecast(facts, *, today=None):
-    """Turn already-computed projection figures into a short forward-looking
-    narrative.
-
-    `facts` is the deterministic dict from compute_forecast(). Returns
-    {"summary": str, "tips": [str, ...]} (tips capped at 2). Raises ParseError on
-    any failure (no key, package missing, API/output error) so the caller can
-    fall back to the un-generated card + an error toast.
-    """
-    today = today or date.today()
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise ParseError("ANTHROPIC_API_KEY is not set")
-
-    parsed = _call_forecast_model(facts, today, api_key)
-    if parsed is None:
-        raise ParseError("Model returned no structured output")
-
-    summary = (parsed.summary or "").strip()
-    if not summary:
-        raise ParseError("Model returned an empty summary")
-    tips = [t.strip() for t in (parsed.tips or []) if t and t.strip()][:2]
-    return {"summary": summary, "tips": tips}
-
-
-def _call_forecast_model(facts, today, api_key):
-    """The single network call for the forecast — isolated so tests stub it
-    without hitting the API. Returns a _Forecast (or None); wraps any SDK,
-    network, or missing-package error in ParseError."""
-    system = (
-        "You are a friendly, encouraging personal-finance coach writing a short "
-        "month-AHEAD forecast. You are given the month's already-computed "
-        "projection figures as JSON (month-to-date actuals, a projected "
-        "end-of-month income/expenses/net, remaining scheduled items, and budget "
-        "totals). Do NOT recompute, re-add, or invent any numbers — treat the "
-        "figures as ground truth and only describe them. Write a warm 2-3 "
-        "sentence plain-English outlook for the rest of the month (where net is "
-        "headed, whether spending is on pace vs budget, the next notable "
-        "scheduled income or bill), then 1-2 short, specific, forward-looking "
-        "tips. Be supportive, not preachy. Today is "
-        f"{today.isoformat()} and the month is still in progress, so frame it as "
-        "a projection ('on pace to…', 'you're likely to…'), not a fact."
-    )
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        response = client.messages.parse(
-            model=MODEL,
-            max_tokens=400,
-            system=system,
-            messages=[{"role": "user", "content": json.dumps(facts, default=str)}],
-            output_format=_Forecast,
+            output_format=_MonthRead,
         )
         return response.parsed_output
     except Exception as e:  # network, auth, malformed output, missing package

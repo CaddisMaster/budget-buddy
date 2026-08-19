@@ -1,25 +1,25 @@
-{# The Add Transaction form. Rendered server-side on the Add page and swapped in
-   (pre-filled) by the NL quick-add parse endpoint, so it carries its own toggle
-   script and works wherever htmx drops it. `prefill` is an optional dict from
-   app.ai (transaction_type, amount, description, category_id, account_id,
-   transaction_date); empty on a fresh form. #}
-{% set prefill = prefill|default({}) %}
+{# The Add Transaction form, rendered server-side on the Add page.
+   ⚠️ It used to be swappable and PRE-FILLED — the v9 NL quick-add posted free
+   text to /transactions/parse and dropped a filled copy of this form into
+   #txn-form-wrap. That feature was removed in #232 (unused in practice), and
+   the `prefill` plumbing went with it: every field here is now blank on render.
+   Do not reintroduce a `prefill` dict without the endpoint that fills it. #}
 <form method="post" action="{{ url_for('transactions.new_transaction') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>Type</label>
     <select name="transaction_type" required>
         <option value="">-- select type --</option>
-        <option value="expense" {% if prefill.get('transaction_type') == 'expense' %}selected{% endif %}>Expense</option>
-        <option value="income" {% if prefill.get('transaction_type') == 'income' %}selected{% endif %}>Income</option>
+        <option value="expense">Expense</option>
+        <option value="income">Income</option>
     </select>
     <label>Amount</label>
-    <input type="number" step="0.01" name="amount" required value="{{ prefill.get('amount') if prefill.get('amount') is not none else '' }}">
+    <input type="number" step="0.01" name="amount" required>
     <label>Description</label>
-    <input type="text" name="description" value="{{ prefill.get('description', '') }}">
+    <input type="text" name="description">
     <label>Category</label>
     <select name="category_id">
         <option value="">-- select category --</option>
-        {% with selected_id = prefill.get('category_id') %}
+        {% with selected_id = none %}
         {% include 'partials/_category_options.html' %}
         {% endwith %}
     </select>
@@ -27,11 +27,11 @@
     <select name="account_id">
         <option value="">-- select account --</option>
         {% for account in accounts %}
-        <option value="{{ account.account_id }}" {% if prefill.get('account_id') == account.account_id %}selected{% endif %}>{{ account.account_name }}</option>
+        <option value="{{ account.account_id }}">{{ account.account_name }}</option>
         {% endfor %}
     </select>
     <label>Date</label>
-    <input type="date" name="transaction_date" required value="{{ prefill.get('transaction_date', '') }}">
+    <input type="date" name="transaction_date" required>
     <p style="font-size:12px;color:var(--text-muted);margin-top:0.25rem">
         Recurring income or bills? Set them up once on the
         <a href="{{ url_for('schedules.scheduled') }}">Scheduled</a> page and they post automatically.

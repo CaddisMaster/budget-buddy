@@ -45,20 +45,31 @@ def test_nav_has_no_analytics_link(client_a):
     assert b'href="/analytics"' not in response.data
 
 
-def test_chartjs_is_vendored(client_a):
-    # v10.13: Chart.js ships from /static/, not the jsdelivr CDN.
+def test_the_chart_library_is_vendored(client_a):
+    # v10.13: the chart library ships from /static/, not a CDN. ⚠️ #234 swapped
+    # Chart.js for ApexCharts; what is asserted is the PROPERTY (vendored, no
+    # CDN) plus the file actually referenced, so a future swap fails here loudly
+    # rather than leaving a dead <script> nobody notices.
     response = client_a.get("/")
-    assert b"chart.umd.min.js" in response.data
-    assert b"cdn.jsdelivr" not in response.data
+    assert b"apexcharts.min.js" in response.data
+    assert b"chart.umd.min.js" not in response.data      # the retired library
+    for cdn in (b"cdn.jsdelivr", b"unpkg.com", b"cdnjs."):
+        assert cdn not in response.data
 
 
 def test_charts_section_is_collapsible(client_a):
     # v10.13 de-scroll: the chart grid sits inside a <details> (open on
     # desktop, collapsed on mobile via JS); the canvases are still always
     # server-rendered.
+    # ⚠️ #223 moved the CATEGORY chart out of this section entirely — it is now
+    # server-rendered ranked bars in the page's own flow (see
+    # test_dashboard_layout.py). This asserts a plot that is still in the
+    # drawer, so it keeps testing the drawer rather than the doughnut.
+    # (#234: the plots are ApexCharts <div>s now, not <canvas> — same ids.)
     response = client_a.get("/")
     assert b'id="charts-details"' in response.data
-    assert b'id="spendingPie"' in response.data
+    assert b'id="accountBar"' in response.data
+    assert b'id="spendingPie"' not in response.data
 
 
 # --- the moved Ask box ----------------------------------------------------------
@@ -97,8 +108,14 @@ def test_yoy_card_shown_when_month_filtered_with_history(client_a, users):
 
     response = client_a.get(f"/?month={today.strftime('%Y-%m')}")
     assert response.status_code == 200
-    assert b"Year over year" in response.data
-    assert b"Same month last year" in response.data
+    # #223 collapsed three stat cards into one line: the "Year over year"
+    # heading and the "Same month last year" card label went with them, but the
+    # comparison itself — and last year's figure — must still be on the page.
+    # #223 collapsed three stat cards into one line; #225 made that line one of
+    # three PEER tiles (year-over-year, budget used, still to post). The
+    # comparison and last year's figure must still be on the page either way.
+    assert b'class="stat-row"' in response.data
+    assert b"same month last year" in response.data
     assert b"$100.00" in response.data
 
 
@@ -415,7 +432,11 @@ def test_folded_slice_is_coloured_off_the_flag_not_a_series_slot(client_a, users
                            date.today(), category_id=cat_id)
 
     body = client_a.get("/").data.decode()
-    assert "d.is_other ? cssVar('--series-other')" in body
+    # ⚠️ #223 moved this from the doughnut's JS colour function to a class on
+    # the server-rendered bar. The INVARIANT is unchanged and is the reason this
+    # test exists: the folded row is coloured off its is_other FLAG, never off
+    # the label "Other", so a user's real category of that name keeps its hue.
+    assert 's-other' in body, "the folded row does not paint from the fold token"
     # The synthetic row must not carry a palette slot of its own.
     assert "Other" not in _slot_map(body)
 

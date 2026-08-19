@@ -1,3 +1,4 @@
+import calendar
 from datetime import datetime
 
 import psycopg2
@@ -5,11 +6,15 @@ from flask import Blueprint, current_app, jsonify, redirect, render_template, re
 from flask_login import current_user, login_required
 
 from app import limiter
-from app.blueprints.agent import load_agent_run
 from app.blueprints.budgets import compute_budget_vs_actual
-from app.blueprints.forecasts import compute_forecast, load_forecast
+from app.blueprints.forecasts import compute_forecast
 from app.blueprints.goals import build_goals_view
-from app.blueprints.insights import _prev_month, compute_month_facts, load_insight
+from app.blueprints.insights import (
+    _prev_month,
+    compute_month_facts,
+    load_read,
+    month_worth_reading,
+)
 from app.blueprints.transactions import compute_next_due
 from app.db import db_cursor
 from app.helpers import ai_enabled, parse_month_param, recent_months
@@ -148,6 +153,112 @@ def assign_series_slots(rows, category_order, palette_size=8):
             chosen[name] = free
     return [r if r.get('is_other') else {**r, 'slot': chosen[r['category']]}
             for r in rows]
+
+
+# #223 — the category doughnut became ranked bars, rendered server-side so a
+# Jinja mistake is caught by a content assertion rather than showing as an empty
+# string. Pure, like fold_chart_tail() and assign_series_slots() above, and it
+# runs AFTER both: it consumes their output and adds only a width.
+#
+# The width is relative to the LARGEST row, not to the total. Bars sized by
+# share of total leave every bar short as soon as spending is spread across
+# categories, which is precisely when the comparison matters; scaling to the
+# biggest row means the ranking is always legible. The figure beside each bar
+# carries the actual amount, so nothing is inferred from the length alone.
+def to_bar_rows(rows):
+    """Add a `pct` (1-100) to each chart row, scaled to the largest. Pure."""
+    biggest = max((float(r['total']) for r in rows), default=0.0)
+    if biggest <= 0:
+        return [{**r, 'pct': 0} for r in rows]
+    # Floor at 1% so a tiny-but-real category still draws something a reader can
+    # see next to its name, rather than an empty track that reads as a bug.
+    return [{**r, 'pct': max(1, round(float(r['total']) / biggest * 100))}
+            for r in rows]
+
+
+# ── #223/#225 Home composition helpers ───────────────────────────────────────
+# All pure, all here beside fold_chart_tail()/assign_series_slots()/to_bar_rows()
+# for the same reason: the interesting cases are arithmetic, and arithmetic that
+# needs a database and a browser to test does not get tested.
+
+
+def days_left_in_month(today):
+    """Whole days remaining after today, 0 on the last day. Pure."""
+    return calendar.monthrange(today.year, today.month)[1] - today.day
+
+
+def net_change(before, after):
+    """Percent change between two nets, or None when it means nothing. Pure.
+
+    ⚠️ Takes two FIGURES, not a series. It first read the last two months off
+    the cash-flow payload, which is filtered by the month picker — so on the
+    all-time view the hero showed "ALL TIME +$17,216" with a chip beside it
+    reading "-122.5% vs. last month", two different scopes in one sentence.
+    The caller now decides which two months are being compared.
+
+    None when the earlier figure is zero: a percentage against zero is not a
+    large number, it is undefined, and rendering it as one is how a quiet month
+    starts claiming a 4000% improvement.
+    """
+    before, after = float(before), float(after)
+    if before == 0:
+        return None
+    # abs() on the denominator: a net that goes -400 -> -200 has IMPROVED, and
+    # dividing by a negative would report that as -50%.
+    return round((after - before) / abs(before) * 100, 1)
+
+
+def sparkline(series, key='balance', width=420, height=64, pad=4):
+    """An SVG polyline for a series of {month, <key>} rows. Pure.
+
+    Returns {'line': 'x,y x,y …', 'area': 'M… Z', 'last': (x, y)} or None when
+    there is nothing to draw. A flat series is centred rather than divided by a
+    zero range.
+    """
+    values = [float(r[key]) for r in series]
+    if len(values) < 2:
+        return None
+    lo, hi = min(values), max(values)
+    span = hi - lo
+    inner = height - pad * 2
+    step = width / (len(values) - 1)
+    pts = []
+    for i, v in enumerate(values):
+        x = round(i * step, 2)
+        y = round(pad + inner / 2 if span == 0
+                  else pad + (hi - v) / span * inner, 2)
+        pts.append((x, y))
+    # :g so the path reads 0,20 rather than 0.0,20 — this string goes into the
+    # page, and a rounded float prints its trailing zero.
+    def n(v):
+        return f'{v:g}'
+
+    line = ' '.join(f'{n(x)},{n(y)}' for x, y in pts)
+    area = (f'M{n(pts[0][0])},{n(height)} L'
+            + ' L'.join(f'{n(x)},{n(y)}' for x, y in pts)
+            + f' L{n(pts[-1][0])},{n(height)} Z')
+    return {'line': line, 'area': area, 'last': pts[-1]}
+
+
+def budget_usage(budget_rows):
+    """{used, total, pct} across every budgeted category, or None if nothing is
+    budgeted. pct is uncapped on purpose — being 130% through the month's budget
+    is exactly the state worth seeing. Pure."""
+    total = sum(float(r['budget']) for r in budget_rows)
+    if total <= 0:
+        return None
+    used = sum(float(r['actual']) for r in budget_rows)
+    return {'used': used, 'total': total, 'pct': round(used / total * 100)}
+
+
+def bills_outstanding(remaining_items):
+    """{count, total} of scheduled EXPENSES still to post this month. Pure.
+
+    Income is excluded deliberately: the question this answers on the dashboard
+    is "what is still going to leave the account", and netting a salary against
+    it makes the figure meaningless."""
+    bills = [i for i in remaining_items if i.get('type') == 'expense']
+    return {'count': len(bills), 'total': sum(float(i['amount']) for i in bills)}
 
 
 @bp.route('/sw.js')
@@ -368,42 +479,32 @@ def index():
                        (current_user.id,))
         category_order = {row.name: i for i, row in enumerate(cursor.fetchall())}
 
-    # AI cards (both independent of the chart month filter so their cache keys
-    # stay stable; cache-only on load, no model call). Each is positioned at a
-    # distinct moment in time and HIDDEN entirely when its target month has
-    # nothing to say (v10.6) — so the dashboard never leads with a dead card:
-    #   * Insight (v10.1) is RETROSPECTIVE → the last COMPLETE month, so on the
-    #     1st of a new month it shows a fully-populated prior-month recap rather
-    #     than an empty in-progress one. Shown only if that month had activity.
-    #   * Forecast (v10.2) is PROSPECTIVE → the current month. Shown only when
-    #     there's something to project (month-to-date activity OR a scheduled
-    #     item still to land) — mirrors the generator's own not-enough-data gate.
+        # The month read (#232) — always the CURRENT month, and deliberately
+        # independent of the chart's month filter so its cache key stays stable:
+        # the panel answers "how is this month going", not "how did the month
+        # you are browsing go". Cache-only here, no model call.
         ai_on = ai_enabled()
-        insight = None
-        insight_facts = None
-        show_insight = False
-        forecast = None
-        forecast_facts = None
-        show_forecast = False
-        agent_run = None
-        insight_year, insight_month = _prev_month(today.year, today.month)
+        # ⚠️ Computed UNCONDITIONALLY since #223: the dashboard's "still to post"
+        # figure reads `remaining_items`, and that is a plain fact about the
+        # user's schedules, not an AI feature. It used to sit inside the `if
+        # ai_on:` below purely because the forecast card was its only consumer —
+        # leaving it there would mean the stat silently vanishing on an install
+        # with no API key. The narration around it stays gated.
+        forecast_facts = compute_forecast(current_user.id, today.year, today.month)
+        read = None
+        read_pending = False
         if ai_on:
-            insight_facts = compute_month_facts(current_user.id, insight_year, insight_month)
-            show_insight = insight_facts['income'] > 0 or insight_facts['expenses'] > 0
-            if show_insight:
-                insight = load_insight(cursor, current_user.id, insight_year, insight_month)
-
-            forecast_facts = compute_forecast(current_user.id, today.year, today.month)
-            show_forecast = not (forecast_facts['income_to_date'] == 0
-                                 and forecast_facts['expenses_to_date'] == 0
-                                 and not forecast_facts['remaining_items'])
-            if show_forecast:
-                forecast = load_forecast(cursor, current_user.id, today.year, today.month)
-
-            # Money agent (v10.10) — the latest cached weekly run. Unlike the two
-            # cards above there's no not-enough-data gate: the empty state IS the
-            # card (it carries the Run-now button), so it shows whenever AI is on.
-            agent_run = load_agent_run(cursor, current_user.id)
+            # #232 — ONE cached read of the CURRENT month, replacing the Insight
+            # (previous month), Forecast (current month) and money-agent cards.
+            # ⚠️ Nothing is generated here: a page load must never wait on — or
+            # pay for — a model call. When the month has no read yet the panel
+            # asks for one itself after load, and it asks only when there is
+            # something to narrate, so an empty month stays silent and free.
+            read = load_read(cursor, current_user.id, today.year, today.month)
+            read_pending = read is None and month_worth_reading(
+                forecast_facts['income_to_date'],
+                forecast_facts['expenses_to_date'],
+                forecast_facts['remaining_items'])
 
     # Chart payloads — plain lists the template renders with |tojson, which
     # HTML-escapes into the script block (the old json.dumps + |safe let a
@@ -427,6 +528,24 @@ def index():
     income_by_category_data = assign_series_slots(income_by_category_data,
                                                   category_order)
 
+    # #223 — the same two views, shaped for the server-rendered bars. Only views
+    # that HAVE rows go in, and insertion order is the display order: the
+    # template shows the first and hides the rest, so a user with income
+    # categorized but nothing spent still sees a populated section rather than
+    # an empty one labelled "Spending by category".
+    category_bars = {}
+    if spending_data:
+        category_bars['expense'] = to_bar_rows(spending_data)
+    if income_by_category_data:
+        category_bars['income'] = to_bar_rows(income_by_category_data)
+
+    # #225 — the figures the composed hero and stat row state. Each is pure and
+    # unit-tested in tests/test_home_composition.py.
+    hero_spark = sparkline(net_balance_data)
+    budget_used = budget_usage(budget_chart_data)
+    bills_due = bills_outstanding(forecast_facts['remaining_items'])
+    days_left = days_left_in_month(today)
+
     has_transactions = bool(cash_flow) or bool(spending)
 
     # v10.6 hero — income/expenses/net for the current view (a single selected
@@ -440,6 +559,14 @@ def index():
         'savings_rate': ((hero_income - hero_expenses) / hero_income * 100) if hero_income > 0 else None,
         'label': selected_month if selected_month else 'All time',
     }
+
+    # ⚠️ Only when ONE month is being viewed. Against "All time" there is no
+    # "last month" the headline figure could be compared with, and inventing one
+    # is how the two scopes got mixed.
+    hero_delta = None
+    if selected_month:
+        prev_facts = compute_month_facts(current_user.id, *_prev_month(filter_year, filter_month))
+        hero_delta = net_change(prev_facts['net'], summary['net'])
 
     # Year over year — only when a month is selected AND last year has data;
     # hero_expenses is the same-filtered this-year total.
@@ -457,6 +584,12 @@ def index():
         yoy=yoy,
         spending_data=spending_data,
         income_by_category_data=income_by_category_data,
+        category_bars=category_bars,
+        hero_spark=hero_spark,
+        hero_delta=hero_delta,
+        budget_used=budget_used,
+        bills_due=bills_due,
+        days_left=days_left,
         cash_flow_data=cash_flow_data,
         net_balance_data=net_balance_data,
         account_data=account_data,
@@ -467,15 +600,6 @@ def index():
         has_transactions=has_transactions,
         goals=goals_view,
         ai_enabled=ai_on,
-        show_insight=show_insight,
-        insight=insight,
-        facts=insight_facts,
-        insight_year=insight_year,
-        insight_month=insight_month,
-        show_forecast=show_forecast,
-        forecast=forecast,
-        forecast_facts=forecast_facts,
-        forecast_year=today.year,
-        forecast_month=today.month,
-        agent_run=agent_run
+        read=read,
+        read_pending=bool(read_pending)
     )
