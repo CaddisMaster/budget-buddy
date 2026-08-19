@@ -5,6 +5,72 @@
 
 ## Current Status
 
+### On `main`, not yet deployed (2026-08-19)
+
+**Three PRs merged after `0.7.0`, all under the open `0.8.0` milestone. Prod still runs
+`0.7.0` (2026-08-17) — nothing here is deployed.**
+
+- **#226 — the design system** (#225 phase 1). See the 2026-08-18 block below.
+- **#229 — automated triage inverted to opt-in.** See below.
+- **#227 — Home, rebuilt.** One squash-merge closing **four** issues:
+  - **#223** the page opens with the answer (hero net position, ranked category bars,
+    year-over-year as one line);
+  - **#232** the four AI surfaces become ONE "Ask your finances" panel — a cached month
+    read plus the box. The read merges `compute_month_facts()` with `compute_forecast()`
+    into a single model call cached in the **existing `insights` table** (no migration).
+    Two new Ask tools, `month_summary` and `month_projection`, so the box reaches what the
+    retired cards showed. The v9 NL quick-add is **removed entirely**;
+  - **#233** two layout holes closed (a lone stat tile filled a third of its row; Goals in
+    the narrow column left a 380px void). Page height 3107 → 2983 at 1440;
+  - **#234** the charts redrawn — **Chart.js out, ApexCharts 4.7.0 in**.
+
+Tests: **953** on `main` (was 921 at `0.7.0`). CI on the merge commit is green.
+
+⚠️ **`blueprints/forecasts.py` and `blueprints/agent.py` no longer define a blueprint** —
+both lost their routes; 18 registered, was 20. The forecast arithmetic feeds the month
+read and an Ask tool; the money agent runs inside the weekly digest, which is deliberately
+untouched.
+
+⚠️ **The `forecasts` TABLE is now dead** — no reader, no writer. Dropping it is **#236**,
+and it is a migration, so it stands alone in its own PR.
+
+⚠️ **ApexCharts is pinned at 4.7.0 for a LICENCE reason, not inertia.** 5.x is dual-licensed
+and 6.x ships a `LicenseEnforcer` that watermarks charts, with terms binding on annual
+revenue. 4.7.0 is the last MIT release. `tests/test_design_system.py` asserts the vendored
+licence still says MIT and that no enforcer is in the bundle — treat any bump of this
+library as a licence decision.
+
+⚠️ **A conflicting PR runs NO CI at all** (learned the hard way this session). #227 sat a
+full day with a `CHANGELOG.md` conflict; `pull_request` workflows test the merge ref,
+GitHub cannot compute one for a conflicting PR, so nothing queued — and its last real run
+had been a **failure**. This file previously recorded that PR as "green, 954 passing".
+Check `gh pr view <n> --json mergeable,mergeStateStatus` before believing an absence of red.
+
+⚠️ **Put every `Closes #N` in the PR BODY.** Two of the four were only in commit messages,
+which a squash-merge does not reliably carry; `gh pr view --json closingIssuesReferences`
+showed only two linked until they were added to the body.
+
+### The rest of #225 is now filed, one issue per page
+
+**14 issues, #237–#250, all on `0.8.0`** — History, Budgets, Accounts, Goals, Scheduled,
+Transfer, Categories, Add transaction, Profile, Settings, User management, Login, Change
+password, Create user. Written from the templates themselves, so each names what that page
+actually is today. Three things worth knowing before picking one up:
+
+- **Five share one shape** — Accounts, Categories, Goals, Scheduled, Transfer are all "Add
+  X form on top, Existing X table below", which is the #223 complaint. Decide it once.
+- **Three may not deserve to exist** — #247, #249, #250 are 18, 13 and 16 lines and are
+  arguably sections of Settings and Profile.
+- **Four carry a "do not break this"**: Profile's notification copy is a consent record;
+  Settings must never render a secret or its prefix, and `NOT_SCHEDULED` must not read as a
+  fault; Login is the second shell and must not leak whether a username exists.
+
+Also open: **#235** (two stacked topbars, ~49px and a hamburger the desktop does not need —
+touches `base.html`, so every page) and **#236** (the `forecasts` drop).
+
+⚠️ **#225 stays OPEN** — it is the umbrella, and its own plan is "design-system PR, then
+per-page PRs". #226 and Home are done; the 14 are the rest.
+
 ### On `main`, not yet deployed (2026-08-18)
 
 Two PRs merged after `0.7.0`, both under the open **`0.8.0`** milestone:
@@ -21,10 +87,11 @@ Two PRs merged after `0.7.0`, both under the open **`0.8.0`** milestone:
   with **0 comments** and both model steps skipped. `skip-triage` is left in place and now
   does nothing.
 
-**Open and deliberately held: PR #227** (`223-home-declutter`) — the Home page declutter plus
-the composition rebuilt against the Option A artboard. Green, 954 passing, three commits.
-Sean is holding it to make further changes. ⚠️ It has **one conflict with `main` in
-`CHANGELOG.md`** — the normal two-PRs-in-a-day case, neither side wrong.
+~~**Open and deliberately held: PR #227**~~ — **merged 2026-08-19**, see the block above.
+⚠️ Two claims made here were wrong and are worth keeping as a caution: it was recorded as
+"green, 954 passing" when its last CI run had **failed** (two ruff errors), and the
+`CHANGELOG.md` conflict noted here was not merely cosmetic — **it suppressed CI entirely**
+for a day.
 
 Tests: **932** on `main`; **954** on the #227 branch.
 

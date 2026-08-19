@@ -154,7 +154,7 @@ Details, including the xdist isolation rules that make `-n auto` safe, are in
 - It **refuses to run while another run is in flight** (an advisory `flock`) — two concurrent runs
   corrupt each other through identical xdist prefixes
 - Defaults to a bounded `-n 10`; `-n0` is the serial escape for `pdb` or unreadable output
-- **921 tests** (measured 2026-08-17; `910 passed, 11 skipped` inside the shipped image). ⚠️ Recount rather than trusting that number — it has been
+- **953 tests** (measured 2026-08-19; the in-image split is stale — recount it). ⚠️ Recount rather than trusting that number — it has been
   wrong four times running
 - Also runs in CI, and **inside the shipped image** when `Dockerfile`, `requirements*.txt`,
   `tests/` or `ci.yml` change (widened in #218 — a `tests/`-only change used to skip it, which is
