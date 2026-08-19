@@ -2,15 +2,29 @@
 {% block title %}Create user — Budget Buddy{% endblock %}
 {% block page_heading %}<h1>Create user</h1>{% endblock %}
 {% block content %}
-<form method="post" style="max-width:400px">
+<form method="post" class="narrow-form">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <label>Username</label>
-  <input type="text" name="username" required>
-  <label>Password</label>
-  <input type="password" name="password" required>
-  <label style="display:flex;align-items:center;gap:8px;margin-top:1rem">
-    <input type="checkbox" name="is_admin" style="width:auto"> Admin
-  </label>
+  <label for="username">Username</label>
+  <input type="text" id="username" name="username" required autocomplete="off">
+  <p class="field-hint">Between 3 and 50 characters.</p>
+  <label for="password">Password</label>
+  <input type="password" id="password" name="password" required autocomplete="new-password">
+  {% with field_id = 'password' %}{% include 'partials/_password_rules.html' %}{% endwith %}
+  {# #250 — creating an admin is a privileged action and was an ordinary
+     checkbox with no statement of what it grants. The powers listed are the
+     real ones: every admin-gated route in admin.py. #}
+  <fieldset class="grant-box">
+    <legend>Access</legend>
+    <label class="grant-check">
+      <input type="checkbox" name="is_admin"> Make this user an admin
+    </label>
+    <p class="field-hint">
+      An admin can reach <strong>Settings</strong> — download a full database
+      backup, and see integration and scheduled-job status — and can
+      <strong>create, delete and promote other users</strong>, including
+      removing your own access. A normal user only ever sees their own money.
+    </p>
+  </fieldset>
   <button type="submit" class="btn btn-primary" style="margin-top:1.5rem">Create account</button>
 </form>
 {% endblock %}

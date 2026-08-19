@@ -10,6 +10,25 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **Add transaction leads with the amount.** It used to sit fourth, behind a
+  type dropdown you had to answer first — and the two edge-case checkboxes
+  (exclude from analytics, pending amount) carried more explanation between them
+  than the whole rest of the form. Amount, description and category come first
+  now, and the two flags are behind a "Adjustment or pending amount?" section
+  you open when you need it. Every field the form had is still there.
+
+- **The password rules are stated before you submit, not after.** Changing your
+  password and creating a user both silently required at least 8 characters and
+  at most 72 bytes, and told you only by rejecting what you typed. Both pages
+  now say so up front, and count as you type — including for accented letters
+  and emoji, which take more than one byte each, so "40 characters" can be over
+  the limit while looking well under it.
+
+- **Creating an admin says what that grants.** It was an ordinary checkbox
+  labelled "Admin". It now spells out that an admin can reach Settings, download
+  a full database backup, and create, delete and promote other users — including
+  removing your own access.
+
 - **History reads as a ledger.** The amount and the running balance — the two
   things you actually scan a row for — are now the most legible things in it,
   and they line up on the decimal point down the column. The date, category and

@@ -444,6 +444,26 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .filter-chip-x { font-weight: 700; opacity: 0.7; }
 .table-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
 
+/* #244/#249/#250 — the three forms. A form is easier to read at a measure it
+   cannot exceed; these were all `style="max-width:400px"` inline or nothing. */
+.narrow-form { max-width: 430px; }
+.field-hint { font-size: 12px; color: var(--text-muted); margin-top: 0.3rem; line-height: 1.5; }
+.field-hint-note { display: block; opacity: 0.85; }
+/* The live byte count (#249). `.over` covers both bounds — too short and too
+   long are equally "not submittable yet", and one style says so once. */
+.password-count { font-variant-numeric: tabular-nums; }
+.password-count.over { color: var(--danger); font-weight: 600; }
+/* #250 — what ticking admin grants, stated beside the box rather than implied
+   by the word "Admin". */
+.grant-box { margin-top: var(--sp-5); padding: 0.9rem 1.1rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); }
+.grant-box legend { padding: 0 0.4rem; font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.grant-check, .flag-check { display: flex; align-items: center; gap: 0.5rem; font-weight: 500; color: var(--text); margin-top: 0.5rem; }
+.grant-check input, .flag-check input { width: auto; margin: 0; }
+/* The flags disclosure reuses .add-panel's shell but sits inside a form, so it
+   needs its own top margin rather than the grid gap a page-level panel gets. */
+.txn-flags { margin-top: var(--sp-5); }
+
+
 
 
 
