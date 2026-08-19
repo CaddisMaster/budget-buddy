@@ -17,9 +17,6 @@
 {% endif %}
 </div>
 
-{% if ai_enabled and show_coach %}
-{% with facts = coach_facts %}{% include 'partials/_goal_coach_card.html' %}{% endwith %}
-{% endif %}
 
 {% if accounts %}
 <details class="add-panel"{% if not goals %} open{% endif %}>

@@ -304,3 +304,22 @@ def test_panel_is_hidden_without_a_key(client_a, monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     body = client_a.get("/").data.decode()
     assert 'id="ask-panel"' not in body
+
+
+# --- moved here when the Goal Coach was removed (#262) ------------------------
+# ⚠️ This was the last surviving test of test_ai_collapse.py. That file existed
+# for the read-state collapse machinery, which went with its final consumer —
+# but THIS assertion is about Home's panel and has nothing to do with the
+# coach, so it moves rather than being deleted with the file.
+
+def test_the_home_ai_panel_is_not_a_details_element(client_a, monkeypatch):
+    """#232 — the read is the first thing the panel says, so hiding it behind a
+    disclosure triangle would defeat the point of folding four cards into one."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    html = client_a.get("/").get_data(as_text=True)
+    assert 'id="ask-panel"' in html
+    assert '<details id="ask-panel"' not in html
+    # No ELEMENT on Home carries a read-state key. (`data-ai-key` unquoted also
+    # appears in base.html's initAiCollapse selector, on every page — matching
+    # that would make this assertion pass for the wrong reason.)
+    assert 'data-ai-key="' not in html

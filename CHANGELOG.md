@@ -8,6 +8,14 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Removed
+
+- **The Goal Coach is gone.** The AI card on Goals that wrote a short recap of
+  how your savings goals were tracking has been retired, along with its
+  Generate button. Everything it described — pace, what's behind, what you'd
+  need to set aside each month — is still on the page, computed rather than
+  narrated, and the Ask box on Home answers questions about it on demand.
+
 ### Changed
 
 - **The AI features look like one feature.** Home's "Ask your finances" panel

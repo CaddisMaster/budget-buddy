@@ -624,38 +624,6 @@ def fetch_forecast(user_id, year, month):
     return row
 
 
-def create_goal_coach(user_id, year, month, content, model="claude-haiku-4-5"):
-    """Insert a cached goal-coach row directly (bypassing the model/route)."""
-    import json
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO goal_coach (user_id, year, month, content, model) "
-        "VALUES (%s, %s, %s, %s, %s) RETURNING id",
-        (user_id, year, month, json.dumps(content), model),
-    )
-    gcid = cur.fetchone()[0]
-    conn.commit()
-    cur.close()
-    conn.close()
-    return gcid
-
-
-def fetch_goal_coach(user_id, year, month):
-    """Return (content, model, user_id) for a cached goal coach, or None."""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT content, model, user_id FROM goal_coach "
-        "WHERE user_id = %s AND year = %s AND month = %s",
-        (user_id, year, month),
-    )
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    return row
-
-
 def create_agent_run(user_id, period_start, content, model="claude-sonnet-4-6"):
     """Insert a cached money-agent run directly (bypassing the model/route)."""
     import json
