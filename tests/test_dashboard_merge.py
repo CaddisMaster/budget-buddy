@@ -15,7 +15,7 @@ import re
 from datetime import date
 from pathlib import Path
 
-from app.blueprints.main import assign_series_slots, fold_chart_tail
+from app.blueprints.main import PALETTE_SIZE, assign_series_slots, fold_chart_tail
 from tests.conftest import create_category, create_transaction
 
 # --- the redirect -------------------------------------------------------------
@@ -249,7 +249,9 @@ def test_category_slots_are_distinct_per_category(client_a, users):
 
     slots = _slot_map(client_a.get("/").data.decode())
     drawn = [n for n in names if n in slots]
-    assert len(drawn) == 6, f"expected six drawn after the fold, got {drawn}"
+    # All seven fit the palette now (#257), so the invariant is tested against
+    # the FULL set rather than a folded subset — a strictly stronger check.
+    assert len(drawn) == len(names), f"expected all of them drawn, got {drawn}"
     assigned = [slots[n] for n in drawn]
     assert len(set(assigned)) == len(drawn), f"colliding slots: {slots}"
     assert max(assigned) < 8, "slot past the palette wraps to a duplicate colour"
@@ -317,29 +319,37 @@ def test_series_palette_is_eight_distinct_hues_in_both_modes():
 
 # --- the folded tail (#108) ---------------------------------------------------
 #
-# A doughnut is past its readable limit around six slices, so the payload
-# builders keep the top six categories and roll the rest into one neutral
-# "Other". Folding is presentation ONLY — it happens after the SQL rollup, so
-# every other surface still sees complete per-category figures, and the card's
-# own total cannot move.
+# The payload builders keep the top PALETTE_SIZE categories and roll the rest
+# into one neutral "Other". Folding is presentation ONLY — it happens after the
+# SQL rollup, so every other surface still sees complete per-category figures,
+# and the card's own total cannot move.
+#
+# ⚠️ The limit was SIX until #257, chosen because "a doughnut is past its
+# readable limit around six slices" — and #223 had already deleted the doughnut
+# for a server-rendered list of ranked bars, where eight rows is not crowded.
+# It is tied to the palette now: draw as many categories as there are distinct
+# hues. These counts are asserted against PALETTE_SIZE rather than a literal, so
+# the next change to it does not silently leave a stale number here.
 
 def test_fold_leaves_a_short_list_untouched():
-    rows = [{"category": f"c{i}", "total": float(i)} for i in range(6)]
+    rows = [{"category": f"c{i}", "total": float(i)} for i in range(PALETTE_SIZE)]
     assert fold_chart_tail(rows) == rows
     assert not any("is_other" in r for r in fold_chart_tail(rows))
 
 
 def test_fold_rolls_the_tail_into_one_flagged_entry():
-    rows = [{"category": f"c{i}", "total": float(10 - i)} for i in range(9)]
+    extra = 3
+    rows = [{"category": f"c{i}", "total": float(50 - i)}
+            for i in range(PALETTE_SIZE + extra)]
     folded = fold_chart_tail(rows)
 
-    assert len(folded) == 7, "six real categories plus one Other"
+    assert len(folded) == PALETTE_SIZE + 1, "a full palette plus one Other"
     other = folded[-1]
     assert other["category"] == "Other"
     assert other["is_other"] is True
-    assert other["folded"] == 3
+    assert other["folded"] == extra
     # Gherkin: the combined segment equals the sum of what it replaced.
-    assert other["total"] == sum(r["total"] for r in rows[6:])
+    assert other["total"] == sum(r["total"] for r in rows[PALETTE_SIZE:])
     # ...and the whole is conserved, which is what keeps the card honest.
     assert sum(r["total"] for r in folded) == sum(r["total"] for r in rows)
 
@@ -347,7 +357,7 @@ def test_fold_rolls_the_tail_into_one_flagged_entry():
 def test_fold_ranks_by_total_not_input_order():
     # The callers' SQL already sorts, but the helper must not depend on it.
     rows = [{"category": "small", "total": 1.0}] + [
-        {"category": f"big{i}", "total": 100.0 + i} for i in range(6)]
+        {"category": f"big{i}", "total": 100.0 + i} for i in range(PALETTE_SIZE)]
     folded = fold_chart_tail(rows)
     assert [r["category"] for r in folded][-1] == "Other"
     assert folded[-1]["total"] == 1.0
@@ -358,21 +368,24 @@ def test_fold_marks_only_the_synthetic_row():
     # A user may own a real category NAMED "Other" — it must stay a normal row
     # with its own colour, which is why the template keys on the flag.
     rows = [{"category": "Other", "total": 999.0}] + [
-        {"category": f"c{i}", "total": float(i)} for i in range(8)]
+        {"category": f"c{i}", "total": float(i)} for i in range(PALETTE_SIZE + 1)]
     folded = fold_chart_tail(rows)
     real = folded[0]
     assert real["category"] == "Other" and "is_other" not in real
 
 
-def test_dashboard_doughnut_never_draws_more_than_seven_segments(client_a, users):
+def test_dashboard_never_draws_more_than_the_palette_plus_other(client_a, users):
     a = users["a"]
-    for rank in range(9):
+    # The fixture already seeds one categorized expense, so this is
+    # PALETTE_SIZE + 3 categories in total and the fold is guaranteed.
+    for rank in range(PALETTE_SIZE + 2):
         cat_id = create_category(a["id"], f"Cat {rank}")
-        create_transaction(a["id"], a["account_id"], 900.00 - rank * 100,
+        create_transaction(a["id"], a["account_id"], 2000.00 - rank * 100,
                            date.today(), category_id=cat_id)
 
     rows = _chart_rows(client_a.get("/").data.decode())
-    assert len(rows) == 7, f"expected a folded chart, got {len(rows)} segments"
+    assert len(rows) == PALETTE_SIZE + 1, \
+        f"expected a folded chart, got {len(rows)} segments"
     assert rows[-1]["category"] == "Other"
     assert rows[-1]["is_other"] is True
 
@@ -382,9 +395,9 @@ def test_dashboard_fold_preserves_the_card_total(client_a, users):
     # already seeds one 42.50 expense, so total against the DB, not a constant.
     a = users["a"]
     seeded = 42.50
-    for rank in range(9):
+    for rank in range(PALETTE_SIZE + 2):
         cat_id = create_category(a["id"], f"Cat {rank}")
-        amount = 900.00 - rank * 100
+        amount = 2000.00 - rank * 100
         seeded += amount
         create_transaction(a["id"], a["account_id"], amount, date.today(),
                            category_id=cat_id)
@@ -410,16 +423,17 @@ def test_income_view_folds_too(client_a, users):
     # The pill toggle's second payload shares the canvas, palette and slot map,
     # so it needs the same fold.
     a = users["a"]
-    for rank in range(8):
+    extra = 2
+    for rank in range(PALETTE_SIZE + extra):
         cat_id = create_category(a["id"], f"Income {rank}", kind="income")
-        create_transaction(a["id"], a["account_id"], 800.00 - rank * 100,
+        create_transaction(a["id"], a["account_id"], 2000.00 - rank * 100,
                            date.today(), transaction_type="income",
                            category_id=cat_id)
 
     rows = _chart_rows(client_a.get("/").data.decode(), "incomeByCategoryData")
-    assert len(rows) == 7
+    assert len(rows) == PALETTE_SIZE + 1
     assert rows[-1]["is_other"] is True
-    assert rows[-1]["folded"] == 2
+    assert rows[-1]["folded"] == extra
 
 
 def test_folded_slice_is_coloured_off_the_flag_not_a_series_slot(client_a, users):
@@ -535,7 +549,12 @@ def test_dashboard_never_draws_two_slices_the_same_colour(client_a, users):
     rows = _chart_rows(client_a.get("/").data.decode())
     drawn = [r for r in rows if not r.get("is_other")]
     slots = [r["slot"] for r in drawn]
-    assert len(drawn) == 6
+    # ⚠️ The collision is UNCHANGED by #257 and that is the point: "Cat 0" and
+    # "Cat 8" are creation indices 1 and 9, so both still prefer slot 1, and
+    # both are still drawn. Raising the fold to the palette size widens the
+    # drawn set to PALETTE_SIZE, which is exactly the boundary at which
+    # assign_series_slots can still guarantee a free slot for the displaced one.
+    assert len(drawn) == PALETTE_SIZE
     assert len(set(slots)) == len(slots), f"two slices share a colour: {slots}"
     # Both halves of the colliding pair really are on screen.
     names = {r["category"] for r in drawn}

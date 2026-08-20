@@ -622,6 +622,28 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .cat-bar-fill.s7 { background: var(--series-7); }
 .cat-bar-fill.s8 { background: var(--series-8); }
 .cat-bar-fill.s-other { background: var(--series-other); }
+
+/* #257 — the same eight palette tokens, as a swatch on /categories, so a
+   category can show the colour it is actually drawn in on Home.
+   ⚠️ The slot comes from the server (main.category_slot_map), which runs the
+   real fold + assignment. Do NOT reimplement it as `creation_index % 8` in a
+   template: that is the PREFERRED slot, and it differs from the drawn one
+   precisely when two categories contest a hue — a swatch that is usually right
+   is worse than no swatch, which is what #257 was filed about.
+   ⚠️ `.cat-swatch-none` is deliberately a hollow outline rather than a grey
+   fill: grey is --series-other, an actual drawn colour meaning "inside the
+   Other bar", and a category with no transactions this month is not that. */
+.cat-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 0.5rem; vertical-align: baseline; flex-shrink: 0; }
+.cat-swatch.s1 { background: var(--series-1); }
+.cat-swatch.s2 { background: var(--series-2); }
+.cat-swatch.s3 { background: var(--series-3); }
+.cat-swatch.s4 { background: var(--series-4); }
+.cat-swatch.s5 { background: var(--series-5); }
+.cat-swatch.s6 { background: var(--series-6); }
+.cat-swatch.s7 { background: var(--series-7); }
+.cat-swatch.s8 { background: var(--series-8); }
+.cat-swatch-none { background: none; border: 1px dashed var(--border); }
+.cat-legend { font-size: 13px; color: var(--text-muted); margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
 .cat-bar-amount { font-family: var(--font-display); font-size: var(--fs-sm); font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
 /* On a phone the three-column row leaves the track about 100px wide, so a
    category at 17% of the largest draws a 17-pixel stub and the ranking stops
