@@ -16,6 +16,19 @@ this project uses the `0.x` versioning scheme described in
   `app/` changed, and the page is still deployed by copying `landing/` to the
   Droplet rather than by the release workflow.
 
+### Fixed
+
+- **CI no longer fails at random on a Postgres startup race.** The image job
+  waited for its database with `pg_isready` over the unix socket. The
+  `postgres:16` entrypoint runs `initdb` against a temporary server that listens
+  on the socket and not on TCP, then shuts it down and starts the real one — so
+  the probe reported ready against a server about to disappear, the wait broke
+  early, and loading the schema failed with `FATAL: the database system is
+  shutting down`. The probe now uses TCP, which the temporary server never
+  serves, so the race is removed rather than made less likely; an exhausted wait
+  now also fails naming the real problem instead of falling through to a
+  confusing `psql` error. CI only — nothing under `app/` changed.
+
 ## [0.8.0] - 2026-08-20
 
 ### Security

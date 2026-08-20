@@ -509,12 +509,31 @@ jobs:
           docker run -d --name ci-db --network ci-net \
             -e POSTGRES_USER=budget -e POSTGRES_PASSWORD=budget -e POSTGRES_DB=budget \
             postgres:16
-          # Give Postgres a moment; the app only needs it once a request touches
-          # the database, but a clean boot is what we are asserting here.
+          # ⚠️ Probe over TCP (`-h 127.0.0.1`), NEVER the default unix socket.
+          # The entrypoint runs initdb against a TEMPORARY server started with
+          # `-c listen_addresses=''` — socket only, no TCP — then stops it with
+          # `pg_ctl -m fast -w stop` and starts the real one. A socket probe
+          # reports READY against that throwaway server, so the loop breaks
+          # early and the psql below lands in the shutdown window:
+          #   FATAL: the database system is shutting down
+          # That is #281, and it is sub-second, so it fails perhaps one run in
+          # many — a re-run goes green and hides it. The temp server never
+          # listens on TCP at all, so a TCP probe cannot see it: the race is
+          # removed rather than made less likely.
+          ready=""
           for i in $(seq 1 30); do
-            docker exec ci-db pg_isready -U budget >/dev/null 2>&1 && break
+            docker exec ci-db pg_isready -h 127.0.0.1 -U budget >/dev/null 2>&1 && { ready=1; break; }
             sleep 2
           done
+          # Fail HERE, loudly, rather than letting psql fail with a message
+          # about something else. Without this the loop just falls through on
+          # exhaustion and runs the load anyway, which is how the cause above
+          # reached the log as one confusing line instead of a clear timeout.
+          if [ -z "$ready" ]; then
+            echo "Postgres never accepted a TCP connection after 60s"
+            docker logs ci-db
+            exit 1
+          fi
           # ON_ERROR_STOP: psql exits 0 on SQL errors in a file without it.
           docker exec -i ci-db psql -U budget -d budget -v ON_ERROR_STOP=1 < sql/schema.sql
 
