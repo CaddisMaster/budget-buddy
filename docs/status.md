@@ -5,48 +5,57 @@
 
 ## Current Status
 
-### On `main`, not yet deployed (2026-08-19, evening — #225 COMPLETE)
+### ✅ `0.8.0` SHIPPED AND LIVE (2026-08-20)
 
-**The `0.8.0` milestone is 35 closed / 0 OPEN. Prod still runs `0.7.0` (2026-08-17) —
-nothing merged since PR #217 is deployed.** (`git log a80d583..main` is the set; a number
-written here would be wrong the moment this file is committed.)
+**Prod runs `0.8.0`, deployed and verified 2026-08-20.** The `0.8.0` milestone is **closed at
+47 issues**. ⚠️ **No milestone is open — the next cycle needs one created.**
 
-⚠️ **`0.8.0` has not been cut.** An empty milestone is not a release.
+**Verified from OUTSIDE, not from the workflow's own report** — the first release where that was
+possible:
 
-**#225 — the front-end overhaul — is CLOSED.** Both halves of its plan shipped: the design
-system (#226) and then every page. Ten PRs this evening:
+```
+local  md5(app/static/style.css) at v0.8.0  -> 7239e2ec
+production serves  style.css?v=              -> 7239e2ec   ✅ match
+v0.7.0 was                                   -> 44ef4f4a
+```
+
+Plus a second independent witness: `/login` carries the brand mark added in #256.
+⚠️ **Do not assume this handle exists next time.** It works only because the overhaul happened
+to rewrite the stylesheet; a release touching no static asset is back to trusting the pipeline.
+A version on `/healthz` still does not exist. **Decide the handle before cutting.**
+
+**Seven PRs on release day**, on top of the front-end overhaul already on `main`:
 
 | PR | Closed |
 |---|---|
-| #252 | #235 — one header row per page; the desktop hamburger removed |
-| #253 | #239 #240 #241 #242 #243 — the five same-shape pages lead with state |
-| #254 | #237 #238 — History reads as a ledger; Budgets states its position |
-| #255 | #244 #249 #250 — password rules up front; Add transaction leads with the amount |
-| #256 | #245 #246 #247 #248 — Profile grouped; one status vocabulary; Login carries the mark |
-| #259 | #258 — two tests that depended on xdist scheduling |
-| #261 | #260 — Goal Coach + budget review get Home's AI material |
-| #263 | #262 — the Goal Coach removed entirely |
-| #265 | #236 — `forecasts` and `goal_coach` DROPPED (`sql/36`) |
+| #268 | #222 — History filters by account; plus a latent Export CSV bug |
+| #269 | #264 — `./test.sh` runs ruff before pytest, fail-fast, pins shared with CI |
+| #270 | #267 — the `verify` skill's teardown delegates instead of duplicating |
+| #273 | #271 — `sql/37`, `users.session_token` (migration, stood alone) |
+| #274 | #272 — a password change signs out every other device |
+| #275 | #257 — Categories shows the drawn colour; fold raised to `PALETTE_SIZE` |
+| #276 | — release prep |
 
-Suite **1084** (was 953 at the start of the evening; measured 2026-08-19 — recount rather
-than trusting it).
+Suite **1142 passed, 4 skipped**. ⚠️ Recount rather than trusting that
+(`./test.sh --collect-only -q -n0 | tail -1`) — the recorded count has been wrong five times.
 
-⚠️ **`sql/36` is unapplied in production.** It drops `forecasts` and `goal_coach`. It deploys
-**AFTER** the image pull (a DROP is the mirror of an additive migration), needs a `pg_dump`
-first, and must be `scp`'d to the deploy dir, which has no git.
+⚠️ **The `0.8.0` deploy signed every session out once.** Cookies predating #272 carry no token
+to verify. One-time, expected, and called out in the changelog and the What's-new strip.
 
-⚠️ **The `css_v` verification gap from `0.7.0` has closed itself** — `app/static/style.css`
-changed in nearly every PR above, so the next deploy IS verifiable from outside. Do not
-re-file it.
+⚠️ **`sql/36`'s DROP ran BEFORE the image swap**, against a `v0.7.0` container that reads both
+tables. Accepted deliberately — one user, a watched deploy, `pg_dump` first — and **that
+acceptance does not generalise.** Tracked as **#277**. The header on `sql/36` used to claim the
+window was empty; it reasoned about `main`, and deploy ordering is only ever about the image
+that is RUNNING. Corrected in #276.
 
-⚠️ **`initAiCollapse` and the whole read-state collapse mechanism are GONE** (#262). The Goal
-Coach was its last consumer. `.ai-card` survives (cleanup banner, budget-review banner);
-`.ai-head`, `.ai-headline`, `.facts-strip`, `.fact*` and most of the `.insight-*` run do not.
+⚠️ **`CLAUDE.md` said to apply migrations by hand and `RUNBOOK.md` says the deploy job does it.**
+The runbook was right; the `CLAUDE.md` bullet was stale and cost a session's planning before
+anyone read it. Corrected in #276.
 
-⚠️ **Open, deliberately not on the milestone:** **#257** (Categories cannot show "the colour
-it is drawn with" — a category has no stable colour; #243's other half, with the evidence)
-and **#264** (`./test.sh` runs pytest but not ruff, so lint can only fail in CI). Older:
-#224, #222, #36.
+### Open after `0.8.0`
+
+- **#277** — `release.yml` applies DROP migrations before the image swap (filed 2026-08-20)
+- **#36** — date-parked to ~Dec 2026, correctly carries no milestone
 
 ### Superseded — the morning of the same day (2026-08-19)
 
