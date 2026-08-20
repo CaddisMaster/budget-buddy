@@ -23,6 +23,14 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **`./test.sh` lints before it tests.** Ruff was only ever run by CI, so an
+  unused import — the cheapest possible defect — was caught four minutes away in
+  the most expensive possible place, and re-ran the whole pipeline for a one-line
+  fix. It now runs first and stops the run if it fails; `SKIP_LINT=1 ./test.sh`
+  skips it when you want the test signal first. The ruff version is pinned to the
+  same value in `requirements-dev.txt` and in CI, so a green local run predicts a
+  green remote one. **No change to the application or to what ships.**
+
 - **The AI features look like one feature.** Home's "Ask your finances" panel
   has been a dark purple surface since the redesign, but the Goal Coach on Goals
   and the AI budget review on Budgets were ordinary cards with a thin purple

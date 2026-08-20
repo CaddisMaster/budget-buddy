@@ -7,6 +7,37 @@
 
 Run with **`./test.sh`** (args pass through to pytest, e.g. `./test.sh -k semimonthly`).
 
+⚠️ **`test.sh` runs `ruff check` FIRST and stops if it fails** (#264). Ruff used to exist
+only in CI, so an unused import was invisible locally and turned the remote build red —
+#263 orphaned four imports in `goals.py`, the local suite was green, CI failed on `F401`,
+and a ~4-minute pipeline re-ran for a one-line fix. **`SKIP_LINT=1 ./test.sh`** is the
+escape hatch when you already know a stray import is there and want the test signal first.
+Fail-fast was chosen over warn-and-continue deliberately: a warning you can ignore is a
+warning you *will* ignore, which is how this reached CI to begin with.
+
+- ⚠️ **The ruff version is pinned in TWO files and they must agree** —
+  `requirements-dev.txt` and the `version:` input of `astral-sh/ruff-action` in
+  `ci.yml`. The action installs the *newest* ruff when given no version, so leaving CI
+  unpinned means a ruff release can turn CI red against code `./test.sh` just passed —
+  giving back the exact property this change exists to establish.
+  `tests/test_lint_local.py::test_the_two_ruff_pins_agree` asserts the equality, so
+  bumping ruff means editing both files and no test.
+- ⚠️ **The `exec` and the `flock` are untouched.** Ruff runs *before* the `exec`, so the
+  lock on fd 9 is held across it and inherited by pytest exactly as before — verified:
+  a second run is still refused, and `kill -9` on an in-flight run still frees the lock.
+  Option C in #264 (drop the `exec`, run both, exit non-zero if either fails) was
+  rejected for exactly this reason; it would have rewritten documented lock reasoning to
+  buy test output on a lint failure, which `SKIP_LINT=1` already provides.
+- ⚠️ **The container probe covers ruff as well as pytest** (`web_has_dev_deps`). A
+  container built before #264 has pytest but no ruff; probing only pytest would send it
+  down the "use the live container" path and then fail on every run. It falls through to
+  the throwaway path instead, which rebuilds and fixes it — the same self-healing the
+  pytest probe was written for.
+- ⚠️ **`kill -9` on a run still orphans the container-side pytest** (unchanged by this,
+  and unrelated to the lock, which the kernel frees). Check with `docker top`, not
+  `exec ps`; `docker compose restart web` is the reliable cleanup, since the slim image
+  has no `kill` binary and `docker top` reports host PIDs you cannot signal.
+
 ⚠️ **`test.sh` REFUSES TO RUN while another run is in flight** (#206) — an advisory
 `flock` on fd 9, taken before anything expensive and never released, so it survives the
 final `exec docker compose …` and the kernel drops it when the run ends (including a
@@ -20,7 +51,7 @@ path** and a stale `runtests` on `PATH` should be deleted rather than repaired. 
 is unaffected — it always was the guard that actually held, and it lives in `test.sh` itself.
 
 It runs in a throwaway `web` container on prod's Python 3.14 — no local venv;
-`requirements-dev.txt` adds just `pytest`. Needs the dev `db` container up (route/isolation
+`requirements-dev.txt` adds `pytest`, `pytest-xdist` and `ruff`. Needs the dev `db` container up (route/isolation
 tests hit it). Also runs in **GitHub Actions CI** on every push/PR (`.github/workflows/ci.yml`,
 `postgres:16` service + `schema.sql`) — but **only when the diff can affect behaviour** (the
 `changes` job's `app` flag; a docs-only PR skips the suite and the job still reports success).
@@ -32,8 +63,9 @@ was replacing.
 **`test.sh` takes one of two paths and says which:** if the dev stack is up it runs the suite
 inside the **live `web` container** (`docker compose exec`) — no container created, no image
 built, no dependencies installed; otherwise it falls back to a throwaway `run --rm --build`. A
-container started before the `dev` stage existed has no pytest, so the script probes for it and
-falls back rather than dying on an import error. Both paths run the same image.
+container started before the `dev` stage existed has no pytest, and one built before #264 has no
+ruff, so the script probes for **both** (`web_has_dev_deps`) and falls back rather than dying on
+an import error. Both paths run the same image, and the lint step uses whichever path was chosen.
 
 **⚠️ `tests/conftest.py`'s `TEST_PREFIX` is PER-WORKER** — `"__pytest__" + PYTEST_XDIST_WORKER`
 — and that is the single thing making `-n auto` safe. Workers are separate processes sharing ONE
@@ -121,12 +153,26 @@ install cost ~1.5s and total per-invocation overhead ~2.9s, cut to ~0.8s by #70.
 predicted to "roughly halve" the run; it actually cut it by ~12×, because the suite is
 IO/DB-bound rather than CPU-bound and parallelises far better than a CPU-bound suite would.
 
-**953 tests in `tests/`** (measured 2026-08-19, end of session; was 921 at `0.7.0`. ⚠️ **The in-image split below is from `0.7.0` and has NOT been re-measured** — recount it before quoting it; 5 of them skip on the last day of a month — `test_forecast.py`'s date guards. ⚠️ **Inside the shipped image the run is `910 passed, 11 skipped`** — real-file tests skipping because `.dockerignore` strips `*.md`. Two legitimately different numbers; do not "fix" the gap.) ⚠️ **Recount rather than trusting this number** — it has now been wrong four times (757 against a true 762 on 2026-08-03, 783 against a true 806 on 2026-08-04, 806 against a true 843 on 2026-08-10, 906 against a true 912 on 2026-08-17), so the drift is real and the month-end skips do not explain it. Cross-cutting patterns: **no real API calls anywhere** — every
+⚠️ **The test COUNT is deliberately not recorded here any more.** It was written down and
+was wrong five times running (757 against a true 762 on 2026-08-03, 783 against 806 on
+2026-08-04, 806 against 843 on 2026-08-10, 906 against 912 on 2026-08-17, 953 against 1084
+on 2026-08-19). The drift is structural, not carelessness: the commit that records a count
+is itself part of the change that alters it, so the number is stale the moment it is
+committed. **Count them instead** — `./test.sh --collect-only -q -n0 | tail -1`.
+
+⚠️ **Two numbers legitimately differ and the gap is not a bug to fix**: the run inside the
+shipped image is smaller, because real-file tests skip when `.dockerignore` has stripped
+what they read (`*.md`, `test.sh`, `docker-compose*.yml`, `.env.*`). A handful also skip on
+the last day of a month (`test_forecast.py`'s date guards). Recount both rather than
+quoting either.
+
+Cross-cutting patterns: **no real API calls anywhere** — every
 `ai.py::_call_*_model` seam (and `mailer.py::_call_resend`) is monkeypatched with canned
 `SimpleNamespace` responses; every feature file asserts **user isolation**; route tests assert
 anon → 302. What each file covers:
 
 - `test_variable_bills.py` — #191 end to end via the mocked `pusher._call_webpush` seam: the link column (stamped on materialization, NULL for hand-entered rows, surviving a schedule delete), which rows the pass selects (variable only, the 3-day window, per-user scoping), the payload, sending (idempotent per transaction, the `push_enabled()` gate claiming nothing, isolation, `PushGone` deletes vs `PushError` keeps), the daily job, and the form round-trip. ⚠️ **`test_a_bill_posted_by_a_page_load_is_still_alerted` is the load-bearing one** — it materializes the way a page load does, asserts `next_due` has already moved past today, and only then runs the job; it is the test that fails under the rejected schedule-side design. Carries `@pytest.mark.xdist_group("scheduler_sweep")` and builds every endpoint from `TEST_PREFIX`. ⚠️ Known to FAIL without the feature, not merely to pass with it: removing the one-line `schedule_id` stamp turns 11 of its 23 red
+- `test_lint_local.py` — #264: that `./test.sh` lints before it tests. The **load-bearing one is `test_the_two_ruff_pins_agree`**, which asserts `requirements-dev.txt` and `ci.yml` name the same ruff version — stated as an equality between the two files rather than as a literal, so a bump edits both files and no test. Also: ruff runs BEFORE the `exec` (asserted as two *positions*, since a `ruff check` placed after it would satisfy a substring assertion and never run), a lint failure exits non-zero, `SKIP_LINT=1` exists, the container probe covers ruff and not just pytest, and #206's `flock` is still taken before the lint. ⚠️ Every test SKIPS when its file is absent, naming `.dockerignore` — **`test.sh` is genuinely stripped from the shipped image**, and this change touches `requirements*.txt` and `tests/`, so the in-image run really happens. Verified red: all 7 fail against the pre-fix files
 - `test_deploy_pinning.py` — #190: the compose image ref has **no `:-` default of any kind** (the property, not the string) and errors naming `TAG`; `.env.example` carries a `TAG=` line; both workflows rewrite the pin, `chmod 600` **before** the write, and the release pins **before** its first compose command. ⚠️ Every test SKIPS when the file it reads is absent, naming `.dockerignore` — `docker-compose*.yml` and `.env.*` are genuinely excluded from the shipped image (#176). Verified red against the pre-fix compose file
 - `test_model_constants.py` — #140: which model each beat runs on, **and the request
   parameters the Sonnet 5 move made load-bearing**. Beyond the two constant scenarios it

@@ -131,9 +131,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # ⚠️ `version:` is PINNED, and must equal the ruff pin in
+      # requirements-dev.txt — tests/test_lint_local.py asserts the two agree.
+      # Without it the action installs whatever ruff is newest, so a release
+      # adding a rule turns this job red against code that `./test.sh` just
+      # passed locally. Local predicting CI is the entire point of #264; an
+      # unpinned linter here quietly gives that back.
       - name: Ruff
         uses: astral-sh/ruff-action@v3
         with:
+          version: 0.16.3
           args: check --output-format github
 
   test:

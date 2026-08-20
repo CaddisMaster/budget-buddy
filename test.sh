@@ -9,8 +9,13 @@
 #   ./test.sh -k semimonthly        # run tests matching a keyword
 #   ./test.sh -v                    # verbose output
 #   ./test.sh -n0                   # SERIAL — for pdb, or readable failure output
+#   SKIP_LINT=1 ./test.sh           # skip ruff and go straight to the tests
 #
 # Any extra arguments are passed straight through to pytest.
+#
+# Runs `ruff check` FIRST and stops if it fails (#264) — lint is the cheapest
+# class of defect to fix and used to be caught only by CI, four minutes away.
+# See the block above the invocation for why it fails fast rather than warning.
 #
 # Runs in PARALLEL by default, which takes the full suite from ~204s to well
 # under a minute. That is safe only because tests/conftest.py derives its
@@ -132,22 +137,70 @@ web_is_running() {
   docker compose ps --status running --services 2>/dev/null | grep -qx web
 }
 
-# A container started before the `dev` stage existed will not have pytest.
-# Rather than failing with an import error, fall through to the throwaway path,
-# which rebuilds and therefore fixes the situation for next time.
-web_has_pytest() {
-  docker compose exec -T web python -c 'import pytest' >/dev/null 2>&1
+# A container started before the `dev` stage existed will not have pytest, and
+# one started before #264 will not have ruff. Rather than failing with an import
+# error, fall through to the throwaway path, which rebuilds and therefore fixes
+# the situation for next time.
+#
+# ⚠️ Both are probed, deliberately. Probing only pytest would leave a
+# pre-#264 container passing the check and then failing on the ruff invocation
+# below — turning "your container is slightly old", which this script already
+# knows how to repair silently, into a hard error on every run.
+web_has_dev_deps() {
+  docker compose exec -T web python -c 'import pytest' >/dev/null 2>&1 &&
+    docker compose exec -T web python -m ruff --version >/dev/null 2>&1
 }
 
-if web_is_running && web_has_pytest; then
+if web_is_running && web_has_dev_deps; then
   echo "→ Using the running web container."
-  exec docker compose exec -T web "${PYTEST_ARGS[@]}"
+  RUNNER="docker compose exec -T web"
+else
+  if web_is_running; then
+    echo "→ The running web container predates the dev image; using a throwaway one."
+    echo "  Run 'docker compose up -d --build web' once and later runs will reuse it."
+  else
+    echo "→ No running stack; building a throwaway container."
+  fi
+  RUNNER="docker compose run --rm --build web"
 fi
 
-if web_is_running; then
-  echo "→ The running web container predates the dev image; using a throwaway one."
-  echo "  Run 'docker compose up -d --build web' once and later runs will reuse it."
+# ─── Lint before tests (#264) ────────────────────────────────────────────────
+#
+# Ruff was only ever run by CI, so an unused import — the cheapest possible
+# defect — was caught in the most expensive possible place. #263 orphaned four
+# imports, `./test.sh` went green, CI went red on F401, and a ~4-minute pipeline
+# re-ran for a one-line fix.
+#
+# ⚠️ It FAILS FAST rather than warning and continuing (option A of the three in
+# #264). A warning you can ignore is a warning you will ignore, which is exactly
+# how this reached CI in the first place. `SKIP_LINT=1 ./test.sh` is the escape
+# hatch for when you want the test signal mid-iteration and already know a stray
+# import is there; ruff itself takes well under a second, so the normal case
+# costs nothing.
+#
+# ⚠️ This runs BEFORE the `exec` below, which is why the `exec` survives at all.
+# The flock on fd 9 is unaffected: it is held by this shell for the ruff run and
+# then inherited across the exec, exactly as before. Dropping the `exec` to run
+# both and report both (option C) would have changed that documented reasoning
+# and needed re-verifying under `kill -9`; fail-fast does not.
+#
+# ⚠️ `python -m ruff`, not bare `ruff`, for the reason the pytest invocation
+# gives: going through the module guarantees the interpreter holding the
+# dependency is the one that runs it.
+#
+# On the throwaway path this is a second `docker compose run`. The build is a
+# cache hit by then, and that path is already the slow one — worth it to keep a
+# single code path for both cases.
+if [ -n "${SKIP_LINT:-}" ]; then
+  echo "→ Skipping ruff (SKIP_LINT is set)."
 else
-  echo "→ No running stack; building a throwaway container."
+  # shellcheck disable=SC2086  # word-splitting $RUNNER is intended
+  if ! $RUNNER python -m ruff check; then
+    echo "✗ ruff found problems — fix them, or re-run with SKIP_LINT=1 to get" >&2
+    echo "  the test signal first. CI runs the same version and would fail here." >&2
+    exit 1
+  fi
 fi
-exec docker compose run --rm --build web "${PYTEST_ARGS[@]}"
+
+# shellcheck disable=SC2086  # word-splitting $RUNNER is intended
+exec $RUNNER "${PYTEST_ARGS[@]}"
