@@ -152,11 +152,16 @@ Details, including the xdist isolation rules that make `-n auto` safe, are in
 
 - **`./test.sh`** is the only path (args pass through to pytest). It runs in a container on prod's
   Python 3.14; the dev `db` container must be up. `runtests` was retired 2026-08-17
+- It **runs `ruff check` first and stops if lint fails** (#264). `SKIP_LINT=1 ./test.sh` skips it.
+  ⚠️ The ruff version is pinned in **both** `requirements-dev.txt` and `ci.yml` and they must
+  agree — bumping it means editing both
 - It **refuses to run while another run is in flight** (an advisory `flock`) — two concurrent runs
   corrupt each other through identical xdist prefixes
 - Defaults to a bounded `-n 10`; `-n0` is the serial escape for `pdb` or unreadable output
-- **953 tests** (measured 2026-08-19; the in-image split is stale — recount it). ⚠️ Recount rather than trusting that number — it has been
-  wrong four times running
+- ⚠️ **The test count is deliberately NOT recorded here.** Every number written in this file has
+  been wrong within a release — five times running — because the commit that records it changes
+  the set it describes. Count them when you need them:
+  `./test.sh --collect-only -q -n0 | tail -1`
 - Also runs in CI, and **inside the shipped image** when `Dockerfile`, `requirements*.txt`,
   `tests/` or `ci.yml` change (widened in #218 — a `tests/`-only change used to skip it, which is
   how the same defect reached `main` twice). ⚠️ The dev bind mount hides files `.dockerignore`

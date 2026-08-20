@@ -9,3 +9,13 @@ pytest==9.1.1
 # from PYTEST_XDIST_WORKER — every worker owns its own database rows. Read the
 # note there before changing how test users are named.
 pytest-xdist==3.8.0
+# The linter ./test.sh runs before pytest (#264). It lives here rather than
+# being installed per run so the image's `dev` stage bakes it in.
+#
+# ⚠️ THIS VERSION IS PINNED IN TWO PLACES and they must agree: here, and the
+# `version:` input of astral-sh/ruff-action in .github/workflows/ci.yml. The
+# action defaults to whatever ruff is newest, so leaving it unpinned reopens the
+# exact hole this dependency exists to close — a newer ruff in CI flags what the
+# local one accepts, and the local run stops predicting the remote one. The two
+# are asserted equal by tests/test_lint_local.py.
+ruff==0.16.3
