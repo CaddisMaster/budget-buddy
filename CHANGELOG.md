@@ -8,6 +8,8 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-20
+
 ### Security
 
 - **Changing your password now signs out your other devices.** It previously
@@ -927,7 +929,8 @@ lineage, most recent first:
 - **v9.0** — conversational transaction entry (first AI feature)
 - **v1–v8** — core CRUD and deployment, UI overhaul, multi-user authentication, blueprints and pytest, ownership guards, transfers and goals, smart budgets, HTMX inline CRUD and CI
 
-[Unreleased]: https://github.com/CaddisMaster/budget-buddy/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/CaddisMaster/budget-buddy/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.4.1...v0.5.0
