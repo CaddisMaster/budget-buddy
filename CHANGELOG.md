@@ -8,6 +8,22 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Added
+
+- **History can be filtered by account.** A third filter joins the search box
+  and the month picker in the page header, so you can look at one account's
+  ledger on its own. It combines with the other two, the running balance column
+  re-nets to just that account, and the chip above the table names the account
+  you are looking at so the filter is never invisible.
+
+### Fixed
+
+- **Export CSV now honours a search filter.** When a search was active but no
+  month was selected, the Export CSV link was built without a `?`, so the
+  download quietly ignored the filter the page was visibly applying and returned
+  every transaction. Every History link is now assembled from one place, which
+  also means Export carries the new account filter.
+
 ### Removed
 
 - **Two unused database tables are gone.** `forecasts` and `goal_coach` cached

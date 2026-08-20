@@ -207,14 +207,25 @@ def new_transaction():
 PER_PAGE = 25
 
 
-def _filter_qs(selected_month, search, page):
+def _filter_qs(selected_month, search, account_id, page):
     """Query string carrying the current History filters so inline actions can
-    re-render the same page/filter slice after a mutation."""
+    re-render the same page/filter slice after a mutation.
+
+    ⚠️ Every History URL is built from THIS, never by concatenating `?a=`/`&b=`
+    in the template. That hand-built shape is what broke the Export CSV link
+    (#222): it emitted `?month=` first and `&search=` second, so a search with
+    no month produced `/transactions/export&search=…` — not a query string, and
+    Flask handed the view no arguments at all. The CSV then quietly ignored a
+    filter the page was visibly applying. urlencode() also escapes the search
+    text, which the old form did not.
+    """
     params = {}
     if selected_month:
         params['month'] = selected_month
     if search:
         params['search'] = search
+    if account_id:
+        params['account'] = account_id
     if page and page != 1:
         params['page'] = page
     return urlencode(params)
@@ -225,14 +236,25 @@ def _current_filters():
     return (
         parse_month_param(request.args.get('month')),
         request.args.get('search', '').strip(),
+        parse_int_param(request.args.get('account')),
         parse_page_param(request.args.get('page', 1)),
     )
 
 
-def _load_history(user_id, selected_month, search, page, per_page=PER_PAGE):
-    """Return (rows_with_running_balance, total, total_pages) for one page of a
-    user's transaction history under the given filters."""
-    offset = (page - 1) * per_page
+def _history_where(user_id, selected_month, search, account_id):
+    """Build the shared History WHERE clause: (clause, params).
+
+    ⚠️ ONE builder, FIVE queries. `_load_history` runs four of them (the COUNT
+    behind the pager, the paged SELECT, the seed SUM behind the running balance,
+    and the page-1 pending pin) and `export_transactions` runs the fifth. The
+    export used to duplicate this logic inline, which made "the CSV disagrees
+    with the page it came from" a one-line-omission away — add a filter here and
+    every reader gets it.
+
+    The clause always opens with `t.user_id = %s`, so an `account_id` belonging
+    to somebody else selects nothing rather than leaking; the filter needs no
+    ownership guard of its own.
+    """
     filters = ["t.user_id = %s"]
     params = [user_id]
     if selected_month:
@@ -242,7 +264,18 @@ def _load_history(user_id, selected_month, search, page, per_page=PER_PAGE):
     if search:
         filters.append("t.description ILIKE %s")
         params.append(f'%{search}%')
-    where_clause = "WHERE " + " AND ".join(filters)
+    if account_id:
+        filters.append("t.account_id = %s")
+        params.append(account_id)
+    return "WHERE " + " AND ".join(filters), params
+
+
+def _load_history(user_id, selected_month, search, page, account_id=None,
+                  per_page=PER_PAGE):
+    """Return (rows_with_running_balance, total, total_pages) for one page of a
+    user's transaction history under the given filters."""
+    offset = (page - 1) * per_page
+    where_clause, params = _history_where(user_id, selected_month, search, account_id)
     with db_cursor() as cursor:
         cursor.execute(f"SELECT COUNT(*) FROM transactions t {where_clause}", params)
         total = cursor.fetchone()[0]
@@ -331,12 +364,13 @@ def render_history_tbody():
     """Re-render the History <tbody> for the request's current filters — shared
     by every inline mutation (and by the transfers blueprint) so the per-page
     running balance is always recomputed."""
-    selected_month, search, page = _current_filters()
-    rows, _total, _pages = _load_history(current_user.id, selected_month, search, page)
+    selected_month, search, account_id, page = _current_filters()
+    rows, _total, _pages = _load_history(current_user.id, selected_month, search, page,
+                                         account_id=account_id)
     return render_template('partials/_transactions_tbody.html',
                            transactions=rows,
                            frequency_labels=FREQUENCY_LABELS,
-                           filter_qs=_filter_qs(selected_month, search, page))
+                           filter_qs=_filter_qs(selected_month, search, account_id, page))
 
 
 @bp.route('/transactions')
@@ -346,26 +380,51 @@ def transactions():
     from app.blueprints.transfers import run_due_transfers
     run_due_schedules(current_user.id)
     run_due_transfers(current_user.id)
-    selected_month, search, page = _current_filters()
+    selected_month, search, account_id, page = _current_filters()
     months = recent_months()
-    rows, total, total_pages = _load_history(current_user.id, selected_month, search, page)
+    rows, total, total_pages = _load_history(current_user.id, selected_month, search, page,
+                                             account_id=account_id)
     cleanup_enabled = ai_enabled()
     uncategorized_count = count_uncategorized(current_user.id) if cleanup_enabled else 0
     with db_cursor() as cursor:
         cursor.execute("SELECT id, name, kind FROM categories WHERE user_id = %s ORDER BY name",
                        (current_user.id,))
         categories = cursor.fetchall()
+        cursor.execute("SELECT account_id, account_name FROM account "
+                       "WHERE user_id = %s ORDER BY account_name",
+                       (current_user.id,))
+        accounts = cursor.fetchall()
+    # The chip names the account, so it needs the NAME, and the lookup is scoped
+    # to the user's own accounts — a foreign id leaves this None and the chip
+    # simply does not render (the filter still applies and selects nothing,
+    # which is the truthful answer rather than a silently ignored parameter).
+    selected_account_name = next(
+        (a.account_name for a in accounts if a.account_id == account_id), None)
     return render_template('history.html',
         transactions=rows,
         categories=categories,
+        accounts=accounts,
         months=months,
         selected_month=selected_month,
         search=search,
+        selected_account=account_id,
+        selected_account_name=selected_account_name,
         page=page,
         total_pages=total_pages,
         total=total,
         frequency_labels=FREQUENCY_LABELS,
-        filter_qs=_filter_qs(selected_month, search, page),
+        filter_qs=_filter_qs(selected_month, search, account_id, page),
+        # Every History URL the template renders, built by urlencode rather than
+        # by string concatenation — see the warning on _filter_qs. `export_qs`
+        # omits `page` because the export is the whole filtered set, and each
+        # `clear_*` drops one filter and resets to page 1, since removing a
+        # filter changes which rows exist.
+        export_qs=_filter_qs(selected_month, search, account_id, 1),
+        prev_qs=_filter_qs(selected_month, search, account_id, page - 1),
+        next_qs=_filter_qs(selected_month, search, account_id, page + 1),
+        clear_month_qs=_filter_qs(None, search, account_id, 1),
+        clear_search_qs=_filter_qs(selected_month, None, account_id, 1),
+        clear_account_qs=_filter_qs(selected_month, search, None, 1),
         cleanup_enabled=cleanup_enabled,
         uncategorized_count=uncategorized_count,
     )
@@ -567,18 +626,11 @@ def bulk_delete():
 @bp.route('/transactions/export')
 @login_required
 def export_transactions():
-    selected_month = parse_month_param(request.args.get('month'))
-    search = request.args.get('search', '').strip()
-    filters = ["t.user_id = %s"]
-    params = [current_user.id]
-    if selected_month:
-        year, month = selected_month.split('-')
-        filters.append("EXTRACT(YEAR FROM t.transaction_date) = %s AND EXTRACT(MONTH FROM t.transaction_date) = %s")
-        params.extend([year, month])
-    if search:
-        filters.append("t.description ILIKE %s")
-        params.append(f'%{search}%')
-    where_clause = "WHERE " + " AND ".join(filters)
+    # Same filters as the page, read the same way and built by the same builder,
+    # so the CSV can never disagree with the History view it was downloaded
+    # from. `page` is deliberately ignored: the export is the whole filtered set.
+    selected_month, search, account_id, _page = _current_filters()
+    where_clause, params = _history_where(current_user.id, selected_month, search, account_id)
     with db_cursor() as cursor:
         cursor.execute(f"""
             SELECT t.transaction_date, t.transaction_type, t.amount,
