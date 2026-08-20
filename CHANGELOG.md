@@ -39,6 +39,11 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **Groundwork for signing out other devices.** The `users` table gains a
+  `session_token` column (`sql/37`). Nothing reads it yet and no behaviour
+  changes; it is what lets a future password change invalidate sessions on
+  devices you are no longer holding.
+
 - **The `verify` skill tears down what it creates again.** Its cleanup was a
   hand-maintained copy of the test suite's teardown, and it still named two
   tables that `sql/36` dropped — so it aborted on the first missing one and
