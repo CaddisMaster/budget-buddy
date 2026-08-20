@@ -34,8 +34,15 @@
   until they clear their cookies. And the pre-#272 format is a bare `"42"`, so on the
   deploy that ships a format change, *every outstanding cookie* takes the failure path.
   ⚠️ A test asserting `load_user("<some id>") is None` **passes vacuously** when that id
-  does not exist — a missing user returns `None` regardless. Assert it against a REAL
-  user's id, which is what `test_the_pre_272_cookie_format_is_rejected` does.
+  does not exist — a missing user returns `None` regardless, before any token is compared.
+  Assert it against a REAL user's id (`test_the_pre_272_cookie_format_is_rejected` and
+  `test_a_bad_token_on_a_REAL_user_is_anonymous_not_an_error` both do).
+  ⚠️ **That vacuity hid a live defect for one commit**: `secrets.compare_digest` raises
+  `TypeError: comparing strings with non-ASCII characters is not supported` on `str`, so
+  `load_user("<real id>:ü")` RAISED — a 500 on every authenticated page, from the one
+  function whose contract is never to raise. It is compared as **bytes** now
+  (`.encode()` both sides). Every probe with a made-up id had returned `None` happily,
+  because the user lookup failed first and the comparison never ran.
   ⚠️ Rotating `users.session_token` is what signs a device out, so any write that rotates
   it must **re-issue the acting session** (`auth.change_password` calls `login_user()`
   again) — otherwise the user is logged out by their own password change, which reads as

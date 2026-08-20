@@ -63,17 +63,52 @@ def test_a_loaded_user_exposes_its_token(users):
 @pytest.mark.parametrize("cookie_id", [
     "",
     "notanumber",
-    "42:",
     ":sometoken",
-    "42:not-a-uuid",
-    "42:1:2",
+    "1:2:3",
 ])
 def test_a_malformed_session_id_is_anonymous_not_an_error(app, cookie_id):
     """A raised exception here would be a 500 on every page for every logged-in
     user until they cleared their cookies — `load_user` runs before any route's
-    own error handling."""
+    own error handling. These shapes are rejected before any database lookup."""
     from app import load_user
     assert load_user(cookie_id) is None
+
+
+@pytest.mark.parametrize("token", [
+    "",
+    "not-a-uuid",
+    "1:2",
+    "ü",                 # ⚠️ see below
+    "étoken",
+    "token\x00",
+    "x" * 10000,
+])
+def test_a_bad_token_on_a_REAL_user_is_anonymous_not_an_error(users, token):
+    """⚠️ The id here must EXIST, and that is the entire point of this test.
+
+    Written against a made-up id, `User.get_by_id` returns None and `load_user`
+    exits before it ever compares tokens — so every case below "passes" while
+    the comparison itself is never executed. That is exactly what happened: the
+    non-ASCII cases went green against a version where they raised.
+
+    `secrets.compare_digest` raises `TypeError: comparing strings with non-ASCII
+    characters is not supported` when given `str`. Reaching it with `"ü"` on a
+    real user therefore raised, breaking the fail-closed contract. The fix is to
+    compare BYTES; these cases are the regression test.
+    """
+    from app import load_user
+    assert load_user(f"{users['a']['id']}:{token}") is None
+
+
+def test_a_non_ascii_token_does_not_raise(users):
+    """Stated separately from the parametrized set above so the failure mode has
+    a name in the output. A TypeError here is a 500 on every authenticated page,
+    not a failed login."""
+    from app import load_user
+    try:
+        assert load_user(f"{users['a']['id']}:ü") is None
+    except TypeError as exc:  # pragma: no cover - the regression itself
+        pytest.fail(f"load_user must never raise; it raised {exc!r}")
 
 
 def test_the_pre_272_cookie_format_is_rejected(users):

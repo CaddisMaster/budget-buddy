@@ -131,7 +131,19 @@ def load_user(session_id):
     return None
   # compare_digest rather than == : the token is a credential, and a
   # constant-time compare costs nothing here.
-  if not secrets.compare_digest(str(user.session_token), token):
+  #
+  # ⚠️ ENCODED TO BYTES, and that is not stylistic. `compare_digest` raises
+  # `TypeError: comparing strings with non-ASCII characters is not supported`
+  # when handed str — so `load_user("<real id>:ü")` RAISED, defeating the
+  # fail-closed contract this function exists to keep. `.encode()` accepts any
+  # str and compare_digest has no such restriction on bytes.
+  #
+  # ⚠️ It was missed at first because the obvious probe uses a made-up id: the
+  # `User.get_by_id` above then returns None and the function exits before ever
+  # reaching this line, so every non-ASCII case "passed". It only reproduces
+  # against an id that EXISTS. Same vacuity as the bare-id test — see
+  # `test_a_non_ascii_token_does_not_raise`, which uses a real user.
+  if not secrets.compare_digest(str(user.session_token).encode(), token.encode()):
     return None
   return user
 
