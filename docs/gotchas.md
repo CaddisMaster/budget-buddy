@@ -19,6 +19,27 @@
 - **Due-runner locking is now LOAD-BEARING, not merely prudent:** the due-row SELECTs are `FOR UPDATE`. They already guarded two simultaneous page loads (gunicorn serves on 4 threads); since `0.2.0` the **scheduler thread races those page loads too**. Keep the lock if those queries are ever touched — `test_push_reminders.py::test_daily_job_racing_a_page_load_materializes_once` is the net
 - **⚠️ The scheduler is NOT gated on `mail_enabled()`** (`app/__init__.py`). It was until `0.2.0`, which was fine while its only job was email — but the daily job now also materializes, and hanging that off a Resend key would mean a missing third-party credential silently stops the ledger updating. `ENABLE_DIGEST_SCHEDULER=1` starts the scheduler; **each JOB carries its own gate** (digest ← `mail_enabled()`, reminder half of the daily job ← `push_enabled()`, materialization ← nothing). Do not "tidy" this back into one condition
 - ⚠️ **"The scheduler is enabled" and "the job ran" are DIFFERENT QUESTIONS** (#151, PR #156). `admin.scheduler_enabled()` reads an env var at request time — it answers *was the switch set when this process started*, not *is the job running*. Those were the same question while the scheduler's only job was the digest (a missed digest is self-evident: no email arrives). They stopped being the same in `0.2.0`, because the daily job now also runs `materialize_all_users()`, which is **gated on nothing** and is what turns a schedule into a real transaction row. The failure it makes visible: the thread dies, `/settings` still reports whatever the env var says, `/healthz` stays green (the database is reachable), and recurring transactions silently stop appearing — indistinguishable from "nothing was due", noticed weeks later via wrong balances. `app/jobs.py` answers the second question from `job_runs`; **do not collapse the two back into one indicator**. ⚠️ A job that is switched off on this server reports `NOT_SCHEDULED`, deliberately **not** a fault — a panel that cried wolf about a legitimate state would be worth ignoring
+- ⚠️ **The session cookie carries `"<id>:<session_token>"`, and `load_user` MUST FAIL CLOSED**
+  (#272). `models.User.get_id()` overrides `UserMixin`'s default, which returned the bare
+  primary key — a cookie saying only "user 42", with nothing in it the server could
+  invalidate. Since `login_user(..., remember=True)` is unconditional (v10.13, so an
+  installed PWA does not re-prompt on launch) and no `REMEMBER_COOKIE_DURATION` is set,
+  Flask-Login's default applies and a cookie authenticates for **365 days** — so before
+  this, a password change revoked nothing for up to a year.
+  **`app/__init__.py::load_user` and `models.User.get_id` are ONE unit** — change the
+  format in either and every session in existence stops resolving.
+  ⚠️ **`load_user` returns `None` for anything it cannot fully verify, and must never
+  raise.** That is not defensive politeness: it runs before any route's own error
+  handling, so an exception there is a **500 on every page for every logged-in user**
+  until they clear their cookies. And the pre-#272 format is a bare `"42"`, so on the
+  deploy that ships a format change, *every outstanding cookie* takes the failure path.
+  ⚠️ A test asserting `load_user("<some id>") is None` **passes vacuously** when that id
+  does not exist — a missing user returns `None` regardless. Assert it against a REAL
+  user's id, which is what `test_the_pre_272_cookie_format_is_rejected` does.
+  ⚠️ Rotating `users.session_token` is what signs a device out, so any write that rotates
+  it must **re-issue the acting session** (`auth.change_password` calls `login_user()`
+  again) — otherwise the user is logged out by their own password change, which reads as
+  a bug rather than as security
 - All data tables have `user_id` FK — every SELECT/INSERT/UPDATE/DELETE must be scoped to `current_user.id`
 - ⚠️ **The History pending-pin is sorted in PYTHON, never in SQL** (#86). `_load_history`
   seeds its balance walk from a SUM of every filtered row *older* than the page — and the
