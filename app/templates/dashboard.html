@@ -122,10 +122,10 @@
    recurs: this strip renders on '/' whether or not AI is configured, so any
    copy naming an AI-gated element can make an absence assertion elsewhere fail
    from the one place on the page that ignores the gate. #}
-<div class="card whatsnew" id="whatsnew" data-version="v0.7.0" hidden>
+<div class="card whatsnew" id="whatsnew" data-version="v0.8.0" hidden>
   <div class="whatsnew-head">
-    <strong>What's new in v0.7.0</strong>
-    <span class="recurring-badge">2026-08-17</span>
+    <strong>What's new in v0.8.0</strong>
+    <span class="recurring-badge">2026-08-20</span>
     <span class="whatsnew-actions">
       <button type="button" class="btn btn-sm" id="whatsnew-toggle">Details</button>
       <button type="button" class="btn btn-sm" id="whatsnew-dismiss" aria-label="Dismiss">&#10005;</button>
@@ -133,31 +133,44 @@
   </div>
   <div class="whatsnew-body" hidden>
     <div class="whatsnew-block">
-      <strong>Bills whose amount changes can now tell you when they post</strong>
+      <strong>You were signed out once &mdash; here is why</strong>
       <ul class="whatsnew-list">
-        <li><strong>Some bills are the same every month; some are not.</strong> A subscription
-            is the same figure each time, but electricity or water lands on a fixed day for a
-            different amount &mdash; so the transaction Budget Buddy creates for you arrives
-            carrying last month's number.</li>
-        <li><strong>A schedule can now be marked &ldquo;the amount changes every time.&rdquo;</strong>
-            It still posts the amount you set up, but once it has, you get a notification
-            telling you to check what it actually came to.</li>
-        <li><strong>Tapping it takes you straight there,</strong> to your transactions, where
-            you can correct the amount in place rather than hunting for it.</li>
+        <li><strong>Changing your password now signs out your other devices.</strong> It used
+            to sign out nothing at all: a session lasts a year on purpose, so an installed app
+            does not ask you to log in every time you open it &mdash; but the sign-in was tied
+            only to who you are, with nothing the server could cancel.</li>
+        <li><strong>So the one thing you would do if you were worried</strong> about a phone or
+            laptop you no longer have had no effect on it. It does now, immediately, while
+            leaving you signed in where you made the change.</li>
+        <li><strong>This update asked every device to log in one final time,</strong> because
+            sign-ins from before it have nothing to check. That happens once.</li>
       </ul>
     </div>
     <div class="whatsnew-block">
-      <strong>Pending transactions stay at the top of your history</strong>
+      <strong>History can be filtered by account</strong>
       <ul class="whatsnew-list">
-        <li><strong>A pending charge is pinned to the top</strong> &mdash; a fuel pump that
-            authorises a pound, a hotel hold &mdash; so you can&rsquo;t forget to correct it
-            once the real figure lands.</li>
-        <li><strong>That pinning used to apply only to the page you were on.</strong> Once you
-            had more than a page of newer transactions, an older pending charge quietly sat at
-            the top of page three instead, which is exactly where you would never look.</li>
-        <li><strong>They now appear together at the top of the first page,</strong> and only
-            there, so nothing is listed twice. Your balances are unchanged &mdash; a pending
-            amount still counts towards every figure exactly as it did.</li>
+        <li><strong>A third filter sits beside the search box and the month,</strong> so you
+            can read one account&rsquo;s ledger on its own. It combines with the other two.</li>
+        <li><strong>The running balance re-totals to just that account,</strong> and the chip
+            above the table names what you are looking at, so the filter is never invisible.</li>
+        <li><strong>Export CSV now matches what is on screen.</strong> With a search active and
+            no month selected, the download used to quietly ignore the filter and give you
+            everything.</li>
+      </ul>
+    </div>
+    <div class="whatsnew-block">
+      <strong>Categories show the colour they are drawn in</strong>
+      <ul class="whatsnew-list">
+        <li><strong>Each category now carries a swatch</strong> matching the colour it appears
+            in on this page &mdash; so the list and the chart finally agree. One that is not on
+            this month&rsquo;s charts says so, rather than claiming a colour it does not have.</li>
+        <li><strong>And more categories get a colour at all.</strong> Spending used to chart
+            your top six and roll the rest into a grey &ldquo;Other&rdquo; &mdash; a limit
+            inherited from the ring chart this replaced, where more than six wedges stopped
+            being readable.</li>
+        <li><strong>As a list of bars, eight reads no worse than six,</strong> so eight is the
+            limit now. None of your figures changed: what was folded away was only ever about
+            what got drawn, never what got counted.</li>
       </ul>
     </div>
   </div>
