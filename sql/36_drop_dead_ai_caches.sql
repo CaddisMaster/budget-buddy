@@ -19,10 +19,32 @@
 --
 -- A DROP is the opposite of an additive migration. The running container must
 -- ALREADY be the version that no longer references these tables, or the old
--- code SELECTs something that has gone. Nothing has referenced `forecasts`
--- since #232 or `goal_coach` since #263 merged, so in practice the window is
--- empty either way — but the rule is the rule, and the habit is what protects
--- the migration where it is NOT already true.
+-- code SELECTs something that has gone.
+--
+-- ⚠️ CORRECTED 2026-08-20, at 0.8.0 release prep. This note used to claim
+-- "nothing has referenced forecasts since #232 or goal_coach since #263, so
+-- the window is empty either way". THAT WAS WRONG, and wrong in an instructive
+-- way: it reasoned about `main`, and deploy ordering is only ever about the
+-- image that is RUNNING. #232 and #263 both shipped in 0.8.0 — the same release
+-- as this migration — so the deployed version at the time this first applies is
+-- v0.7.0, which really does read both tables:
+--
+--     v0.7.0 app/blueprints/forecasts.py:227  SELECT ... FROM forecasts
+--     v0.7.0 app/blueprints/forecasts.py:278  INSERT INTO forecasts
+--     v0.7.0 app/blueprints/goals.py:310      SELECT ... FROM goal_coach
+--     v0.7.0 app/blueprints/goals.py:433      INSERT INTO goal_coach
+--
+-- ⚠️ And release.yml applies pending migrations BEFORE it pulls the image, so
+-- this DROP lands while the old container is still serving. That was accepted
+-- deliberately for the 0.8.0 deploy (Sean, 2026-08-20): one user, a deploy he
+-- triggers and watches, a window the length of an image pull, a pg_dump taken
+-- first, and no data at risk — the cost is a 500 on `/` or `/goals` if either
+-- is loaded in that minute.
+--
+-- ⚠️ DO NOT GENERALISE THAT ACCEPTANCE. It rests on this application having one
+-- user. The next DROP whose tables the deployed image still reads needs the
+-- real answer: hold the migration back one release, so the running image no
+-- longer references them by the time it applies.
 --
 -- ── ⚠️ ONE-WAY DOOR ────────────────────────────────────────────────────────
 --

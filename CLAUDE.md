@@ -247,8 +247,13 @@ server itself — **read it before touching anything on the Droplet.**
 - ⚠️ **A missing env var is the one deploy failure with no signal.** Check
   `git diff v<last>..HEAD -- .env.example` **before** cutting. Verify a secret landed by **length,
   not presence**; `/settings` carries an admin-only Integrations panel that answers this
-- **Schema changes:** apply the numbered `sql/` migration by hand, pg_dump first. Additive
-  **before** the pull, DROPs **after**
+- **Schema changes:** the deploy job applies pending migrations ITSELF — `pg_dump` →
+  `scripts/migrate.py` → *then* pull and swap (`RUNBOOK.md` §Migrations is the source of
+  truth). ⚠️ **That order is right for an additive migration and WRONG for a DROP**, which
+  lands while the old image is still serving. A DROP whose tables the DEPLOYED image still
+  reads must be held back a release — judged against the running version, never against
+  `main`. ⚠️ This line used to read "apply by hand", which contradicted the runbook and is
+  what sent a session down the manual path at 0.8.0 prep
 - **Droplet access** is maintainer-only and lives in the gitignored `CLAUDE.local.md`.
   `/opt/budget-buddy` is a **pure deploy dir — no git, no source**; `scp` changes up
 
