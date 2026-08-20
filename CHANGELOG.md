@@ -8,6 +8,21 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Security
+
+- **Changing your password now signs out your other devices.** It previously
+  signed out nothing at all: a session lasts a year by design (so an installed
+  app does not ask you to log in every time you open it), and the sign-in cookie
+  identified you by user id alone — there was nothing in it the server could
+  revoke. So the one thing you would do if you were worried about a device you
+  no longer have had no effect on it. Changing your password now invalidates
+  every other session immediately, while leaving you signed in where you changed
+  it.
+
+  ⚠️ **Upgrading signs everyone out once.** Sessions that predate this release
+  carry no token to check, so every device is asked to log in one final time
+  after the update. This happens once.
+
 ### Added
 
 - **History can be filtered by account.** A third filter joins the search box

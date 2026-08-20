@@ -134,11 +134,27 @@ def change_password():
             flash('New password must be 72 bytes or fewer')
             return redirect(url_for('auth.change_password'))
         new_hash = bcrypt.generate_password_hash(new_password).decode('utf-8')
+        # #272: rotate the session token in the SAME statement as the hash, so
+        # changing your password signs out every device holding an older cookie.
+        # Before this, `get_id()` returned the bare primary key and a cookie
+        # stayed valid for Flask-Login's default 365 days no matter what you did
+        # to the password — see models.User.get_id.
+        #
+        # ⚠️ One statement, deliberately: a rotation that could commit without
+        # the new hash (or the reverse) would either sign everyone out for
+        # nothing, or change the password while leaving the old sessions live —
+        # which is precisely the failure this closes.
         with db_cursor(commit=True) as cursor:
             cursor.execute(
-                "UPDATE users SET password_hash = %s WHERE id = %s",
+                "UPDATE users SET password_hash = %s, session_token = gen_random_uuid() "
+                "WHERE id = %s",
                 (new_hash, current_user.id)
             )
+        # ⚠️ The rotation just invalidated THIS session too — re-issue it, or
+        # changing your password logs you out every time, which reads as a bug
+        # rather than as security. remember=True to match login(): the installed
+        # PWA must not start re-prompting on launch.
+        login_user(User.get_by_id(current_user.id), remember=True)
         flash('Password updated')
         return redirect(url_for('main.index'))
     return render_template('change_password.html')

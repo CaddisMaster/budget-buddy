@@ -1,5 +1,6 @@
 import hashlib
 import os
+import secrets
 
 from dotenv import load_dotenv
 from flask import Flask
@@ -105,8 +106,46 @@ from app.models import User
 
 
 @login_manager.user_loader
-def load_user(user_id):
-  return User.get_by_id(int(user_id))
+def load_user(session_id):
+  """Resolve the `"<id>:<session_token>"` Flask-Login stores in the cookie.
+
+  ⚠️ FAILS CLOSED on anything it cannot fully verify — a bad value is an
+  ANONYMOUS request, never an exception (#272). That is not an edge case: the
+  pre-#272 cookie format is a bare `"42"` with no token, so on the deploy that
+  ships this, EVERY outstanding cookie in existence takes this path. A raised
+  exception here would be a 500 on every page for every logged-in user until
+  they cleared their cookies, and `load_user` runs before any route's own error
+  handling.
+
+  Rotating `users.session_token` is therefore what signs a device out; see
+  `models.User.get_id`, and `auth.change_password`, which rotates it.
+  """
+  raw_id, _, token = (session_id or '').partition(':')
+  if not token:
+    return None
+  try:
+    user = User.get_by_id(int(raw_id))
+  except (TypeError, ValueError):
+    return None
+  if user is None:
+    return None
+  # compare_digest rather than == : the token is a credential, and a
+  # constant-time compare costs nothing here.
+  #
+  # ⚠️ ENCODED TO BYTES, and that is not stylistic. `compare_digest` raises
+  # `TypeError: comparing strings with non-ASCII characters is not supported`
+  # when handed str — so `load_user("<real id>:ü")` RAISED, defeating the
+  # fail-closed contract this function exists to keep. `.encode()` accepts any
+  # str and compare_digest has no such restriction on bytes.
+  #
+  # ⚠️ It was missed at first because the obvious probe uses a made-up id: the
+  # `User.get_by_id` above then returns None and the function exits before ever
+  # reaching this line, so every non-ASCII case "passed". It only reproduces
+  # against an id that EXISTS. Same vacuity as the bare-id test — see
+  # `test_a_non_ascii_token_does_not_raise`, which uses a real user.
+  if not secrets.compare_digest(str(user.session_token).encode(), token.encode()):
+    return None
+  return user
 
 from app.blueprints import (
     accounts,
