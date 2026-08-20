@@ -39,6 +39,14 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The `verify` skill tears down what it creates again.** Its cleanup was a
+  hand-maintained copy of the test suite's teardown, and it still named two
+  tables that `sql/36` dropped — so it aborted on the first missing one and
+  removed nothing, leaving the throwaway user behind. It now calls the suite's
+  own `_delete_user` rather than repeating the list, and a test fails if either
+  copy comes back or names a table the schema no longer declares. **Developer
+  tooling only; nothing in the application changed.**
+
 - **`./test.sh` lints before it tests.** Ruff was only ever run by CI, so an
   unused import — the cheapest possible defect — was caught four minutes away in
   the most expensive possible place, and re-ran the whole pipeline for a one-line

@@ -82,36 +82,38 @@ Send `HX-Request: true` to get the fragment (row partial) instead of a redirect.
 - Scheduled jobs: `docker compose exec -T web flask run-daily` (materialize + bill reminders), `flask send-digests` (weekly email).
 - Live AI (real key in `.env`, calls are cheap Haiku): `/ask` with `question=`, `/insights/generate` with `year`+`month`.
 
-## Clean up (FK-safe: children first)
+## Clean up
 
-Mirrors `tests/conftest.py::_delete_user`, which is the proven order — keep them
-in step. **`schedules`/`transfer_schedules` are `ON DELETE RESTRICT` against
-`account`**, so skipping them makes the `account` delete fail.
+**Call the suite's own teardown — do not write a table list here.**
 
 ```bash
-docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -c "
-DO \$\$
-DECLARE uid int;
-BEGIN
-  SELECT id INTO uid FROM users WHERE username = '"'"'__verify__'"'"';
-  IF uid IS NULL THEN RETURN; END IF;
-  DELETE FROM transactions        WHERE user_id = uid;
-  DELETE FROM budget_history      WHERE user_id = uid;
-  DELETE FROM budgets             WHERE user_id = uid;
-  DELETE FROM goals               WHERE user_id = uid;
-  DELETE FROM schedules           WHERE user_id = uid;
-  DELETE FROM transfer_schedules  WHERE user_id = uid;
-  DELETE FROM insights            WHERE user_id = uid;
-  DELETE FROM forecasts           WHERE user_id = uid;
-  DELETE FROM goal_coach          WHERE user_id = uid;
-  DELETE FROM agent_runs          WHERE user_id = uid;
-  DELETE FROM push_subscriptions  WHERE user_id = uid;
-  DELETE FROM reminder_log        WHERE user_id = uid;
-  DELETE FROM categories          WHERE user_id = uid;
-  DELETE FROM account             WHERE user_id = uid;
-  DELETE FROM users               WHERE id = uid;
-END \$\$;"'
+docker compose exec -T web python -c "
+import sys; sys.path.insert(0, 'tests')
+from conftest import _delete_user
+_delete_user('__verify__')
+print('torn down')"
 ```
+
+⚠️ **This block used to be a hand-maintained copy of
+`tests/conftest.py::_delete_user`, and it silently rotted (#267).** `sql/36`
+dropped `forecasts` and `goal_coach`; `conftest.py` was updated, this copy was
+not. Because the block ran with `-v ON_ERROR_STOP=1`, the whole `DO $$ … $$`
+aborted on the first missing table and **tore down nothing at all** — leaving the
+`__verify__` user, its accounts and its transactions in the dev database, while
+looking like an ordinary error you might scroll past.
+
+The old note here said *"Mirrors `tests/conftest.py::_delete_user`, which is the
+proven order — keep them in step."* That is a documented trap, not a guard: it
+required someone dropping a table to remember a file in `.claude/`. Calling the
+function removes the second copy, so there is nothing left to keep in step —
+`_delete_user` already handles FK-safe ordering (children first;
+`schedules`/`transfer_schedules` are `ON DELETE RESTRICT` against `account`, so
+skipping them makes the `account` delete fail), and the next migration that drops
+a table fixes this skill for free.
+
+`tests/test_verify_skill.py` is the net: it asserts this file delegates rather
+than carrying its own `DELETE`s, and that every table `_delete_user` names still
+exists in `sql/schema.sql`.
 
 Verify it actually went: `SELECT count(*) FROM users WHERE username='__verify__'` → 0.
 
