@@ -52,6 +52,43 @@ that is RUNNING. Corrected in #276.
 The runbook was right; the `CLAUDE.md` bullet was stale and cost a session's planning before
 anyone read it. Corrected in #276.
 
+### On `main`, not yet deployed (2026-08-20, evening)
+
+**One PR, no app change.** #282 closed #281: CI's image job waited for Postgres with
+`pg_isready` over the **unix socket**, and `postgres:16` runs `initdb` against a temporary server
+started `-c listen_addresses=''` — socket only, no TCP — then stops it with `pg_ctl -m fast`
+before starting the real one. The probe answered READY for the throwaway server, the wait broke
+early, and the schema load landed in the shutdown window:
+
+```
+psql: FATAL:  the database system is shutting down
+```
+
+Now probes `-h 127.0.0.1`. The temp server never listens on TCP at all, so the race is
+**removed, not narrowed** — a longer sleep or an N-consecutive-successes rule would have left the
+same ~200ms window. An exhausted wait also fails loudly now instead of falling through to `psql`.
+
+⚠️ **The lesson is about the CI shape, not Postgres.** #280 changed `landing/index.html` and
+`CHANGELOG.md` only. Its PR was green in **41s**; the push to `main` for the same tree failed in
+**3m50s**. Every job runs on both events, but the `changes` classifier **fails open on a push to
+`main`**, so the expensive STEPS skip on an inert PR and run on the push. Consequence:
+
+> A docs- or landing-only change meets the image job for the FIRST time after it is merged, and
+> the defect it trips belongs to neither that PR nor its author.
+
+When `main` goes red just after a merge that obviously could not have caused it, suspect the
+path-gated steps before re-reading the innocent diff. ⚠️ And note a re-run would have gone
+**green** here — the window is sub-second. Green-on-re-run is the failure hiding, not a
+diagnosis. That is why the guard is `tests/test_ci_postgres_probe.py` rather than a comment: it
+asserts no `pg_isready` in that step may omit `-h`, and that the loop has a failure path. Both
+fail against the unfixed workflow.
+
+⚠️ The test parses `ci.yml` as **text**, deliberately. PyYAML is in neither requirements file —
+it resolves transitively, and the suite runs inside the shipped image whenever `tests/` changes.
+
+**`## [Unreleased]` now holds two things**, neither a reason to cut a release: the ai-atlas
+landing card (#280) and this CI fix. Prod is still `0.8.0`. Still **no open milestone**.
+
 ### Open after `0.8.0`
 
 - **#277** — `release.yml` applies DROP migrations before the image swap (filed 2026-08-20)

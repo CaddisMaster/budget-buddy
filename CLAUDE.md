@@ -263,11 +263,17 @@ server itself — **read it before touching anything on the Droplet.**
 describes the last session rather than the current tree, and it asserts rather than going quiet.
 **Reconcile against `git log` and `gh issue list` at the start of every session.**
 
-- **Prod runs `0.8.0`, shipped and verified 2026-08-20.** `main` is level with it apart from
-  the docs commit that records this. The `0.8.0` milestone is closed at 47 issues; **no
-  milestone is open**, so the next cycle needs one created
+- **Prod runs `0.8.0`, shipped and verified 2026-08-20.** `main` is AHEAD of it: `## [Unreleased]`
+  carries the ai-atlas landing card (#280) and a CI fix (#282), neither a reason to cut. The
+  `0.8.0` milestone is closed at 47 issues; **no milestone is open**, so the next cycle needs
+  one created
 - **Two issues open:** **#277** (`release.yml` applies DROP migrations before the image swap)
   and **#36** (date-parked to ~Dec 2026, correctly carries no milestone)
+- ⚠️ **A green PR does not predict a green `main`.** The `changes` classifier fails open on a
+  push to `main`, so an inert PR (docs, `landing/`) skips the expensive STEPS and meets them for
+  the first time AFTER merge — that is #281, found by a landing-page change. Check the `main` run
+  after every squash-merge, and do not re-run a red one before reading it: a race goes green on
+  re-run and hides
 - ⚠️ **The `css_v` deploy handle worked at `0.8.0` — by luck, not by design.** Production served
   the same `style.css` hash the tag builds, because the front-end overhaul rewrote the
   stylesheet. **A release touching no static asset is back to trusting the pipeline.** Decide the
