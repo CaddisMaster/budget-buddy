@@ -263,14 +263,16 @@ server itself — **read it before touching anything on the Droplet.**
 describes the last session rather than the current tree, and it asserts rather than going quiet.
 **Reconcile against `git log` and `gh issue list` at the start of every session.**
 
-- **Prod runs `0.7.0`, shipped and verified 2026-08-17.** `main` is level with it apart from
-  the docs commit that records this. The `0.7.0` milestone is closed; **no milestone is open**,
-  so the next cycle needs one created
-- **#36 is the only open issue** — date-parked to ~Dec 2026, correctly carries no milestone
-- ⚠️ **Nothing on the public surface distinguishes one deployed version from the next** —
-  `app/static/` did not change between `0.6.0` and `0.7.0`, so `css_v` could not verify the
-  deploy. Decide the verification handle **before** cutting; a version on `/healthz` would end
-  this permanently and does not exist yet
+- **Prod runs `0.8.0`, shipped and verified 2026-08-20.** `main` is level with it apart from
+  the docs commit that records this. The `0.8.0` milestone is closed at 47 issues; **no
+  milestone is open**, so the next cycle needs one created
+- **Two issues open:** **#277** (`release.yml` applies DROP migrations before the image swap)
+  and **#36** (date-parked to ~Dec 2026, correctly carries no milestone)
+- ⚠️ **The `css_v` deploy handle worked at `0.8.0` — by luck, not by design.** Production served
+  the same `style.css` hash the tag builds, because the front-end overhaul rewrote the
+  stylesheet. **A release touching no static asset is back to trusting the pipeline.** Decide the
+  verification handle **before** cutting; a version on `/healthz` would end this permanently and
+  still does not exist
 - **Standing decisions that must not be re-opened** are listed in `docs/status.md`. Check there
   before re-filing anything that looks like an obvious improvement
 
