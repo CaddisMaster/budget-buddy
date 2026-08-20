@@ -25,6 +25,19 @@ this project uses the `0.x` versioning scheme described in
 
 ### Added
 
+- **Every category shows the colour it is drawn in.** Categories now carries a
+  swatch matching the colour that category appears in on Home this month, so the
+  chart and the list finally agree. A category that is not on this month's charts
+  says so plainly rather than claiming a colour it does not have.
+
+  **And more categories get a colour at all.** Home used to chart your top six
+  and roll everything else into a grey "Other" — a rule inherited from the
+  doughnut chart it replaced, where more than six slices stopped being readable.
+  As a list of ranked bars, eight reads no worse than six, so the limit is now
+  the number of distinct colours available: eight. On an eight-category account
+  nothing is greyed out any more. Nothing about the figures changed — folding
+  only ever affected what was drawn, never what was counted.
+
 - **History can be filtered by account.** A third filter joins the search box
   and the month picker in the page header, so you can look at one account's
   ledger on its own. It combines with the other two, the running balance column

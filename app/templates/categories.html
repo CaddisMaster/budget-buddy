@@ -6,6 +6,19 @@
    underneath (the shared #239 decision, applied to all five same-shape pages).
    Expense and income are separate groups rather than one list with a Kind
    column. #}
+{# #257 — the swatch needs one line saying what it means, because "this month"
+   is the whole point: which categories are charted depends on the month, and a
+   swatch with no timeframe reads as a permanent property of the category. Only
+   shown when something is actually uncharted — with eight or fewer categories
+   drawing, every swatch is filled and there is nothing to explain. #}
+{% if categories and colour_slots|length < categories|length %}
+<p class="cat-legend">
+  <span class="cat-swatch cat-swatch-none"></span>
+  Categories marked this way are not on this month's charts — they have no
+  transactions yet this month, or they fall outside the top {{ palette_size }}
+  and are inside &ldquo;Other&rdquo;.
+</p>
+{% endif %}
 <div id="category-rows">
 {% include 'partials/_category_groups.html' %}
 </div>

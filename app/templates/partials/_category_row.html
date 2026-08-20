@@ -1,8 +1,29 @@
 {# #243 — three columns: the Kind cell went with the grouping (the heading the
    row sits under states its kind). Editing kind is still possible — see the
-   edit-row partial — and a kind change re-renders the whole grouped listing. #}
+   edit-row partial — and a kind change re-renders the whole grouped listing.
+
+   #257 — the swatch lives INSIDE the Name cell rather than in a fourth column.
+   Two reasons: the colour belongs to the name it labels, and adding a column
+   here would have to be matched in _category_groups.html's <thead> and in the
+   edit row's colspan, which is the shape that broke a table once already.
+
+   ⚠️ `colour_slots` is the slot each category is ACTUALLY drawn in this month
+   (main.category_slot_map), never `creation_index % 8` — that is the preferred
+   slot, which differs from the drawn one exactly when a collision happens.
+   A category absent from the map is NOT charted this month, and says so rather
+   than claiming a hue. `|default({})` keeps a row swap from raising if a render
+   site ever forgets the map, and `test_every_row_swap_carries_the_swatch` is
+   what stops that silently degrading every swatch to "not charted". #}
+{% set slot = (colour_slots|default({})).get(cat.id) %}
 <tr id="category-{{ cat.id }}">
-  <td>{{ cat.name }}</td>
+  <td>
+    {% if slot is not none %}
+    <span class="cat-swatch s{{ slot + 1 }}" title="Drawn in this colour on Home this month"></span>
+    {% else %}
+    <span class="cat-swatch cat-swatch-none" title="Not charted this month — it is inside &quot;Other&quot;, or has no transactions this month"></span>
+    {% endif %}
+    {{ cat.name }}
+  </td>
   <td>{{ cat.description }}</td>
   <td class="row-actions">
     <button type="button" class="btn btn-sm"
