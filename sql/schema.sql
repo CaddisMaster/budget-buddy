@@ -14,7 +14,13 @@ CREATE TABLE public.users (
     created_at TIMESTAMP DEFAULT NOW(),
     email TEXT,
     weekly_digest BOOLEAN NOT NULL DEFAULT false,
-    last_digest_sent_on DATE
+    last_digest_sent_on DATE,
+    -- Folded into Flask-Login's session id (#271/#272) so a session can be
+    -- invalidated. Rotating it signs out every device holding an older cookie;
+    -- without it `get_id()` returns the bare primary key and a password change
+    -- revokes nothing. gen_random_uuid() is core in PostgreSQL 13+ — no
+    -- pgcrypto extension needed.
+    session_token uuid NOT NULL DEFAULT gen_random_uuid()
 );
 
 -- ------------------------------------------------------------
