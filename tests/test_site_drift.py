@@ -219,12 +219,40 @@ def test_an_unreachable_host_is_unreachable_not_drift():
     assert "connection refused" in detail
 
 
-def test_an_unreachable_landing_page_is_unreachable_not_drift(monkeypatch):
+def test_an_unreachable_landing_page_is_unreachable_not_drift(monkeypatch, tmp_path):
+    """⚠️ Points at a tmp file, NOT the real landing/index.html.
+
+    `.dockerignore` strips `landing/`, so in the in-image run that file is
+    absent, `check_landing()` short-circuits to "skipped" and never reaches the
+    fetch — this test then passed locally and FAILED in the image, which is the
+    #176/#218 defect exactly. Supplying our own file makes the test independent
+    of which files a given environment happens to carry.
+    """
+    stand_in = tmp_path / "index.html"
+    stand_in.write_bytes(b"<p>anything</p>\n")
+    monkeypatch.setattr(drift, "LANDING_FILE", stand_in)
+
     def refuse(_url):
         raise urllib.error.URLError("dns")
 
     status, _ = drift.check_landing(fetch=refuse, sleep=lambda _: None)
     assert status == drift.UNREACHABLE
+
+
+def test_an_absent_landing_file_is_skipped_rather_than_reported_as_drift(monkeypatch, tmp_path):
+    """The in-image case, asserted rather than left to chance.
+
+    A checkout without `landing/` must not report the live site as drifted —
+    it has nothing to compare against, which is not the same as disagreement.
+    """
+    monkeypatch.setattr(drift, "LANDING_FILE", tmp_path / "does-not-exist.html")
+
+    def explode(_url):  # must never be called
+        raise AssertionError("fetched the live site with nothing to compare it to")
+
+    status, detail = drift.check_landing(fetch=explode, sleep=lambda _: None)
+    assert status == drift.OK
+    assert "absent" in detail
 
 
 # ---------------------------------------------------------------------------
