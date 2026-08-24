@@ -100,6 +100,70 @@ for #288 (`32737263585`) did run all five jobs, and was green.
 
 **Still no open milestone**, so #287 and #289 carry none. Prod still runs `0.8.0`.
 
+### ✅ The docs became executable (2026-08-24, later the same day)
+
+Four stale-doc defects surfaced in one day. The common factor was not carelessness — **nothing
+executed the claim**. So two mechanisms merged, and both are now load-bearing.
+
+**#296 — `tests/test_doc_claims.py`.** Five assertions on claims a machine can check: every path in
+`CLAUDE.md`'s project map exists, the landing page names no retired library, `RUNBOOK.md`
+hardcodes no versioned certbot lineage, and the vendored ApexCharts version *and licence* match
+what `CLAUDE.md` claims. Two of those pin rules that had been written warnings and were violated
+anyway.
+
+⚠️ **Scope is structured claims, never prose.** Every assertion targets something with a shape. A
+test that fails on a reworded paragraph is worse than no test — it trains the next person to
+delete the file and take the useful assertions with it. The line worth copying is the cert one:
+`RUNBOOK.md` **may** name `seandesmet.com-0001` while recounting the incident; it **may not** use
+it as a config path. The regex requires the `/etc/letsencrypt/live/` prefix. **Assert the USE, not
+the mention.**
+
+⚠️ **It found a live defect in the disaster-recovery path.** The nginx snippet hardcoded
+`/etc/letsencrypt/live/seandesmet.com-0001/` — the lineage **deleted** when the www handshake was
+fixed — while §"Full rebuild" step 6 says "write the site files from §3". A rebuild copying it
+verbatim writes a config pointing at a path that does not exist: nginx will not start, during a
+rebuild, while the site is down. It had been **anticipated** (step 7 already warned about copying
+paths verbatim) and left armed for a year. **The fix was not to update the path** — that resets
+the expiry. It names `certbot certificates` and the property the lineage must have, so it cannot
+drift again.
+
+**#298 — `scripts/check_site_drift.py` + `site-drift.yml`.** Daily, and it needs **no secret and no
+Droplet access** — every check is public HTTP/TLS, deliberately, because the Droplet is
+unreachable from the VM by design and a monitor needing privileged access would become an argument
+against that boundary. It byte-compares the live landing page against `main`, checks SAN coverage
+per hostname, fails under an expiry threshold, and pings `/healthz`.
+
+⚠️ **Drift files one deduped issue; unreachable files NOTHING** (exit 1 vs exit 2). A flaky runner
+must never open an issue, or the tracker fills with noise until nobody reads it and the one real
+report is lost. A genuine outage shows as a run of red scheduled runs.
+
+The network sits behind two seams and everything else is pure, so 29 tests run with no network.
+The workflow's own shell is asserted as text too — that it reads `PIPESTATUS` rather than `$?`
+(which is `tee`'s status, always 0, and would make every drift report green), and that only exit 1
+files an issue. **A monitor that costs money and can never fire is worse than none.** Proven in
+both directions: clean against real production, and a side-labelled diff when handed a stale file.
+
+⚠️ **THE `.dockerignore` TRAP, THIRD OCCURRENCE (#176, #218, now #298)** — and the new part is
+*why the guard missed*. The test file carried `skipif(not SCRIPT.exists())`. **`scripts/` ships;
+`landing/` does not.** So the guard never fired, the script short-circuited on the absent landing
+file before reaching its fetch, and an assertion expecting UNREACHABLE quietly got OK. It passed
+locally and failed in the image, again.
+
+> **Guard the artifact the test READS, not the one it imports.**
+
+Better than a second skip: remove the dependency. The test now writes its own file into `tmp_path`
+and monkeypatches the constant, so it holds in any environment.
+
+⚠️ And a warning about simulating the image: moving `landing/` aside locally made
+`test_doc_claims.py` fail, which looked like a second bug and was not — the real image also strips
+`*.md`, so that test skips there and the failure existed only in a half-way state no environment
+has. **Reproduce the whole restriction, or trust the real in-image skip count.**
+
+**#299 filed and PARKED** — move the landing page to its own repo, still on the Droplet. No date,
+no milestone. Its ordering is written down, including the trap most likely to bite: the backup
+config path list exists in two places, so a new nginx site file has to be added to both or the
+portfolio's config silently stops being backed up.
+
 ### On `main`, not yet deployed (2026-08-20, evening)
 
 **One PR, no app change.** #282 closed #281: CI's image job waited for Postgres with

@@ -99,6 +99,16 @@ Full column lists and the reasoning behind each shape are in
 These apply to nearly every change, which is why they are here rather than in `docs/gotchas.md`.
 **That file holds ~40 more**, each one load-bearing — read it before any non-trivial work.
 
+**Docs are checked**
+- `tests/test_doc_claims.py` asserts the doc claims a machine can check: every path in the project
+  map above exists, the landing page names no retired library, `RUNBOOK.md` hardcodes no versioned
+  certbot lineage, and the vendored ApexCharts version and licence match what this file claims.
+  **Structured claims only — prose is deliberately out of scope.** Editing the project map or the
+  pinned chart version means the suite is now the thing that agrees or disagrees with you
+- `scripts/check_site_drift.py` (daily, `site-drift.yml`) compares the LIVE site against `main`:
+  landing-page bytes, SAN coverage per hostname, certificate expiry, `/healthz`. Needs no secret
+  and no Droplet access. **Drift files one deduped issue; unreachable files nothing**
+
 **Data access**
 - Every SELECT/INSERT/UPDATE/DELETE is scoped to `current_user.id`. All data tables have `user_id`
 - **All app DB access goes through `db_cursor()`** (`db.py`) — commits on clean exit, rolls back and
@@ -270,8 +280,14 @@ describes the last session rather than the current tree, and it asserts rather t
   changelog entry was deleted outright rather than answered with a `### Removed` line. The
   `0.8.0` milestone is closed at 47 issues; **no milestone is open**, so the next cycle needs
   one created
-- **Two issues open:** **#277** (`release.yml` applies DROP migrations before the image swap)
-  and **#36** (date-parked to ~Dec 2026, correctly carries no milestone)
+- **Three issues open:** **#277** (`release.yml` applies DROP migrations before the image swap),
+  **#299** (move the landing page to its own repo — **parked, no date**, but its ordering and its
+  backup-path trap are written down) and **#36** (date-parked to ~Dec 2026). None carries a
+  milestone, correctly — there is no open one
+- ⚠️ **Two Dependabot PRs are open and were deliberately left alone** (as of 2026-08-24): **#285**
+  (minor/patch group) and **#286**, which bumps `anthropic` **0.122.0 → 1.0.0** against `ai.py`.
+  A major SDK bump is not a rubber stamp — the mocked seams do not cover SDK changes, so the
+  in-image run is the check that matters
 - ⚠️ **A green PR does not predict a green `main`.** The `changes` classifier fails open on a
   push to `main`, so an inert PR (docs, `landing/`) skips the expensive STEPS and meets them for
   the first time AFTER merge — that is #281, found by a landing-page change. Check the `main` run
