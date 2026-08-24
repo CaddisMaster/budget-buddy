@@ -86,8 +86,11 @@ fail against the unfixed workflow.
 ⚠️ The test parses `ci.yml` as **text**, deliberately. PyYAML is in neither requirements file —
 it resolves transitively, and the suite runs inside the shipped image whenever `tests/` changes.
 
-**`## [Unreleased]` now holds two things**, neither a reason to cut a release: the ai-atlas
-landing card (#280) and this CI fix. Prod is still `0.8.0`. Still **no open milestone**.
+**`## [Unreleased]` holds the CI fix and nothing else**, which is not a reason to cut a
+release. It briefly also held the ai-atlas landing card (#280); that card was removed again by
+#287 on 2026-08-24 after the project was abandoned and its repo deleted, and because it never
+shipped in a release its changelog entry was deleted rather than answered with a `### Removed`
+line. Prod is still `0.8.0`. Still **no open milestone**.
 
 ### Open after `0.8.0`
 
