@@ -190,29 +190,41 @@ Issuing a certificate for a new subdomain:
 certbot --nginx -d newsub.seandesmet.com
 ```
 
-### ⚠️ Known issue: duplicate certificate lineages
+### ⚠️ Duplicate certificate lineages — the failure mode, and how to check for it
 
-There are **four** lineages for two names, because Certbot was re-run with
-different domain sets and creates a new `-000N` lineage rather than replacing:
+**Certbot creates a new `-000N` lineage rather than replacing an existing one**
+when it is re-run with a different `-d` set. If Nginx then points at a lineage
+whose SAN does not list every name its `server_name` claims, that name fails the
+TLS handshake — while the certificate *that would work* sits unused on the same
+box. Nothing warns you; the site simply stops serving on one hostname.
 
-| Lineage | Covers | Used by Nginx? |
-|---|---|---|
-| `seandesmet.com` | `seandesmet.com`, `www.seandesmet.com` | **No** |
-| `seandesmet.com-0001` | `seandesmet.com` only | **Yes** |
-| `budget.seandesmet.com` | `budget.seandesmet.com` | Yes |
-
-**Consequence: `https://www.seandesmet.com` fails the TLS handshake.** The
-server block claims `www` but presents `seandesmet.com-0001`, which does not
-list `www` in its SAN. The lineage that *would* work is the unused one.
-
-The fix is to point that server block at `/etc/letsencrypt/live/seandesmet.com/`
-and reload, then delete the orphaned lineage with
-`certbot delete --cert-name seandesmet.com-0001`. Verify before and after with:
+**Check which lineage actually answers, by name:**
 
 ```bash
 echo | openssl s_client -servername www.seandesmet.com \
   -connect www.seandesmet.com:443 2>/dev/null | openssl x509 -noout -ext subjectAltName
+certbot certificates    # every lineage on the box, and what each covers
 ```
+
+The SAN must list every name the corresponding `server_name` claims. If it does
+not, repoint that server block at the lineage that covers them all, reload, and
+delete the orphan with `certbot delete --cert-name <lineage>`.
+
+> ✅ **RESOLVED — this bit production once, and is fixed (recorded under `0.1.0`
+> in `CHANGELOG.md`).** Four lineages had accumulated for two names, the landing
+> page's server block presented `seandesmet.com-0001`, which covered the apex
+> only, and **`https://www.seandesmet.com` failed the handshake**. It was
+> repointed at the lineage covering both names and the orphan deleted.
+>
+> ⚠️ This section previously described that as a **current** failure. Re-verified
+> against production **2026-08-24** — `www` presents a SAN of
+> `DNS:seandesmet.com, DNS:www.seandesmet.com`, expiring `Nov 2 2026`, and
+> returns `200`. **The runbook is read during an incident**, so a resolved
+> failure written as current is worse here than anywhere else: it invites
+> someone to "fix" a certificate that is already correct, under time pressure.
+>
+> **Keep checking after a rebuild**, or any time `certbot` is re-run with a
+> different `-d` set — the mechanism above is real and has not gone away.
 
 **Watch for this after any rebuild** — a fresh Certbot run produces a lineage
 named `seandesmet.com` with no suffix, so a config copied verbatim from here
