@@ -52,6 +52,54 @@ that is RUNNING. Corrected in #276.
 The runbook was right; the `CLAUDE.md` bullet was stale and cost a session's planning before
 anyone read it. Corrected in #276.
 
+### ✅ Landing page redeployed OUTSIDE a release (2026-08-24)
+
+**The ai-atlas card is gone from `seandesmet.com`, and the removal is verified live.**
+
+`ai-atlas` was a third portfolio project, added to the landing page by #280 on 2026-08-20. It was
+**abandoned and deleted on 2026-08-24** — local repo, GitHub repo and transcripts — so the card
+linked a repo that returns `404`, on the front page of the portfolio. #288 removed it.
+
+**The diff was the exact reverse of #280's hunk**, not a hand-written deletion: 50 lines added
+there, 50 removed here, leaving `landing/index.html` **byte-identical to the pre-#280 file**. That
+is a far stronger check than counting `<div>`s, and it is available whenever the change being
+undone is a single additive commit — `git show <sha> -- <path> | git apply -R` proposes it, and
+`git show <sha>^:<path> | diff -` proves it landed.
+
+**The changelog entry was DELETED, not answered with a `### Removed` line.** A changelog records
+what reached users, and this card never did: prod is `0.8.0`, and #280 was still sitting in
+`## [Unreleased]`. Deleting the `### Added` entry outright leaves an accurate record of the next
+version, and takes a second dead link with it, since the entry named the repo too. ⚠️ The
+instinct to reach for `### Removed` is the wrong one here — **check whether the thing being
+removed ever shipped** before recording its removal.
+
+⚠️ **A LANDING-PAGE CHANGE IS NOT DEPLOYED BY MERGING IT.** `release.yml` never touches
+`landing/`; Nginx serves the directory off disk, and the page updates only when the file is
+copied to the Droplet by hand. `main` was green and correct for some time while the live page
+still served the dead link. **The merge and the deploy are separate events here** — the same
+shape as a production-only change, and it needs the same explicit "not yet live" marker until
+someone has actually run the copy.
+
+⚠️ **The copy cannot run from the dev VM, and the stale-clone trap is live.** The maintainer
+machine's clone was last measured well behind `main`, so copying `landing/index.html` from it
+would have re-shipped the card. The check that closes this is `grep -c ai-atlas` on the file
+**before** it goes up, expecting `0`; fetching the file from the public repo's raw URL sidesteps
+the clone entirely and is the better default.
+
+**Verified after the copy**, not assumed: the live page is byte-identical to `landing/index.html`
+on `main`, carries one project card, and greps clean for `ai-atlas`.
+
+⚠️ **A SKIPPED JOB REPORTS `pass`, NOT `skipped`.** #288 was the inert shape (`landing/` +
+`*.md`), so the classifier emitted `app=false image=false sql=false` — and `gh pr checks` still
+printed **"Tests pass 30s"** and **"Image builds and runs as non-root pass 44s"**. The steps skip
+*inside* jobs that succeed, so a run that executed nothing is visually indistinguishable from a
+real one. This is the sharp edge of the #281 lesson below, and it is worse than "the expensive
+jobs did not run": it actively looks like they did. **The `main` run is the one that means
+something**, or read the `app=/image=/sql=` line in the "What changed" job log. The `main` run
+for #288 (`32737263585`) did run all five jobs, and was green.
+
+**Still no open milestone**, so #287 and #289 carry none. Prod still runs `0.8.0`.
+
 ### On `main`, not yet deployed (2026-08-20, evening)
 
 **One PR, no app change.** #282 closed #281: CI's image job waited for Postgres with
