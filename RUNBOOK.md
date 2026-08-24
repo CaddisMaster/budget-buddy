@@ -117,8 +117,13 @@ server {
   }
 
   listen 443 ssl;                                                   # managed by Certbot
-  ssl_certificate     /etc/letsencrypt/live/seandesmet.com-0001/fullchain.pem;
-  ssl_certificate_key /etc/letsencrypt/live/seandesmet.com-0001/privkey.pem;
+  # ⚠️ Read the LIVE lineage name off the box — do not copy one from this file.
+  #    `certbot certificates` lists them; pick the one whose SAN covers BOTH
+  #    names above. This block named `seandesmet.com-0001` until 2026-08-24,
+  #    by which point that lineage had been DELETED. See §Duplicate certificate
+  #    lineages.
+  ssl_certificate     /etc/letsencrypt/live/<lineage covering apex + www>/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/<lineage covering apex + www>/privkey.pem;
   include             /etc/letsencrypt/options-ssl-nginx.conf;
   ssl_dhparam         /etc/letsencrypt/ssl-dhparams.pem;
 }
@@ -134,6 +139,9 @@ server {
   }
 
   listen 443 ssl;                                                   # managed by Certbot
+  # Unversioned, and stable: this lineage covers exactly one name, so certbot
+  # has never had cause to mint a `-000N` alongside it. Still worth confirming
+  # with `certbot certificates` after any rebuild.
   ssl_certificate     /etc/letsencrypt/live/budget.seandesmet.com/fullchain.pem;
   ssl_certificate_key /etc/letsencrypt/live/budget.seandesmet.com/privkey.pem;
   include             /etc/letsencrypt/options-ssl-nginx.conf;
