@@ -1,0 +1,113 @@
+# Does production still match `main`? (#297)
+#
+# `landing/` is deployed by a hand copy to the Droplet, and nothing else reads
+# it — so the repository and the live site can disagree indefinitely with no
+# signal. That happened twice on 2026-08-24. TLS is unwatched for a related
+# reason: Uptime Kuma was retired on 2026-07-27, so a FAILING certbot renewal is
+# silent until the handshake breaks.
+#
+# ⚠️ This workflow needs NO secret and NO Droplet access. Every check is public
+# HTTP/TLS. That is deliberate — the Droplet is unreachable from the dev VM on
+# purpose, and a monitor that needed privileged access would become an argument
+# for weakening that boundary.
+#
+# ⚠️ It checks out `main` and compares against THAT. So a drift report means
+# "production does not match main", which after a manual landing deploy is
+# exactly the state to know about.
+#
+# ⚠️ DRIFT AND UNREACHABLE ARE HANDLED DIFFERENTLY, on purpose:
+#   exit 1 (drift)       -> file an issue, deduped. Someone must act.
+#   exit 2 (unreachable) -> fail the run, file NOTHING. A flaky runner or a
+#                           transient DNS blip must never open an issue, or the
+#                           tracker fills with noise and everyone stops reading
+#                           it. A real outage shows as a run of red runs.
+name: Site drift
+
+on:
+  schedule:
+    # 07:10 UTC — after the Droplet's own 06:00 backup timer, so a drift report
+    # never races the thing most likely to be restarting the stack.
+    - cron: "10 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: site-drift
+  cancel-in-progress: false
+
+jobs:
+  drift:
+    name: Compare production against main
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Check the live site against this checkout
+        id: check
+        run: |
+          set +e
+          python3 scripts/check_site_drift.py | tee report.txt
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+        # ⚠️ PIPESTATUS, not $? — `$?` after a pipe is `tee`'s status, which is
+        # always 0. That exact mistake once made a failed restore report success
+        # with complete-looking data.
+
+      - name: Summarise
+        run: |
+          {
+            echo "## Site drift"
+            echo
+            echo '```'
+            cat report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: File an issue when production has DRIFTED
+        if: steps.check.outputs.exit_code == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: "Production has drifted from main"
+        run: |
+          set -euo pipefail
+
+          # Dedupe by title rather than by label: a label has to be created
+          # first, and a workflow that fails because a label is missing is a
+          # worse failure than the one it was written to report.
+          existing="$(gh issue list --state open --search "\"$TITLE\" in:title" \
+                        --json number,title \
+                        --jq "[.[] | select(.title == env.TITLE)] | .[0].number // empty")"
+
+          if [ -n "$existing" ]; then
+            echo "Issue #$existing is already open for this. Not filing another."
+            exit 0
+          fi
+
+          {
+            echo "The scheduled drift check found production disagreeing with \`main\`."
+            echo
+            echo '```'
+            cat report.txt
+            echo '```'
+            echo
+            echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo
+            echo "**If this is the landing page**, the fix is the manual copy — \`release.yml\`"
+            echo "does not touch \`landing/\`, and the copy runs from the Mac. See"
+            echo "\`docs/status.md\` and \`RUNBOOK.md\`."
+            echo
+            echo "**If this is TLS**, check \`certbot certificates\` on the box for a lineage"
+            echo "whose SAN covers every name in the server block."
+          } > body.md
+
+          gh issue create --title "$TITLE" --body-file body.md
+
+      - name: Fail the run on drift or unreachability
+        if: steps.check.outputs.exit_code != '0'
+        run: |
+          echo "check_site_drift.py exited ${{ steps.check.outputs.exit_code }}" >&2
+          exit 1
