@@ -8,14 +8,6 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
-### Added
-
-- **The landing page carries a second project.** `seandesmet.com` now lists
-  ai-atlas alongside Budget Buddy, using the same expandable card, and links to
-  <https://github.com/CaddisMaster/ai-atlas>. Landing-page only — nothing under
-  `app/` changed, and the page is still deployed by copying `landing/` to the
-  Droplet rather than by the release workflow.
-
 ### Fixed
 
 - **CI no longer fails at random on a Postgres startup race.** The image job
