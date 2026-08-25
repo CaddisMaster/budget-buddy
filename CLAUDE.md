@@ -278,15 +278,20 @@ describes the last session rather than the current tree, and it asserts rather t
 **Reconcile against `git log` and `gh issue list` at the start of every session.**
 
 - **Prod runs `0.8.0`, shipped and verified 2026-08-20.** `main` is AHEAD of it: `## [Unreleased]`
-  carries a CI fix (#282) and nothing else, which is not a reason to cut. It briefly also held
+  carries the CI Postgres fix (#282), the migration phasing (#277), the `anthropic` bump (#286)
+  and the version stamp (#305). ⚠️ **#305 is the first of the four with a user-facing surface**,
+  so "nothing in it is user-facing" is no longer on its own an argument against cutting — and
+  `0.9.0` would be the first release the new deploy handle can verify. It briefly also held
   the ai-atlas landing card (#280); **#288 removed that card again on 2026-08-24** after the
   project was abandoned and its repo deleted, and since it never shipped in a release its
   changelog entry was deleted outright rather than answered with a `### Removed` line. The
-  `0.8.0` milestone is closed at 47 issues; **no milestone is open**, so the next cycle needs
-  one created
+  `0.8.0` milestone is closed at 47 issues
 - **One issue open:** **#36**, date-parked to ~Dec 2026 and correctly carrying no milestone.
-  **#277** (DROP migrations ran before the image swap) and **#299** (the landing page's own
-  repo) both closed 2026-08-25. A **`0.9.0` milestone is open** — the first since `0.8.0` shipped
+  **#277** (DROP migrations ran before the image swap), **#299** (the landing page's own repo)
+  and **#305** (nothing said which version was running) all closed 2026-08-25. A **`0.9.0`
+  milestone is open** — the first since `0.8.0` shipped. ⚠️ **The tracker is empty of actionable
+  work**: reconcile before assuming there is a backlog, and expect to have to find work rather
+  than pick it up
 - ⚠️ **`anthropic` is on `1.0.0`** (#286, merged 2026-08-25) alongside the minor/patch group
   (#285). The major bump was read rather than rubber-stamped, because the mocked `_call_*_model()`
   seams mean a green suite says nothing about an SDK change. **`tests/test_sdk_call_shape.py`

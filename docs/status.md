@@ -58,7 +58,7 @@ anyone read it. Corrected in #276.
 
 ### On `main`, not yet deployed (2026-08-25)
 
-**Four PRs merged; nothing shipped.** Prod is still `0.8.0`. A **`0.9.0` milestone is open** —
+**Five PRs merged across two sessions; nothing shipped.** Prod is still `0.8.0`. A **`0.9.0` milestone is open** —
 the first since `0.8.0` closed — and **#36 is the only issue left open**, correctly date-parked
 to ~Dec 2026 with no milestone.
 
@@ -68,8 +68,9 @@ to ~Dec 2026 with no milestone.
 | #285 | — Dependabot minor/patch group, plus the `ci.yml` ruff pin it missed |
 | #286 | — `anthropic` 0.122.0 → **1.0.0**, read rather than rubber-stamped |
 | #303 | #299 — `landing/` removed; the page now lives in its own repo |
+| #306 | #305 — the image is stamped with its version, so a deploy can be verified |
 
-⚠️ **TWO CHANGES HERE ARE UNVERIFIED IN PRODUCTION AND HAVE NO NATURAL CLOSING EVENT.** Both
+⚠️ **THREE CHANGES HERE ARE UNVERIFIED IN PRODUCTION AND HAVE NO NATURAL CLOSING EVENT.** All
 first execute at the *next* release, not on merge:
 
 1. **The two-phase migration deploy.** `release.yml` now runs `migrate.py --phase before-pull`
@@ -80,10 +81,46 @@ first execute at the *next* release, not on merge:
 2. **`anthropic` 1.0.0 inside the shipped image.** The call shapes were verified against the
    real package, but **no live API round trip was made** — the AI surfaces are gated on
    `ANTHROPIC_API_KEY`, which CI does not set. First real proof is a model call in production.
+3. **#305's pipeline half.** The app half is fully verified locally (real images built stamped,
+   bare and `--target dev`, with `printenv` read back from each; the card driven at
+   `localhost:5001`). The workflow assertion cannot be: nothing in CI deploys. It was run by hand
+   against live containers with the runner's quoting reproduced — match exits 0, mismatch exits 1,
+   all four rollback branches checked — which proves the *script*, not that the *step* fires in
+   place. **Watch the deploy log for `running version <version> (matches <version>)`** between
+   `up -d` and the migration step. ⚠️ The irony worth keeping: this change exists because
+   production-only state was unobservable, and it is itself production-only until it ships once.
 
-**`## [Unreleased]` now holds three entries:** the CI Postgres probe fix (#282), the migration
-phasing (#277) and the SDK bump (#286). Whether that is a release is Sean's call; nothing in it
-is user-facing.
+**`## [Unreleased]` now holds four entries:** the CI Postgres probe fix (#282), the migration
+phasing (#277), the SDK bump (#286) and the version stamp (#305). Whether that is a release is
+Sean's call. ⚠️ **#305 is the first of the four with a user-facing surface**, so the "nothing in
+it is user-facing" argument against cutting no longer holds on its own — and `0.9.0` would be the
+first release the new handle can actually verify.
+
+#### The deploy handle is no longer improvised (#305)
+
+Every release since `0.4.1` reached for a different answer to *did the deploy land*, and the
+handle kept not being there — `css_v` proved nothing at `0.4.1` or `0.7.0`, and worked at `0.8.0`
+only because the front-end overhaul happened to rewrite the stylesheet. The image now carries
+`APP_VERSION`/`APP_COMMIT` as build args, `/settings` renders an admin-only **Deployment** card,
+and both deploy workflows fail if the running container is not the release they just deployed.
+
+⚠️ **The answer is deliberately NOT on `/healthz`, and `CLAUDE.md` was wrong to propose it.**
+That file recommended it in two places, against a decision written twice in the code —
+`main.healthz`'s docstring ("the last place to leak anything") and rule 1 above
+`admin.integration_status`. Sean took the admin panel plus a pipeline assertion. Both doc lines
+are corrected and `tests/test_version_stamp.py` pins the boundary, because "just put the version
+on `/healthz`" is exactly the obvious-looking improvement a future session re-makes.
+
+Three things that are not obvious from the diff:
+
+- **A build arg, not a `.env` variable.** `TAG` on the box records what compose was *told* to
+  pull; a stale or hand-restored `.env` makes it lie, which is the gap #190 could not see.
+  **Do not add it to `.env.example`.**
+- **The release checks the version BEFORE the after-pull DROPs.** If the swap silently left the
+  old image running, dropping tables it still SELECTs is the outage #277 exists to prevent.
+- **`rollback.yml` warns where `release.yml` fails.** Every pre-#305 image reports no stamp, and
+  those are exactly what a rollback reaches for — strictness there would refuse a rollback
+  mid-incident. A *wrong* stamp still fails both.
 
 #### `landing/` is gone from this repo
 
@@ -119,8 +156,8 @@ precondition that stops the other assertions going vacuous.
 went red on `test_the_two_ruff_pins_agree` — the sole failure in 1143 passing. A bot only updates
 the file it knows about.
 
-Suite on `main`: **1191 passed, 4 skipped** (six fewer than before #303, matching the six tests
-removed with the landing page). ⚠️ Recount rather than trusting that.
+Suite on `main`: **1209 passed, 4 skipped** after #305. ⚠️ Recount rather than trusting that —
+`./test.sh --collect-only -q -n0 | tail -1`.
 
 ### ✅ Landing page redeployed OUTSIDE a release (2026-08-24)
 
