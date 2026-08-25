@@ -1,14 +1,22 @@
 #!/usr/bin/env python3
 """Detect drift between what this repository says and what production serves (#297).
 
-`landing/` is deployed by a hand copy to the Droplet. Nothing in CI, the release
-workflow or the application reads it, so the repository and production can
-disagree indefinitely with **no signal at all**. That is not hypothetical: on
-2026-08-24 `seandesmet.com` advertised a card linking a deleted repository for
-hours after #288 merged, and its tech stack had named a retired charting library
-since `0.8.0` shipped — nothing anywhere could have caught either.
+This watches **TLS and application health** across every hostname this project
+serves.
 
-TLS is unmonitored for the same reason. Uptime Kuma was retired on 2026-07-27,
+⚠️ **The landing-page byte check lived here until #299** and is deliberately
+gone. `landing/` moved to its own repo (`CaddisMaster/seandesmet.com`), which
+deploys on push and verifies the served bytes itself — so the drift this script
+existed to catch is now impossible by construction rather than detected after
+the fact. Do not re-add a check for `seandesmet.com`'s content here: two repos
+watching one page means two issues filed for one fault.
+
+The apex and `www` **certificates** stay in scope. This repo remains the
+operational one — it holds `RUNBOOK.md` and the certbot reasoning — and a
+certificate is a property of the Droplet, not of whichever repo supplies the
+HTML.
+
+TLS is unmonitored otherwise. Uptime Kuma was retired on 2026-07-27,
 so nothing watches certificate expiry. Certbot renews automatically, but a
 *broken* renewal is silent right up until the handshake fails.
 
@@ -32,17 +40,15 @@ is what makes drift logic testable without a network or a live site.
 "production is stale" — that would file issues on every flaky runner. Fetches
 retry, and an exhausted retry is reported as its own distinct status.
 
-⚠️ **The comparison is against the working tree**, so this reports "production
-does not match THIS checkout". Run it from `main` for that to mean what you
-expect. The report always names which side is which, because "they differ" is
-not actionable on its own.
+⚠️ **Nothing here reads a file from the working tree any more** (#299), so the
+result no longer depends on which branch you run it from. Every check queries
+the live host and judges it against a rule stated in this file.
 """
 
 from __future__ import annotations
 
 import argparse
 import datetime as dt
-import difflib
 import socket
 import ssl
 import sys
@@ -52,9 +58,6 @@ import urllib.request
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-
-LANDING_URL = "https://seandesmet.com"
-LANDING_FILE = REPO_ROOT / "landing" / "index.html"
 
 HEALTH_URL = "https://budget.seandesmet.com/healthz"
 
@@ -162,47 +165,9 @@ def days_remaining(not_after: dt.datetime, now: dt.datetime) -> int:
     return (not_after - now).days
 
 
-def compare_page(live: bytes, expected: bytes, url: str, path: str) -> tuple[str, str]:
-    """Byte-compare the served page against the checked-out file.
-
-    Byte equality is the right bar here and it is achievable, because nginx
-    serves this file straight off disk with no templating, no compression
-    rewriting and no injected markup. A weaker check (does it contain X?) is
-    what let a wrong library name survive four releases.
-    """
-    if live == expected:
-        return OK, f"{url} matches {path}"
-
-    diff = difflib.unified_diff(
-        expected.decode("utf-8", "replace").splitlines(),
-        live.decode("utf-8", "replace").splitlines(),
-        fromfile=f"{path} (this checkout)",
-        tofile=f"{url} (live)",
-        lineterm="",
-        n=1,
-    )
-    body = "\n".join(list(diff)[:40])
-    return DRIFT, (
-        f"{url} does not match {path}.\n"
-        "If this checkout is main, production is STALE and needs the copy step.\n"
-        f"{body}"
-    )
-
-
 # ---------------------------------------------------------------------------
 # Checks
 # ---------------------------------------------------------------------------
-
-
-def check_landing(fetch=_fetch_page, sleep=time.sleep) -> tuple[str, str]:
-    if not LANDING_FILE.exists():
-        return OK, f"skipped: {LANDING_FILE} is absent from this checkout"
-
-    live, failure = with_retries(lambda: fetch(LANDING_URL), sleep=sleep)
-    if failure:
-        return UNREACHABLE, f"{LANDING_URL}: {failure}"
-
-    return compare_page(live, LANDING_FILE.read_bytes(), LANDING_URL, "landing/index.html")
 
 
 def check_certificate(
@@ -244,7 +209,7 @@ def check_health(fetch=_fetch_page, sleep=time.sleep) -> tuple[str, str]:
 
 def run_all(now: dt.datetime | None = None, warning_days: int = DEFAULT_EXPIRY_WARNING_DAYS):
     now = now or dt.datetime.now(dt.UTC)
-    results = [("landing page", *check_landing()), ("app health", *check_health())]
+    results = [("app health", *check_health())]
     for hostname in HOSTNAMES:
         results.append((f"tls {hostname}", *check_certificate(hostname, now, warning_days)))
     return results

@@ -86,12 +86,13 @@
   will be `v0.1.0`. The `v10.15.0` tag and everything before it live in the archive repo.
 - **Droplet access:** host, credentials, and the deploy-dir layout live in the gitignored
   `CLAUDE.local.md` (maintainer-only). The shape: **`/opt/budget-buddy`** on the Droplet is a
-  **PURE DEPLOY DIR — NO git, NO source**, just `docker-compose.yml`, `.env`, `sql/`, and
-  `landing/`. To change compose or add a migration, `scp` it up — `git pull` doesn't work there.
+  **PURE DEPLOY DIR — NO git, NO source**, just `docker-compose.yml`, `.env` and `sql/`.
+  (`landing/` was here until #299 moved the page to its own repo and its own web root under
+  `/var/www`.) To change compose or add a migration, `scp` it up — `git pull` doesn't work there.
   It is owned by an unprivileged **`deploy`** user (docker group, no sudo) that CI authenticates
   as. It moved from `/root/budget-buddy` on 2026-07-27 — a non-root user cannot own or traverse
-  `/root`, and serving `landing/` from in there had forced `/root` to `0755`, leaving the prod
-  `.env` world-readable. **Compose derives its project name from the directory basename**, so the
+  `/root`, and serving the landing page from in there had forced `/root` to `0755`, leaving the
+  prod `.env` world-readable. **Compose derives its project name from the directory basename**, so the
   move kept the `budget-buddy_postgres_data` volume; renaming the directory would have silently
   created an empty one.
 - **Backups:** in-app `/admin/backup` (manual pg_dump download), plus an automated nightly pull to

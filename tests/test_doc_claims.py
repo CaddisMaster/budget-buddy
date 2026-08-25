@@ -2,8 +2,11 @@
 
 Four stale-doc defects surfaced on 2026-08-24 (#288, #291, #292, #295). The
 common factor was not carelessness — it was that **nothing executed the claim**.
-`landing/index.html` is the least-covered file in the repo and the first thing a
-visitor sees; `RUNBOOK.md`'s nginx snippet is only executed during a disaster.
+`RUNBOOK.md`'s nginx snippet, for instance, is only executed during a disaster.
+
+⚠️ The landing-page stack-tag test lived here until #299 and went with the page
+to `CaddisMaster/seandesmet.com`. Do not re-add it: this repo no longer holds
+the file, so the assertion could only ever skip.
 
 So this file is the executable consumer those claims never had. It follows
 `test_ci_postgres_probe.py`: parse the artifact as TEXT and assert a property of
@@ -17,7 +20,7 @@ person to delete it, and takes the useful assertions with it. If you cannot
 express the claim without a fuzzy match, it does not belong here.
 
 ⚠️ **EVERY TEST SKIPS WHEN ITS FILE IS ABSENT, naming `.dockerignore`.** This is
-not defensive noise. `.dockerignore` strips `*.md`, `CLAUDE.md` AND `landing/`,
+not defensive noise. `.dockerignore` strips `*.md` and `CLAUDE.md`,
 and the suite runs inside the shipped image whenever `tests/` changes (#218) —
 so in that run almost everything here is missing. A test that reads a repo file
 must never assert the image is wrong when it is right. That exact defect reached
@@ -38,16 +41,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 CLAUDE_MD = REPO_ROOT / "CLAUDE.md"
 RUNBOOK = REPO_ROOT / "RUNBOOK.md"
-LANDING = REPO_ROOT / "landing" / "index.html"
 APEXCHARTS = REPO_ROOT / "app" / "static" / "apexcharts.min.js"
 
 _NOT_IN_IMAGE = "not present in the shipped image — .dockerignore excludes it"
-
-# Front-end libraries this project has retired. Naming one in a *tech stack
-# declaration* is a factual error about what the app uses; naming it in prose
-# ("Chart.js was retired with this change") is history and stays.
-RETIRED_FRONTEND = {"chart.js"}
-
 
 # ---------------------------------------------------------------------------
 # CLAUDE.md — the project map
@@ -94,30 +90,6 @@ def test_every_path_in_the_project_map_exists():
     assert not missing, (
         "CLAUDE.md's project map names paths that do not exist: "
         + ", ".join(sorted(missing))
-    )
-
-
-# ---------------------------------------------------------------------------
-# The landing page — a tech stack nobody was checking
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.skipif(not LANDING.exists(), reason=_NOT_IN_IMAGE)
-def test_no_landing_stack_tag_names_a_retired_library():
-    """#291: the card advertised Chart.js for four releases after it was removed.
-
-    Nothing could have caught it — no test reads this file, no CI job touches it,
-    and it deploys outside the release workflow.
-    """
-    tags = re.findall(r'<span class="stack-tag">([^<]+)</span>', LANDING.read_text(encoding="utf-8"))
-
-    assert len(tags) >= 5, f"found only {len(tags)} stack tags — the selector no longer matches"
-
-    named = {t.strip().casefold() for t in tags}
-    retired = named & RETIRED_FRONTEND
-    assert not retired, (
-        f"the landing page advertises retired {', '.join(sorted(retired))} — "
-        "the app dropped it at 0.8.0 (#234) for ApexCharts"
     )
 
 

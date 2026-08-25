@@ -80,7 +80,9 @@ jobs:
           # tests load. Getting this too NARROW recreates the exact gap the
           # docker-build job was added to close — CI passing on something other
           # than what ships. Only genuinely inert paths fall through: *.md,
-          # landing/, .github/ISSUE_TEMPLATE/.
+          # .github/ISSUE_TEMPLATE/. (`landing/` was named here until #299 moved
+          # it to its own repo — note it was never IN the pattern, it fell
+          # through by omission, which is why removing it changes nothing.)
           if matches '^(app/|tests/|scripts/|sql/|requirements.*\.txt$|Dockerfile$|pyproject\.toml$|pytest\.ini$|setup\.cfg$|\.github/workflows/ci\.yml$)'; then
             app=true
           else

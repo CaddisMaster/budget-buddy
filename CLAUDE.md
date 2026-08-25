@@ -56,7 +56,6 @@ app/
   static/          # style.css, vendored JS, PWA manifest + sw.js + icons
 sql/               # numbered migrations + schema.sql (clean single-file schema)
 scripts/           # ingest/clean/insert pipeline, migrate.py, seed_dev.py, release_prep.py, restore_check.py
-landing/           # static landing page at seandesmet.com
 .github/workflows/ # ci.yml, release.yml, rollback.yml, changelog.yml, claude-triage.yml
 docs/              # the reference detail this file points at
 ```
@@ -101,12 +100,12 @@ These apply to nearly every change, which is why they are here rather than in `d
 
 **Docs are checked**
 - `tests/test_doc_claims.py` asserts the doc claims a machine can check: every path in the project
-  map above exists, the landing page names no retired library, `RUNBOOK.md` hardcodes no versioned
+  map above exists, `RUNBOOK.md` hardcodes no versioned
   certbot lineage, and the vendored ApexCharts version and licence match what this file claims.
   **Structured claims only — prose is deliberately out of scope.** Editing the project map or the
   pinned chart version means the suite is now the thing that agrees or disagrees with you
 - `scripts/check_site_drift.py` (daily, `site-drift.yml`) compares the LIVE site against `main`:
-  landing-page bytes, SAN coverage per hostname, certificate expiry, `/healthz`. Needs no secret
+  SAN coverage per hostname, certificate expiry, `/healthz`. Needs no secret
   and no Droplet access. **Drift files one deduped issue; unreachable files nothing**
 
 **Data access**
@@ -285,16 +284,17 @@ describes the last session rather than the current tree, and it asserts rather t
   changelog entry was deleted outright rather than answered with a `### Removed` line. The
   `0.8.0` milestone is closed at 47 issues; **no milestone is open**, so the next cycle needs
   one created
-- **Three issues open:** **#277** (`release.yml` applies DROP migrations before the image swap),
-  **#299** (move the landing page to its own repo — **parked, no date**, but its ordering and its
-  backup-path trap are written down) and **#36** (date-parked to ~Dec 2026). None carries a
-  milestone, correctly — there is no open one
-- ⚠️ **Two Dependabot PRs are open and were deliberately left alone** (as of 2026-08-24): **#285**
-  (minor/patch group) and **#286**, which bumps `anthropic` **0.122.0 → 1.0.0** against `ai.py`.
-  A major SDK bump is not a rubber stamp — the mocked seams do not cover SDK changes, so the
-  in-image run is the check that matters
+- **One issue open:** **#36**, date-parked to ~Dec 2026 and correctly carrying no milestone.
+  **#277** (DROP migrations ran before the image swap) and **#299** (the landing page's own
+  repo) both closed 2026-08-25. A **`0.9.0` milestone is open** — the first since `0.8.0` shipped
+- ⚠️ **`anthropic` is on `1.0.0`** (#286, merged 2026-08-25) alongside the minor/patch group
+  (#285). The major bump was read rather than rubber-stamped, because the mocked `_call_*_model()`
+  seams mean a green suite says nothing about an SDK change. **`tests/test_sdk_call_shape.py`
+  now closes that gap** — it introspects the installed SDK and asserts it still accepts what
+  `ai.py` passes, with no network call and no key. ⚠️ #285 also proved the ruff double-pin real:
+  Dependabot bumped `requirements-dev.txt` alone and CI went red until `ci.yml` matched
 - ⚠️ **A green PR does not predict a green `main`.** The `changes` classifier fails open on a
-  push to `main`, so an inert PR (docs, `landing/`) skips the expensive STEPS and meets them for
+  push to `main`, so an inert PR (docs) skips the expensive STEPS and meets them for
   the first time AFTER merge — that is #281, found by a landing-page change. Check the `main` run
   after every squash-merge, and do not re-run a red one before reading it: a race goes green on
   re-run and hides. ⚠️ **A skipped job reports `pass`, not `skipped`** — the steps skip inside a

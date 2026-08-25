@@ -23,7 +23,7 @@ Nginx on the host, with everything else in Docker.
 | Domain | Serves | Backed by |
 |---|---|---|
 | `budget.seandesmet.com` | Budget Buddy | Docker → `127.0.0.1:5001` |
-| `seandesmet.com` | Static landing page | Nginx directly, from `/opt/budget-buddy/landing` |
+| `seandesmet.com` | Static landing page | Nginx directly, from `/var/www/seandesmet.com` — **a separate repo since #299**, `CaddisMaster/seandesmet.com` |
 
 **The Droplet runs Budget Buddy alone.** It previously also hosted Mealie and
 Uptime Kuma; both were retired on 2026-07-27, along with their Nginx sites and
@@ -51,7 +51,6 @@ firewall notwithstanding. Keep the loopback prefix on every port mapping.
 ├── .env                  # secrets; never in git; captured by the nightly backup
 ├── docker-compose.yml    # identical to the repo's tracked compose
 ├── sql/                  # migrations, copied up by hand when one is needed
-├── landing/              # static landing page, served directly by Nginx
 └── backups/              # ad-hoc pre-migration dumps
 ```
 
@@ -66,7 +65,7 @@ lives only in the `production` environment's secrets, so no un-gated workflow in
 the repository can read it.
 
 > The stack lived in `/root/budget-buddy` until 2026-07-27. That required `/root`
-> to be mode `0755` so Nginx could reach `landing/` inside it, which left the
+> to be mode `0755` so Nginx could reach the landing page inside it, which left the
 > production `.env` world-readable. Moving to `/opt` let `/root` go back to
 > `0700`. If you are following an older note that says `~/budget-buddy`, it means
 > this directory.
@@ -101,16 +100,18 @@ One site is enabled: `budget-buddy` (plus the packaged `default`). The
 `mealie.seandesmet.com` and `status.seandesmet.com` files were removed with
 those services on 2026-07-27.
 
-The `budget-buddy` file holds **two** server blocks — the app and the landing
-page. Certbot has rewritten it, adding the TLS directives and the HTTP→HTTPS
-redirect blocks.
+⚠️ **Two site files since #299.** `budget-buddy` holds the app;
+`seandesmet.com` holds the landing page, which now serves from `/var/www/seandesmet.com`
+and is deployed from its own repo. They were one file with two server blocks until then, so a
+config mistake in either could take both down — splitting them was the point.
+Certbot has rewritten both, adding the TLS directives and the HTTP→HTTPS redirect blocks.
 
 ```nginx
-# /etc/nginx/sites-available/budget-buddy
+# /etc/nginx/sites-available/seandesmet.com   (its own file since #299)
 
 server {
   server_name seandesmet.com www.seandesmet.com;
-  root /opt/budget-buddy/landing;
+  root /var/www/seandesmet.com;
   index index.html;
   location / {
     try_files $uri $uri/ =404;
@@ -869,7 +870,8 @@ transaction is present.
 4. **DNS:** point `seandesmet.com`, `www`, and `budget` at the new IP. Wait for propagation — Certbot's HTTP-01 challenge needs the name
    already resolving to this host.
 5. **Recreate `/opt/budget-buddy/`:** `docker-compose.yml` and `sql/` from this
-   repository, `landing/` from `landing/`, and `.env` from the configs backup.
+   repository and `.env` from the configs backup. The landing page comes from its
+   own repo — clone `CaddisMaster/seandesmet.com` and follow its `SETUP.md`.
    **Then check `.env` names a version:** `grep '^TAG=' .env` (#190). A configs
    backup taken before that pin existed has no such line, and step 8 will fail
    naming `TAG` rather than starting an arbitrary image — which is the designed
