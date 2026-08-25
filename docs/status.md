@@ -52,6 +52,118 @@ that is RUNNING. Corrected in #276.
 The runbook was right; the `CLAUDE.md` bullet was stale and cost a session's planning before
 anyone read it. Corrected in #276.
 
+### ✅ Landing page redeployed OUTSIDE a release (2026-08-24)
+
+**The ai-atlas card is gone from `seandesmet.com`, and the removal is verified live.**
+
+`ai-atlas` was a third portfolio project, added to the landing page by #280 on 2026-08-20. It was
+**abandoned and deleted on 2026-08-24** — local repo, GitHub repo and transcripts — so the card
+linked a repo that returns `404`, on the front page of the portfolio. #288 removed it.
+
+**The diff was the exact reverse of #280's hunk**, not a hand-written deletion: 50 lines added
+there, 50 removed here, leaving `landing/index.html` **byte-identical to the pre-#280 file**. That
+is a far stronger check than counting `<div>`s, and it is available whenever the change being
+undone is a single additive commit — `git show <sha> -- <path> | git apply -R` proposes it, and
+`git show <sha>^:<path> | diff -` proves it landed.
+
+**The changelog entry was DELETED, not answered with a `### Removed` line.** A changelog records
+what reached users, and this card never did: prod is `0.8.0`, and #280 was still sitting in
+`## [Unreleased]`. Deleting the `### Added` entry outright leaves an accurate record of the next
+version, and takes a second dead link with it, since the entry named the repo too. ⚠️ The
+instinct to reach for `### Removed` is the wrong one here — **check whether the thing being
+removed ever shipped** before recording its removal.
+
+⚠️ **A LANDING-PAGE CHANGE IS NOT DEPLOYED BY MERGING IT.** `release.yml` never touches
+`landing/`; Nginx serves the directory off disk, and the page updates only when the file is
+copied to the Droplet by hand. `main` was green and correct for some time while the live page
+still served the dead link. **The merge and the deploy are separate events here** — the same
+shape as a production-only change, and it needs the same explicit "not yet live" marker until
+someone has actually run the copy.
+
+⚠️ **The copy cannot run from the dev VM, and the stale-clone trap is live.** The maintainer
+machine's clone was last measured well behind `main`, so copying `landing/index.html` from it
+would have re-shipped the card. The check that closes this is `grep -c ai-atlas` on the file
+**before** it goes up, expecting `0`; fetching the file from the public repo's raw URL sidesteps
+the clone entirely and is the better default.
+
+**Verified after the copy**, not assumed: the live page is byte-identical to `landing/index.html`
+on `main`, carries one project card, and greps clean for `ai-atlas`.
+
+⚠️ **A SKIPPED JOB REPORTS `pass`, NOT `skipped`.** #288 was the inert shape (`landing/` +
+`*.md`), so the classifier emitted `app=false image=false sql=false` — and `gh pr checks` still
+printed **"Tests pass 30s"** and **"Image builds and runs as non-root pass 44s"**. The steps skip
+*inside* jobs that succeed, so a run that executed nothing is visually indistinguishable from a
+real one. This is the sharp edge of the #281 lesson below, and it is worse than "the expensive
+jobs did not run": it actively looks like they did. **The `main` run is the one that means
+something**, or read the `app=/image=/sql=` line in the "What changed" job log. The `main` run
+for #288 (`32737263585`) did run all five jobs, and was green.
+
+**Still no open milestone**, so #287 and #289 carry none. Prod still runs `0.8.0`.
+
+### ✅ The docs became executable (2026-08-24, later the same day)
+
+Four stale-doc defects surfaced in one day. The common factor was not carelessness — **nothing
+executed the claim**. So two mechanisms merged, and both are now load-bearing.
+
+**#296 — `tests/test_doc_claims.py`.** Five assertions on claims a machine can check: every path in
+`CLAUDE.md`'s project map exists, the landing page names no retired library, `RUNBOOK.md`
+hardcodes no versioned certbot lineage, and the vendored ApexCharts version *and licence* match
+what `CLAUDE.md` claims. Two of those pin rules that had been written warnings and were violated
+anyway.
+
+⚠️ **Scope is structured claims, never prose.** Every assertion targets something with a shape. A
+test that fails on a reworded paragraph is worse than no test — it trains the next person to
+delete the file and take the useful assertions with it. The line worth copying is the cert one:
+`RUNBOOK.md` **may** name `seandesmet.com-0001` while recounting the incident; it **may not** use
+it as a config path. The regex requires the `/etc/letsencrypt/live/` prefix. **Assert the USE, not
+the mention.**
+
+⚠️ **It found a live defect in the disaster-recovery path.** The nginx snippet hardcoded
+`/etc/letsencrypt/live/seandesmet.com-0001/` — the lineage **deleted** when the www handshake was
+fixed — while §"Full rebuild" step 6 says "write the site files from §3". A rebuild copying it
+verbatim writes a config pointing at a path that does not exist: nginx will not start, during a
+rebuild, while the site is down. It had been **anticipated** (step 7 already warned about copying
+paths verbatim) and left armed for a year. **The fix was not to update the path** — that resets
+the expiry. It names `certbot certificates` and the property the lineage must have, so it cannot
+drift again.
+
+**#298 — `scripts/check_site_drift.py` + `site-drift.yml`.** Daily, and it needs **no secret and no
+Droplet access** — every check is public HTTP/TLS, deliberately, because the Droplet is
+unreachable from the VM by design and a monitor needing privileged access would become an argument
+against that boundary. It byte-compares the live landing page against `main`, checks SAN coverage
+per hostname, fails under an expiry threshold, and pings `/healthz`.
+
+⚠️ **Drift files one deduped issue; unreachable files NOTHING** (exit 1 vs exit 2). A flaky runner
+must never open an issue, or the tracker fills with noise until nobody reads it and the one real
+report is lost. A genuine outage shows as a run of red scheduled runs.
+
+The network sits behind two seams and everything else is pure, so 29 tests run with no network.
+The workflow's own shell is asserted as text too — that it reads `PIPESTATUS` rather than `$?`
+(which is `tee`'s status, always 0, and would make every drift report green), and that only exit 1
+files an issue. **A monitor that costs money and can never fire is worse than none.** Proven in
+both directions: clean against real production, and a side-labelled diff when handed a stale file.
+
+⚠️ **THE `.dockerignore` TRAP, THIRD OCCURRENCE (#176, #218, now #298)** — and the new part is
+*why the guard missed*. The test file carried `skipif(not SCRIPT.exists())`. **`scripts/` ships;
+`landing/` does not.** So the guard never fired, the script short-circuited on the absent landing
+file before reaching its fetch, and an assertion expecting UNREACHABLE quietly got OK. It passed
+locally and failed in the image, again.
+
+> **Guard the artifact the test READS, not the one it imports.**
+
+Better than a second skip: remove the dependency. The test now writes its own file into `tmp_path`
+and monkeypatches the constant, so it holds in any environment.
+
+⚠️ And a warning about simulating the image: moving `landing/` aside locally made
+`test_doc_claims.py` fail, which looked like a second bug and was not — the real image also strips
+`*.md`, so that test skips there and the failure existed only in a half-way state no environment
+has. **Reproduce the whole restriction, or trust the real in-image skip count.**
+
+**#299 filed and PARKED** — move the landing page to its own repo, still on the Droplet. No date,
+no milestone. Its ordering is written down, including the trap most likely to bite: the backup
+config path list exists in two places, so a new nginx site file has to be added to both or the
+portfolio's config silently stops being backed up.
+
 ### On `main`, not yet deployed (2026-08-20, evening)
 
 **One PR, no app change.** #282 closed #281: CI's image job waited for Postgres with
@@ -86,8 +198,11 @@ fail against the unfixed workflow.
 ⚠️ The test parses `ci.yml` as **text**, deliberately. PyYAML is in neither requirements file —
 it resolves transitively, and the suite runs inside the shipped image whenever `tests/` changes.
 
-**`## [Unreleased]` now holds two things**, neither a reason to cut a release: the ai-atlas
-landing card (#280) and this CI fix. Prod is still `0.8.0`. Still **no open milestone**.
+**`## [Unreleased]` holds the CI fix and nothing else**, which is not a reason to cut a
+release. It briefly also held the ai-atlas landing card (#280); that card was removed again by
+#287 on 2026-08-24 after the project was abandoned and its repo deleted, and because it never
+shipped in a release its changelog entry was deleted rather than answered with a `### Removed`
+line. Prod is still `0.8.0`. Still **no open milestone**.
 
 ### Open after `0.8.0`
 

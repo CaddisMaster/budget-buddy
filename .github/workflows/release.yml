@@ -180,11 +180,23 @@ jobs:
           chmod 600 ~/.ssh/known_hosts
 
           # Order is load-bearing and the two directions are opposites:
-          #   dump -> apply ADDITIVE migrations -> pull -> up
+          #   dump -> additive migrations -> pull -> up -> destructive migrations
           # Additive changes must land BEFORE the new image, because new code
           # must never query a column that does not exist yet. DROPs are the
-          # reverse (old code still selects them until the container swaps), so
-          # they are deliberately NOT automated and stay a manual step.
+          # reverse: the old container still SELECTs them right up until the swap
+          # completes, so they land AFTER.
+          #
+          # #277 — both directions are now the pipeline's job. Each migration
+          # declares its phase in a header pragma (`-- deploy: after-pull`;
+          # silence means additive), `migrate.py --phase` filters on it, and this
+          # job runs the runner twice, either side of `up -d`. Before that, step 2
+          # applied EVERY pending file and this comment claimed drops "stay a
+          # manual step" — which was simply false, and false in the direction that
+          # tells a reader the risk is covered. `sql/36` shipped through it at
+          # 0.8.0 against a v0.7.0 image that still read both dropped tables.
+          #
+          # The guard is tests/test_migration_phases.py, not this comment: a DROP
+          # with no pragma fails the suite. Do not re-collapse these into one call.
           #
           # `pull web`, never a bare `pull`: a bare pull also fetches postgres,
           # and `up -d` then recreates the database container. Shipping app code
@@ -224,14 +236,28 @@ jobs:
                gzip -t \"\$DUMP\"
                echo \"backup ok: \$DUMP (\$(stat -c%s \"\$DUMP\") bytes)\"
 
-               # 2. Apply pending migrations using the image being deployed, so
-               #    the runner and the migrations always match the release.
+               # 2. Apply the ADDITIVE migrations, using the image being
+               #    deployed so the runner and the migrations always match the
+               #    release. An empty pass is normal and exits 0 — most releases
+               #    carry migrations for one phase only.
                TAG='${VERSION}' docker compose run --rm --no-deps -T \\
-                 -e DB_HOST=db web python scripts/migrate.py
+                 -e DB_HOST=db web python scripts/migrate.py --phase before-pull
 
                # 3. Only now swap the application.
                TAG='${VERSION}' docker compose pull web
                TAG='${VERSION}' docker compose up -d
+
+               # 4. And only now the DROPs — the old container has stopped, so
+               #    nothing is still SELECTing what is about to disappear.
+               #
+               #    A failure here does NOT leave production broken: the new
+               #    image is already up and serving, and by rule 2 of #277 an
+               #    after-pull migration adds no schema that image needs. The
+               #    release still goes red, which is right — the drop must be
+               #    finished by hand — but the app stays healthy meanwhile.
+               TAG='${VERSION}' docker compose run --rm --no-deps -T \\
+                 -e DB_HOST=db web python scripts/migrate.py --phase after-pull
+
                docker compose ps"
 
           # TAG pins the exact released image. The Droplet's compose consumes it

@@ -117,8 +117,13 @@ server {
   }
 
   listen 443 ssl;                                                   # managed by Certbot
-  ssl_certificate     /etc/letsencrypt/live/seandesmet.com-0001/fullchain.pem;
-  ssl_certificate_key /etc/letsencrypt/live/seandesmet.com-0001/privkey.pem;
+  # ⚠️ Read the LIVE lineage name off the box — do not copy one from this file.
+  #    `certbot certificates` lists them; pick the one whose SAN covers BOTH
+  #    names above. This block named `seandesmet.com-0001` until 2026-08-24,
+  #    by which point that lineage had been DELETED. See §Duplicate certificate
+  #    lineages.
+  ssl_certificate     /etc/letsencrypt/live/<lineage covering apex + www>/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/<lineage covering apex + www>/privkey.pem;
   include             /etc/letsencrypt/options-ssl-nginx.conf;
   ssl_dhparam         /etc/letsencrypt/ssl-dhparams.pem;
 }
@@ -134,6 +139,9 @@ server {
   }
 
   listen 443 ssl;                                                   # managed by Certbot
+  # Unversioned, and stable: this lineage covers exactly one name, so certbot
+  # has never had cause to mint a `-000N` alongside it. Still worth confirming
+  # with `certbot certificates` after any rebuild.
   ssl_certificate     /etc/letsencrypt/live/budget.seandesmet.com/fullchain.pem;
   ssl_certificate_key /etc/letsencrypt/live/budget.seandesmet.com/privkey.pem;
   include             /etc/letsencrypt/options-ssl-nginx.conf;
@@ -190,29 +198,41 @@ Issuing a certificate for a new subdomain:
 certbot --nginx -d newsub.seandesmet.com
 ```
 
-### ⚠️ Known issue: duplicate certificate lineages
+### ⚠️ Duplicate certificate lineages — the failure mode, and how to check for it
 
-There are **four** lineages for two names, because Certbot was re-run with
-different domain sets and creates a new `-000N` lineage rather than replacing:
+**Certbot creates a new `-000N` lineage rather than replacing an existing one**
+when it is re-run with a different `-d` set. If Nginx then points at a lineage
+whose SAN does not list every name its `server_name` claims, that name fails the
+TLS handshake — while the certificate *that would work* sits unused on the same
+box. Nothing warns you; the site simply stops serving on one hostname.
 
-| Lineage | Covers | Used by Nginx? |
-|---|---|---|
-| `seandesmet.com` | `seandesmet.com`, `www.seandesmet.com` | **No** |
-| `seandesmet.com-0001` | `seandesmet.com` only | **Yes** |
-| `budget.seandesmet.com` | `budget.seandesmet.com` | Yes |
-
-**Consequence: `https://www.seandesmet.com` fails the TLS handshake.** The
-server block claims `www` but presents `seandesmet.com-0001`, which does not
-list `www` in its SAN. The lineage that *would* work is the unused one.
-
-The fix is to point that server block at `/etc/letsencrypt/live/seandesmet.com/`
-and reload, then delete the orphaned lineage with
-`certbot delete --cert-name seandesmet.com-0001`. Verify before and after with:
+**Check which lineage actually answers, by name:**
 
 ```bash
 echo | openssl s_client -servername www.seandesmet.com \
   -connect www.seandesmet.com:443 2>/dev/null | openssl x509 -noout -ext subjectAltName
+certbot certificates    # every lineage on the box, and what each covers
 ```
+
+The SAN must list every name the corresponding `server_name` claims. If it does
+not, repoint that server block at the lineage that covers them all, reload, and
+delete the orphan with `certbot delete --cert-name <lineage>`.
+
+> ✅ **RESOLVED — this bit production once, and is fixed (recorded under `0.1.0`
+> in `CHANGELOG.md`).** Four lineages had accumulated for two names, the landing
+> page's server block presented `seandesmet.com-0001`, which covered the apex
+> only, and **`https://www.seandesmet.com` failed the handshake**. It was
+> repointed at the lineage covering both names and the orphan deleted.
+>
+> ⚠️ This section previously described that as a **current** failure. Re-verified
+> against production **2026-08-24** — `www` presents a SAN of
+> `DNS:seandesmet.com, DNS:www.seandesmet.com`, expiring `Nov 2 2026`, and
+> returns `200`. **The runbook is read during an incident**, so a resolved
+> failure written as current is worse here than anywhere else: it invites
+> someone to "fix" a certificate that is already correct, under time pressure.
+>
+> **Keep checking after a rebuild**, or any time `certbot` is re-run with a
+> different `-d` set — the mechanism above is real and has not gone away.
 
 **Watch for this after any rebuild** — a fresh Certbot run produces a lineage
 named `seandesmet.com` with no suffix, so a config copied verbatim from here
@@ -596,11 +616,17 @@ command fails naming `TAG`, which is the whole of #190. See §5.
 
 ### Migrations
 
-**Additive migrations are applied automatically by the deploy job**, in this order:
+**Migrations are applied automatically by the deploy job — both directions since
+#277**, in this order:
 
 1. `pg_dump` to `backups/pre-deploy-<timestamp>.sql.gz` — **a failed dump fails the deploy**
-2. `scripts/migrate.py` applies anything pending
-3. *then* the image is pulled and the container swapped
+2. `scripts/migrate.py --phase before-pull` — the **additive** migrations
+3. the image is pulled and the container swapped
+4. `scripts/migrate.py --phase after-pull` — the **DROPs**, now that the old
+   container has stopped
+
+An empty pass at step 2 or 4 is normal and exits 0; most releases carry a
+migration for one phase and nothing for the other.
 
 The runner tracks applied files in a **`schema_migrations`** table. Production was
 baselined on 2026-07-27 (30 files recorded as applied, none re-executed).
@@ -617,15 +643,36 @@ docker compose run --rm --no-deps -T -e DB_HOST=db web python scripts/migrate.py
 > apply against a database with no tracking table for exactly this reason; on an
 > existing database you `--baseline` first.
 
-**⚠️ `DROP`s are NOT automated and must stay manual.** The two directions are opposites:
+**The two directions are opposites, and a migration now declares which one it is:**
 
 - **Additive** (new columns/tables) → **before** the pull. New code must never query a
-  column that does not exist yet. *This is the automated path.*
+  column that does not exist yet. This is the default; the file says nothing.
 - **Drops** → **after** the pull. Old code is still selecting those columns until the
-  container is replaced. Automating this would apply them in the wrong order.
+  container is replaced. The file declares it with a pragma line in its header:
 
-So a release that drops a column: let the deploy run, then apply the drop by hand
-afterwards (`pg_dump` first).
+  ```sql
+  -- deploy: after-pull
+  ```
+
+> ⚠️ **This section used to read "`DROP`s are NOT automated and must stay manual."**
+> That was never true of the pipeline it described — step 2 ran `migrate.py` with no
+> filter, which applies **every** pending file including the drops. `sql/36` shipped
+> through it at `0.8.0` against a `v0.7.0` image that still read both dropped tables,
+> which would have 500'd `/` and `/goals` for the length of the image pull. Accepted
+> deliberately at the time (one user, a watched deploy, a `pg_dump` taken first) and
+> fixed properly in #277.
+
+**Forgetting the pragma is a red test suite, not an outage.**
+`tests/test_migration_phases.py` fails any migration containing `DROP TABLE` or
+`DROP COLUMN` that does not declare `after-pull`. It also fails an `after-pull`
+migration that *adds* schema: a migration that both drops and adds cannot be phased
+and must be split into two files.
+
+To apply everything in one pass — a local run, or a rebuild — omit `--phase`:
+
+```bash
+docker compose run --rm --no-deps -T -e DB_HOST=db web python scripts/migrate.py
+```
 
 The runner connects as **`DB_USER`**, never `DB_APP_USER` — the least-privilege
 `budget_app` role has no DDL rights by design.

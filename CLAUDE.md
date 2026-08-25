@@ -99,6 +99,16 @@ Full column lists and the reasoning behind each shape are in
 These apply to nearly every change, which is why they are here rather than in `docs/gotchas.md`.
 **That file holds ~40 more**, each one load-bearing — read it before any non-trivial work.
 
+**Docs are checked**
+- `tests/test_doc_claims.py` asserts the doc claims a machine can check: every path in the project
+  map above exists, the landing page names no retired library, `RUNBOOK.md` hardcodes no versioned
+  certbot lineage, and the vendored ApexCharts version and licence match what this file claims.
+  **Structured claims only — prose is deliberately out of scope.** Editing the project map or the
+  pinned chart version means the suite is now the thing that agrees or disagrees with you
+- `scripts/check_site_drift.py` (daily, `site-drift.yml`) compares the LIVE site against `main`:
+  landing-page bytes, SAN coverage per hostname, certificate expiry, `/healthz`. Needs no secret
+  and no Droplet access. **Drift files one deduped issue; unreachable files nothing**
+
 **Data access**
 - Every SELECT/INSERT/UPDATE/DELETE is scoped to `current_user.id`. All data tables have `user_id`
 - **All app DB access goes through `db_cursor()`** (`db.py`) — commits on clean exit, rolls back and
@@ -247,13 +257,18 @@ server itself — **read it before touching anything on the Droplet.**
 - ⚠️ **A missing env var is the one deploy failure with no signal.** Check
   `git diff v<last>..HEAD -- .env.example` **before** cutting. Verify a secret landed by **length,
   not presence**; `/settings` carries an admin-only Integrations panel that answers this
-- **Schema changes:** the deploy job applies pending migrations ITSELF — `pg_dump` →
-  `scripts/migrate.py` → *then* pull and swap (`RUNBOOK.md` §Migrations is the source of
-  truth). ⚠️ **That order is right for an additive migration and WRONG for a DROP**, which
-  lands while the old image is still serving. A DROP whose tables the DEPLOYED image still
-  reads must be held back a release — judged against the running version, never against
-  `main`. ⚠️ This line used to read "apply by hand", which contradicted the runbook and is
-  what sent a session down the manual path at 0.8.0 prep
+- **Schema changes:** the deploy job applies pending migrations ITSELF, in **two phases**
+  since #277 — `pg_dump` → `migrate.py --phase before-pull` → pull and swap →
+  `migrate.py --phase after-pull` (`RUNBOOK.md` §Migrations is the source of truth).
+  **A migration that drops a table or column MUST carry `-- deploy: after-pull` in its
+  header**; silence means additive, which is the right default for everything else.
+  Forgetting it fails `tests/test_migration_phases.py`, so the ordering is no longer a
+  thing anyone has to remember — and a DROP no longer has to be held back a release.
+  ⚠️ **A migration cannot be in both phases**: an `after-pull` file that also *adds*
+  schema fails the suite and must be split in two. ⚠️ This line has been wrong twice —
+  it read "apply by hand" (contradicting the runbook, which sent a session down the
+  manual path at 0.8.0 prep), then described the DROP hazard as a rule to remember
+  rather than a thing the pipeline handles
 - **Droplet access** is maintainer-only and lives in the gitignored `CLAUDE.local.md`.
   `/opt/budget-buddy` is a **pure deploy dir — no git, no source**; `scp` changes up
 
@@ -264,16 +279,29 @@ describes the last session rather than the current tree, and it asserts rather t
 **Reconcile against `git log` and `gh issue list` at the start of every session.**
 
 - **Prod runs `0.8.0`, shipped and verified 2026-08-20.** `main` is AHEAD of it: `## [Unreleased]`
-  carries the ai-atlas landing card (#280) and a CI fix (#282), neither a reason to cut. The
+  carries a CI fix (#282) and nothing else, which is not a reason to cut. It briefly also held
+  the ai-atlas landing card (#280); **#288 removed that card again on 2026-08-24** after the
+  project was abandoned and its repo deleted, and since it never shipped in a release its
+  changelog entry was deleted outright rather than answered with a `### Removed` line. The
   `0.8.0` milestone is closed at 47 issues; **no milestone is open**, so the next cycle needs
   one created
-- **Two issues open:** **#277** (`release.yml` applies DROP migrations before the image swap)
-  and **#36** (date-parked to ~Dec 2026, correctly carries no milestone)
+- **Three issues open:** **#277** (`release.yml` applies DROP migrations before the image swap),
+  **#299** (move the landing page to its own repo — **parked, no date**, but its ordering and its
+  backup-path trap are written down) and **#36** (date-parked to ~Dec 2026). None carries a
+  milestone, correctly — there is no open one
+- ⚠️ **Two Dependabot PRs are open and were deliberately left alone** (as of 2026-08-24): **#285**
+  (minor/patch group) and **#286**, which bumps `anthropic` **0.122.0 → 1.0.0** against `ai.py`.
+  A major SDK bump is not a rubber stamp — the mocked seams do not cover SDK changes, so the
+  in-image run is the check that matters
 - ⚠️ **A green PR does not predict a green `main`.** The `changes` classifier fails open on a
   push to `main`, so an inert PR (docs, `landing/`) skips the expensive STEPS and meets them for
   the first time AFTER merge — that is #281, found by a landing-page change. Check the `main` run
   after every squash-merge, and do not re-run a red one before reading it: a race goes green on
-  re-run and hides
+  re-run and hides. ⚠️ **A skipped job reports `pass`, not `skipped`** — the steps skip inside a
+  job that still succeeds, so `gh pr checks` prints "Tests pass" for a run that executed no
+  tests, and it is indistinguishable from a real one at a glance (seen on #288). The number to
+  trust is the `main` run, or the classifier's own `app=/image=/sql=` line in the "What changed"
+  job log
 - ⚠️ **The `css_v` deploy handle worked at `0.8.0` — by luck, not by design.** Production served
   the same `style.css` hash the tag builds, because the front-end overhaul rewrote the
   stylesheet. **A release touching no static asset is back to trusting the pipeline.** Decide the

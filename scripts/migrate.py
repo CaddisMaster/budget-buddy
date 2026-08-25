@@ -22,12 +22,32 @@ That is why ``--baseline`` exists. Production has ~30 migrations already applied
 and no tracking table, so the first run there records them as applied **without
 executing them** — running them would fail, and would be wrong even if it did not.
 
+**Deploy phases (#277).** A migration declares when it may run, relative to the
+image swap, with a pragma line in its header::
+
+    -- deploy: after-pull
+
+``before-pull`` is the default and needs no line: additive schema must exist
+before the code that reads it arrives. ``after-pull`` is for DROPs, which are the
+exact opposite — the object must not vanish until the old image has stopped
+serving. ``release.yml`` runs this script twice, once per phase, either side of
+``docker compose up -d``.
+
+⚠️ **The pragma is enforced by the test suite, not here.**
+``tests/test_migration_phases.py`` fails any migration that drops a table or
+column without declaring ``after-pull``, so a forgotten pragma is a red suite
+rather than a production outage. This module only *reads* the declaration —
+running with no ``--phase`` still applies everything, which is what a local or
+disaster-recovery run wants.
+
 Usage::
 
     python scripts/migrate.py --status     # what is applied, what is pending
     python scripts/migrate.py --baseline   # ONE TIME on an existing database
     python scripts/migrate.py --dry-run    # what would be applied
-    python scripts/migrate.py              # apply pending migrations
+    python scripts/migrate.py              # apply pending migrations (all phases)
+    python scripts/migrate.py --phase before-pull   # additive only  (deploy step 2)
+    python scripts/migrate.py --phase after-pull    # DROPs only     (deploy step 5)
 """
 
 import argparse
@@ -44,6 +64,31 @@ SQL_DIR = Path(__file__).resolve().parent.parent / 'sql'
 # never applied as a migration — doing so on an existing database would try to
 # recreate every table.
 MIGRATION_RE = re.compile(r'^(\d+)_.*\.sql$')
+
+BEFORE_PULL = 'before-pull'
+AFTER_PULL = 'after-pull'
+PHASES = (BEFORE_PULL, AFTER_PULL)
+
+# Anchored to a whole line. A loose search would match the header paragraphs that
+# discuss deploy ordering in prose — sql/36 alone says "after the image pull"
+# three times in English before it says it in a pragma.
+PHASE_RE = re.compile(r'^--\s*deploy:\s*(before-pull|after-pull)\s*$', re.M)
+
+
+def phase_of(sql):
+    """The phase a migration declares. Undeclared means additive.
+
+    Silence defaulting to ``before-pull`` is only safe because the test suite
+    makes silence impossible for a destructive migration; the two halves are a
+    pair, and deleting that test turns this default back into #277.
+    """
+    found = PHASE_RE.findall(sql)
+    if len(found) > 1:
+        # Never silently take the first. Two declarations means someone edited a
+        # header without noticing an existing one, and guessing which they meant
+        # is exactly the judgement this mechanism exists to remove.
+        raise ValueError(f'declares the deploy phase {len(found)} times: {found}')
+    return found[0] if found else BEFORE_PULL
 
 
 def migration_files():
@@ -88,14 +133,64 @@ def applied_set(cursor):
     return {row[0] for row in cursor.fetchall()}
 
 
+def phases_for(names):
+    """[(name, phase)] for the given migrations, in the order given.
+
+    A malformed header is fatal rather than defaulted: this runs mid-deploy,
+    between the pg_dump and the image pull, and guessing here would put the
+    wrong migrations either side of the swap.
+    """
+    resolved = []
+    for name in names:
+        try:
+            resolved.append((name, phase_of((SQL_DIR / name).read_text())))
+        except ValueError as exc:
+            sys.exit(f'error: {name} {exc}')
+    return resolved
+
+
+# ⚠️ NO ORDERING GUARD HERE, AND THAT IS A DECISION (#277).
+#
+# Splitting a batch across the swap reorders it: every before-pull file runs,
+# then every after-pull one. A `check_phase_order()` that refused a batch whose
+# phases were not numerically monotonic WAS written, and was removed the same
+# afternoon — it rejected both real batches it was ever shown:
+#
+#   sql/27 (after-pull) then sql/28 (before-pull)   — drop a dead flag, add a column
+#   sql/36 (after-pull) then sql/37 (before-pull)   — drop dead caches, add a token
+#
+# Neither pair shares a table. The check was a blunt proxy for "these two
+# migrations depend on each other", and the proxy was wrong every time, so it
+# would have blocked a legitimate deploy and then been deleted under pressure at
+# exactly the wrong moment.
+#
+# What makes the reordering safe enough to accept:
+#   - the before-pull pass runs BEFORE anything is pulled, so a genuine conflict
+#     fails there and leaves the old image serving, untouched;
+#   - each migration applies in its own transaction, so a failure is clean;
+#   - rule 2 in tests/test_migration_phases.py forbids mixed migrations, which is
+#     where a real cross-phase dependency would come from.
+#
+# The residual hazard is contrived — a migration re-adding, with IF NOT EXISTS,
+# the very object a lower-numbered after-pull migration drops. If that ever comes
+# up, the answer is to hold one of them back a release, not to reinstate a
+# corpus-wide numeric rule. The held-back list printed below is the visibility
+# that actually helps.
+
+
 def cmd_status(cursor):
     applied = applied_set(cursor)
     files = migration_files()
     pending = [f for f in files if f not in applied]
 
     print(f'{len(applied)} applied, {len(pending)} pending, {len(files)} total\n')
+    phases = dict(phases_for(files))
     for name in files:
-        print(f'  {"applied" if name in applied else "PENDING":>7}  {name}')
+        state = 'applied' if name in applied else 'PENDING'
+        # Only the non-default phase is printed. Annotating all ~35 files with
+        # "before-pull" would bury the two lines that actually carry a decision.
+        mark = f'  [{AFTER_PULL}]' if phases[name] == AFTER_PULL else ''
+        print(f'  {state:>7}  {name}{mark}')
 
     # A file recorded as applied but no longer on disk means the repository and
     # the database disagree about history — worth shouting about rather than
@@ -132,7 +227,7 @@ def cmd_baseline(connection, cursor):
     return 0
 
 
-def cmd_apply(connection, cursor, dry_run):
+def cmd_apply(connection, cursor, dry_run, phase=None):
     applied = applied_set(cursor)
     pending = [f for f in migration_files() if f not in applied]
 
@@ -145,8 +240,22 @@ def cmd_apply(connection, cursor, dry_run):
         print('On a genuinely fresh database, load sql/schema.sql, then --baseline.')
         return 1
 
+    if phase is not None:
+        # Resolved over the WHOLE pending batch, not the filtered subset, so the
+        # held-back list below names what the other pass will pick up.
+        resolved = phases_for(pending)
+        skipped = [name for name, this in resolved if this != phase]
+        pending = [name for name, this in resolved if this == phase]
+        if skipped:
+            print(f'phase {phase}: holding back {len(skipped)} migration(s) '
+                  f'for the other phase: {", ".join(skipped)}')
+
     if not pending:
-        print('Nothing to apply — up to date.')
+        # Not an error, and deliberately so: most releases carry a migration for
+        # one phase and nothing for the other, so the empty pass is the norm and
+        # must not fail the deploy.
+        label = f' for phase {phase}' if phase else ''
+        print(f'Nothing to apply{label} — up to date.')
         return 0
 
     if dry_run:
@@ -186,6 +295,11 @@ def main():
     group.add_argument('--baseline', action='store_true',
                        help='one-time: record existing migrations as applied, running none')
     group.add_argument('--dry-run', action='store_true', help='show what would be applied')
+    # NOT in the mutually-exclusive group: --phase composes with --dry-run, which
+    # is how you check what a given deploy step would do.
+    parser.add_argument('--phase', choices=PHASES, default=None,
+                        help='apply only migrations declaring this deploy phase '
+                             '(default: every phase, in one pass)')
     args = parser.parse_args()
 
     connection = connect()
@@ -198,7 +312,7 @@ def main():
             return cmd_status(cursor)
         if args.baseline:
             return cmd_baseline(connection, cursor)
-        return cmd_apply(connection, cursor, args.dry_run)
+        return cmd_apply(connection, cursor, args.dry_run, args.phase)
     finally:
         connection.close()
 
