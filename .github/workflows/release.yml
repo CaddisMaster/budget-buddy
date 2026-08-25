@@ -54,6 +54,11 @@ jobs:
           fi
 
           echo "version=${version}" >> "$GITHUB_OUTPUT"
+          # #305 — the image is stamped with both, so the running container can
+          # be asked what it is. Published from HERE rather than recomputed at
+          # the build step: a second derivation is a second thing that can
+          # disagree with the tag the image actually ships under.
+          echo "sha_short=${sha_short}" >> "$GITHUB_OUTPUT"
           echo "tags=${tags}" >> "$GITHUB_OUTPUT"
           echo "Tags: ${tags}"
 
@@ -77,6 +82,12 @@ jobs:
           # Mac staging smoke it existed for now runs in the `smoke` job below.
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
+          # #305 — bake the identity into the image itself. The deploy step
+          # below asks the running container for these back, which is how a
+          # half-finished swap stops reporting success.
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.version }}
+            APP_COMMIT=${{ steps.meta.outputs.sha_short }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -246,6 +257,24 @@ jobs:
                # 3. Only now swap the application.
                TAG='${VERSION}' docker compose pull web
                TAG='${VERSION}' docker compose up -d
+
+               # 3b. Assert the container that came up IS this release, before
+               #    anything irreversible happens below (#305). Ordering is
+               #    load-bearing: step 4 applies DROPs, and by #277's reasoning
+               #    those are only safe once the NEW image is serving. If the
+               #    swap silently left the old one up, dropping tables it still
+               #    SELECTs is the exact outage #277 exists to prevent — so this
+               #    runs while the only thing that has happened is a swap.
+               #
+               #    `/healthz` cannot answer this: it returns 200 from any
+               #    version, which is how production once sat three releases
+               #    stale with every indicator green (#190).
+               RUNNING=\"\$(docker compose exec -T web printenv APP_VERSION | tr -d '\r')\"
+               if [ \"\$RUNNING\" != '${VERSION}' ]; then
+                 echo \"::error::Deployed ${VERSION} but the running container reports '\$RUNNING'\"
+                 exit 1
+               fi
+               echo \"running version \$RUNNING (matches ${VERSION})\"
 
                # 4. And only now the DROPs — the old container has stopped, so
                #    nothing is still SELECTing what is about to disappear.

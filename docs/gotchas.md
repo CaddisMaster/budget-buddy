@@ -181,6 +181,24 @@
   the pin goes **first** (the pre-deploy `pg_dump` is itself a bare `docker compose exec`) and is
   `chmod 600`'d **before** the redirect. `tests/test_deploy_pinning.py` states the property — any
   `:-` default at all fails it.
+- ⚠️ **The version stamp is a BUILD ARG, and `/healthz` must never carry it** (#305, and it
+  reverses what `CLAUDE.md` proposed for months). Two halves. **(1)** `Dockerfile` declares
+  `ARG APP_VERSION`/`APP_COMMIT` with a `dev` default and matching `ENV`s, both in **`base`** so
+  `prod` and `dev` inherit — an `ENV` below `FROM base AS dev` stamps only the image nobody
+  ships, and no local run can catch that, because local dev *is* the dev stage. Reading the
+  Droplet's `TAG` instead was rejected: that records what compose was *told* to pull, and a
+  stale or hand-restored `.env` makes it lie, which is the exact failure #190 could not see.
+  **(2)** It renders admin-only on `/settings`. `main.healthz`'s docstring and rule 1 above
+  `admin.integration_status` both say that endpoint exists to leak nothing, and it is the one
+  URL guaranteed reachable by anyone — naming the build there hands over a CVE-matching hint.
+  `tests/test_version_stamp.py` states the boundary as a test rather than as prose, because
+  "just put the version on /healthz" is an obvious-looking improvement that this file's own
+  core once recommended. ⚠️ `--build-arg APP_VERSION=` sets the variable to the EMPTY STRING
+  rather than leaving it unset, so the reader strips and falls back rather than testing
+  `os.getenv(var, DEFAULT)`; an empty version renders as a blank cell that reads as a lost
+  version rather than an unstamped build. ⚠️ **`rollback.yml` warns where `release.yml` fails** —
+  every pre-#305 image reports nothing and those are exactly what a rollback reaches for, so
+  strictness there would refuse a rollback mid-incident. A *wrong* stamp still fails both.
 - ⚠️ **Historical (the reason the default is gone): a bare `docker compose up -d` reverted prod**
   (#190, observed 2026-08-10). Compose resolves the app image as `${TAG:-latest}`, and the
   Droplet's local `latest` is **stale by construction**: deploys pull the exact version tag and

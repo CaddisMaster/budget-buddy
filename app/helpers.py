@@ -12,6 +12,40 @@ from flask import request
 GENERIC_ERROR = 'Something went wrong — please try again'
 
 
+# What an unstamped build reports (#305). A real string, never None or '': both
+# render as an empty cell in Jinja, which reads as a version that went missing
+# rather than as a build that never had one.
+DEV_VERSION = 'dev'
+
+
+def _stamp(variable):
+    """Read one build stamp baked into the image by a Dockerfile ARG.
+
+    `--build-arg APP_VERSION=` sets the variable to the empty string rather than
+    leaving it unset, so this cannot be a plain `os.getenv(var, DEV_VERSION)`.
+    """
+    return (os.getenv(variable) or '').strip() or DEV_VERSION
+
+
+def app_version():
+    """The version this image was built as — `0.9.0`, or `dev` for any build
+    that passed no build arg (#305).
+
+    ⚠️ Admin-only wherever it is rendered, and it must never reach `/healthz`.
+    See `main.healthz` and the rules above `admin.integration_status`: that
+    endpoint is the one thing guaranteed reachable by anyone, so naming the
+    running build there hands over a CVE-matching hint for free.
+    """
+    return _stamp('APP_VERSION')
+
+
+def app_commit():
+    """The short commit the image was built from, alongside app_version(). The
+    version answers "which release"; this answers "which build of it", which is
+    what distinguishes a re-cut tag from the original."""
+    return _stamp('APP_COMMIT')
+
+
 def ai_enabled():
     """True when the NL quick-add (v9) is configured — i.e. an ANTHROPIC_API_KEY
     is present. Templates gate the quick-add box on this so the feature stays

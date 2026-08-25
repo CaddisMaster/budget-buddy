@@ -16,6 +16,45 @@
     <a href="{{ url_for('admin.admin_users') }}" class="btn btn-primary">Manage users</a>
 </div>
 
+{# #305 — which build is actually serving, so a deploy can be verified.
+   Admin-only, and it inherits the Integrations rules directly below: this
+   page is deployment detail, and `/healthz` must keep saying nothing (see
+   main.healthz). The version is baked into the IMAGE by a build arg, so it
+   reports what is running rather than what the Droplet's .env asked for —
+   which is the distinction #190 left unobservable. #}
+<h2>Deployment</h2>
+<div class="card">
+    <p style="font-size:14px;color:var(--text-muted);margin-bottom:1rem">
+        Which build is serving this page. A release is only deployed when the
+        version here is the one that was published — the app answering at all
+        says nothing about which version answered.
+    </p>
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr><th>What</th><th>Value</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Running version</td>
+                    <td>
+                        {% if dev_build %}
+                            <span class="status-pill is-idle">{{ app_version }}</span>
+                            <span style="font-size:13px;color:var(--text-muted)">— built locally, not from a release</span>
+                        {% else %}
+                            <strong>{{ app_version }}</strong>
+                        {% endif %}
+                    </td>
+                </tr>
+                <tr>
+                    <td>Built from commit</td>
+                    <td>{{ app_commit }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
 {# #139 — which optional integrations are actually configured. Admin-only (the
    route already redirects non-admins). NEVER render a value here, not even a
    prefix or a mask: each row shows one word about one integration, and the

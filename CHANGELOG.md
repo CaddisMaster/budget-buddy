@@ -8,6 +8,35 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Added
+
+- **The app now says which version it is running, and the deploy checks it.**
+  Nothing it served did before, so "did the deploy land?" reached for a
+  different improvised handle every release — and the handle kept not being
+  there. The stylesheet hash proved nothing at `0.4.1` or `0.7.0`, because
+  neither release touched a static asset, and worked at `0.8.0` only because
+  the front-end overhaul happened to rewrite the CSS.
+  The image is now built with the version and commit baked in, and `/settings`
+  reports both in an admin-only Deployment card beside Integrations. A build
+  that came from no release says `dev` in words rather than showing a blank
+  cell. Both deploy workflows ask the running container what it is and fail if
+  the answer is not the release they just deployed — in the release, before the
+  destructive migrations run, since dropping tables against a container that is
+  silently still the old image is the outage that phasing exists to prevent.
+  Two deliberate asymmetries. The version is a **build argument, not an
+  environment variable**: the `TAG` line on the server records what Compose was
+  *told* to pull, which a stale or hand-restored file can make lie, and that is
+  exactly the gap that once left production three releases behind with every
+  indicator green. And a **rollback warns where a deploy fails** — every image
+  built before this change reports nothing, and those are precisely the
+  versions a rollback reaches for, so refusing them mid-incident would be worse
+  than the missing information. A *wrong* version still fails both.
+  It is admin-only and deliberately absent from `/healthz`, which is the one
+  URL guaranteed reachable by anyone and therefore the last place to name a
+  build. The project's own guidance had proposed putting it there; that
+  contradicted a decision already written into the code twice, and the boundary
+  is now a test rather than a comment.
+
 ### Changed
 
 - **The Anthropic SDK moved to `1.0.0`** (from `0.122.0`). A major version, so
