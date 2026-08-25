@@ -34,17 +34,23 @@
 --     v0.7.0 app/blueprints/goals.py:310      SELECT ... FROM goal_coach
 --     v0.7.0 app/blueprints/goals.py:433      INSERT INTO goal_coach
 --
--- ⚠️ And release.yml applies pending migrations BEFORE it pulls the image, so
--- this DROP lands while the old container is still serving. That was accepted
--- deliberately for the 0.8.0 deploy (Sean, 2026-08-20): one user, a deploy he
--- triggers and watches, a window the length of an image pull, a pg_dump taken
--- first, and no data at risk — the cost is a 500 on `/` or `/goals` if either
--- is loaded in that minute.
+-- ⚠️ HISTORY, kept because it is why the pragma below exists. When this file
+-- shipped, release.yml applied every pending migration BEFORE pulling the image,
+-- so this DROP landed while the old container was still serving. That was
+-- accepted deliberately for the 0.8.0 deploy (Sean, 2026-08-20): one user, a
+-- deploy he triggers and watches, a window the length of an image pull, a
+-- pg_dump taken first, and no data at risk — the cost was a 500 on `/` or
+-- `/goals` if either was loaded in that minute.
 --
--- ⚠️ DO NOT GENERALISE THAT ACCEPTANCE. It rests on this application having one
--- user. The next DROP whose tables the deployed image still reads needs the
--- real answer: hold the migration back one release, so the running image no
--- longer references them by the time it applies.
+-- ✅ RESOLVED by #277. That acceptance rested entirely on this application
+-- having one user who could be told not to load two pages for a minute, and it
+-- was never going to generalise. The ordering is now the pipeline's job: the
+-- pragma below puts this file in release.yml's post-swap phase, and
+-- tests/test_migration_phases.py fails any future DROP that omits it. This file
+-- is already applied everywhere, so the pragma changes nothing about it — it is
+-- here so the corpus rule has no exceptions to explain away.
+--
+-- deploy: after-pull
 --
 -- ── ⚠️ ONE-WAY DOOR ────────────────────────────────────────────────────────
 --
