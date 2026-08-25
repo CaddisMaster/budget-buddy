@@ -411,7 +411,11 @@ def _call_categorize_model(rows, category_names, today, api_key):
             # counts ~30% more per row. effort is explicit because Sonnet 5 defaults to
             # "high" — batch classification is exactly the scoped work "low" is for.
             # The SDK merges output_format INTO output_config as its "format" key, so
-            # passing both is supported (verified in anthropic 0.120.0), not a clash.
+            # passing both is supported (re-verified against anthropic 1.0.0), not a
+            # clash. ⚠️ Re-verify on every SDK bump — the mocked seams never call the
+            # real client, so this claim is exactly the kind a green suite cannot
+            # check. tests/test_sdk_call_shape.py does it against the installed
+            # package.
             model=CATEGORIZE_MODEL,
             max_tokens=4096,
             output_config={"effort": "low"},
