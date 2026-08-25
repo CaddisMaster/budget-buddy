@@ -616,11 +616,17 @@ command fails naming `TAG`, which is the whole of #190. See §5.
 
 ### Migrations
 
-**Additive migrations are applied automatically by the deploy job**, in this order:
+**Migrations are applied automatically by the deploy job — both directions since
+#277**, in this order:
 
 1. `pg_dump` to `backups/pre-deploy-<timestamp>.sql.gz` — **a failed dump fails the deploy**
-2. `scripts/migrate.py` applies anything pending
-3. *then* the image is pulled and the container swapped
+2. `scripts/migrate.py --phase before-pull` — the **additive** migrations
+3. the image is pulled and the container swapped
+4. `scripts/migrate.py --phase after-pull` — the **DROPs**, now that the old
+   container has stopped
+
+An empty pass at step 2 or 4 is normal and exits 0; most releases carry a
+migration for one phase and nothing for the other.
 
 The runner tracks applied files in a **`schema_migrations`** table. Production was
 baselined on 2026-07-27 (30 files recorded as applied, none re-executed).
@@ -637,15 +643,36 @@ docker compose run --rm --no-deps -T -e DB_HOST=db web python scripts/migrate.py
 > apply against a database with no tracking table for exactly this reason; on an
 > existing database you `--baseline` first.
 
-**⚠️ `DROP`s are NOT automated and must stay manual.** The two directions are opposites:
+**The two directions are opposites, and a migration now declares which one it is:**
 
 - **Additive** (new columns/tables) → **before** the pull. New code must never query a
-  column that does not exist yet. *This is the automated path.*
+  column that does not exist yet. This is the default; the file says nothing.
 - **Drops** → **after** the pull. Old code is still selecting those columns until the
-  container is replaced. Automating this would apply them in the wrong order.
+  container is replaced. The file declares it with a pragma line in its header:
 
-So a release that drops a column: let the deploy run, then apply the drop by hand
-afterwards (`pg_dump` first).
+  ```sql
+  -- deploy: after-pull
+  ```
+
+> ⚠️ **This section used to read "`DROP`s are NOT automated and must stay manual."**
+> That was never true of the pipeline it described — step 2 ran `migrate.py` with no
+> filter, which applies **every** pending file including the drops. `sql/36` shipped
+> through it at `0.8.0` against a `v0.7.0` image that still read both dropped tables,
+> which would have 500'd `/` and `/goals` for the length of the image pull. Accepted
+> deliberately at the time (one user, a watched deploy, a `pg_dump` taken first) and
+> fixed properly in #277.
+
+**Forgetting the pragma is a red test suite, not an outage.**
+`tests/test_migration_phases.py` fails any migration containing `DROP TABLE` or
+`DROP COLUMN` that does not declare `after-pull`. It also fails an `after-pull`
+migration that *adds* schema: a migration that both drops and adds cannot be phased
+and must be split into two files.
+
+To apply everything in one pass — a local run, or a rebuild — omit `--phase`:
+
+```bash
+docker compose run --rm --no-deps -T -e DB_HOST=db web python scripts/migrate.py
+```
 
 The runner connects as **`DB_USER`**, never `DB_APP_USER` — the least-privilege
 `budget_app` role has no DDL rights by design.

@@ -11,6 +11,16 @@
 --
 -- Apply BY HAND to prod (pg_dump backup first) BEFORE pulling the new image, so
 -- the new code never queries period_start/period_end after they're gone.
+--
+-- ⚠️ THIS FILE IS THE COUNTEREXAMPLE THAT #277's RULE NOW FORBIDS. It drops two
+-- columns AND adds uq_budget_user_category, which the new code's ON CONFLICT
+-- upsert in /budgets/set needs the moment it starts serving. Those two halves
+-- want opposite phases, so no single declaration is right for it.
+-- The pragma below records what actually HAPPENED — it ran before the pull — and
+-- the file is grandfathered in tests/test_migration_phases.py because it is
+-- already recorded in schema_migrations on every live database and cannot be
+-- split now without orphaning that row. A new mixed migration gets two files.
+-- deploy: before-pull
 
 -- 1. Drop the old dated rows.
 DELETE FROM budgets;

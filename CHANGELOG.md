@@ -10,6 +10,24 @@ this project uses the `0.x` versioning scheme described in
 
 ### Fixed
 
+- **A schema migration that drops a table can no longer run against the code
+  that still reads it.** The deploy applied every pending migration *before*
+  pulling the new image. That is the right order for an additive migration — the
+  column has to exist before the code that queries it arrives — and exactly
+  backwards for a `DROP`, which made the object vanish while the *old* container
+  was still serving and kept serving until the swap finished. `sql/36` shipped
+  through that window at `0.8.0`, dropping two tables the running `v0.7.0` image
+  still queried; `/` and `/goals` would have returned 500 for the length of the
+  image pull, accepted at the time only because this app has one user who could
+  be told not to load two pages for a minute.
+  A migration now declares which side of the swap it belongs on with a header
+  line, `-- deploy: after-pull`; silence means additive, as before. The deploy
+  runs the migration runner twice, either side of the container swap, and
+  `scripts/migrate.py --phase` selects between them. Forgetting the declaration
+  fails the test suite rather than production — the rule was previously a
+  comment in the workflow that claimed drops were "deliberately NOT automated",
+  while the step below it applied them anyway. No user-facing change.
+
 - **CI no longer fails at random on a Postgres startup race.** The image job
   waited for its database with `pg_isready` over the unix socket. The
   `postgres:16` entrypoint runs `initdb` against a temporary server that listens

@@ -10,5 +10,9 @@
 -- code still SELECTs a.spendable and would 500 if the column vanished under
 -- it. The new code never references the column, so order the other way round.
 -- pg_dump backup first, as always.
+--
+-- Since #277 that ordering is the PIPELINE's job rather than the operator's:
+-- the pragma below puts this file in release.yml's post-swap phase.
+-- deploy: after-pull
 
 ALTER TABLE account DROP COLUMN IF EXISTS spendable;
