@@ -52,6 +52,72 @@ that is RUNNING. Corrected in #276.
 The runbook was right; the `CLAUDE.md` bullet was stale and cost a session's planning before
 anyone read it. Corrected in #276.
 
+### On `main`, not yet deployed (2026-08-25)
+
+**Four PRs merged; nothing shipped.** Prod is still `0.8.0`. A **`0.9.0` milestone is open** —
+the first since `0.8.0` closed — and **#36 is the only issue left open**, correctly date-parked
+to ~Dec 2026 with no milestone.
+
+| PR | Closed |
+|---|---|
+| #302 | #277 — migrations declare which side of the image swap they run on |
+| #285 | — Dependabot minor/patch group, plus the `ci.yml` ruff pin it missed |
+| #286 | — `anthropic` 0.122.0 → **1.0.0**, read rather than rubber-stamped |
+| #303 | #299 — `landing/` removed; the page now lives in its own repo |
+
+⚠️ **TWO CHANGES HERE ARE UNVERIFIED IN PRODUCTION AND HAVE NO NATURAL CLOSING EVENT.** Both
+first execute at the *next* release, not on merge:
+
+1. **The two-phase migration deploy.** `release.yml` now runs `migrate.py --phase before-pull`
+   at step 2 and `--phase after-pull` at step 5. The next release exercises it for the first
+   time — including the empty-pass case, which is the norm and must exit 0. **Watch the deploy
+   log for both invocations**; a release carrying no migration should print
+   `Nothing to apply for phase … — up to date.` twice.
+2. **`anthropic` 1.0.0 inside the shipped image.** The call shapes were verified against the
+   real package, but **no live API round trip was made** — the AI surfaces are gated on
+   `ANTHROPIC_API_KEY`, which CI does not set. First real proof is a model call in production.
+
+**`## [Unreleased]` now holds three entries:** the CI Postgres probe fix (#282), the migration
+phasing (#277) and the SDK bump (#286). Whether that is a release is Sean's call; nothing in it
+is user-facing.
+
+#### `landing/` is gone from this repo
+
+The page serves from **`/var/www/seandesmet.com`**, deployed on push from
+**`CaddisMaster/seandesmet.com`**. Consequences worth knowing here:
+
+- `scripts/check_site_drift.py` has **four** checks now, not five, and **reads no file from the
+  working tree** — its result no longer depends on which branch you run it from. The apex/www
+  **TLS checks stayed**: a certificate belongs to the Droplet, not to whichever repo supplies the
+  HTML, and two repos watching one page would file two issues for one fault.
+- Nginx is **two site files**, so an app config mistake can no longer take the portfolio down.
+- ⚠️ **The `#299` issue body is wrong about the backup config lists.** It says a new nginx site
+  file must be added to both or the tarball silently stops covering it, and flags that as the
+  easiest thing to miss. Both lists name **whole directories** (`/etc/nginx/sites-available`,
+  `sites-enabled`), so a new file inside them is captured with no edit. The real risk — the two
+  scripts drifting from *each other* — is unchanged.
+
+#### The guard that was written and deleted the same afternoon
+
+`check_phase_order()` refused any pending batch whose phases were not numerically monotonic. It
+rejected **both** real batches it was ever shown (`27`/`28`, `36`/`37`), neither of which shares a
+table. Removed, with the reasoning in `migrate.py` and a test pinning those pairs as acceptable so
+reinstating it goes red. **A rule with a 0/2 hit rate on real input is not conservative.**
+
+#### `tests/test_sdk_call_shape.py`
+
+New, and it closes a gap `CLAUDE.md` had only ever described in prose: every model call goes
+through a stubbed `_call_*_model()` seam, so a green suite says **nothing** about an SDK upgrade.
+It introspects the installed package — no network, no key, no cost — and asserts the `**kwargs`
+precondition that stops the other assertions going vacuous.
+
+⚠️ **#285 proved the ruff double-pin real.** Dependabot bumped `requirements-dev.txt` alone and CI
+went red on `test_the_two_ruff_pins_agree` — the sole failure in 1143 passing. A bot only updates
+the file it knows about.
+
+Suite on `main`: **1191 passed, 4 skipped** (six fewer than before #303, matching the six tests
+removed with the landing page). ⚠️ Recount rather than trusting that.
+
 ### ✅ Landing page redeployed OUTSIDE a release (2026-08-24)
 
 **The ai-atlas card is gone from `seandesmet.com`, and the removal is verified live.**
