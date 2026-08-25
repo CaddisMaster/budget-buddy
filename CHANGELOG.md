@@ -8,6 +8,22 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Changed
+
+- **The Anthropic SDK moved to `1.0.0`** (from `0.122.0`). A major version, so
+  it was read rather than rubber-stamped: `1.0.0` removes `temperature`,
+  `top_p`, `top_k`, `messages.parse(stream=...)`, the Text Completions API and
+  its `HUMAN_PROMPT`/`AI_PROMPT` constants, several renamed exports, and moves
+  the HTTP layer from `httpx` to `httpx2`. This app used none of them, and its
+  Python floor was already well above the new 3.10 minimum. No behaviour
+  changed and no AI surface moved.
+  The gap worth naming is that none of that was checkable here: every model
+  call goes through an isolated `_call_*_model()` seam and every test stubs it,
+  so a green suite would have said exactly as much about a bump that broke
+  everything. `tests/test_sdk_call_shape.py` closes that — it introspects the
+  installed SDK and asserts it still accepts the arguments `app/ai.py` actually
+  passes, without a network call, an API key, or any cost.
+
 ### Fixed
 
 - **A schema migration that drops a table can no longer run against the code
