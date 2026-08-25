@@ -1,10 +1,14 @@
 # Does production still match `main`? (#297)
 #
-# `landing/` is deployed by a hand copy to the Droplet, and nothing else reads
-# it — so the repository and the live site can disagree indefinitely with no
-# signal. That happened twice on 2026-08-24. TLS is unwatched for a related
-# reason: Uptime Kuma was retired on 2026-07-27, so a FAILING certbot renewal is
-# silent until the handshake breaks.
+# Watches TLS across every hostname this project serves, plus `/healthz`.
+# Uptime Kuma was retired on 2026-07-27, so nothing else notices a FAILING
+# certbot renewal — it is silent right up until the handshake breaks.
+#
+# ⚠️ The landing-page byte check was removed in #299. That page now lives in
+# `CaddisMaster/seandesmet.com`, deploys on push and verifies its own served
+# bytes, so the drift this workflow was built for is prevented rather than
+# detected. Its apex/www CERTIFICATES stay here: a certificate belongs to the
+# Droplet, not to whichever repo supplies the HTML.
 #
 # ⚠️ This workflow needs NO secret and NO Droplet access. Every check is public
 # HTTP/TLS. That is deliberate — the Droplet is unreachable from the dev VM on
@@ -95,10 +99,6 @@ jobs:
             echo '```'
             echo
             echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            echo
-            echo "**If this is the landing page**, the fix is the manual copy — \`release.yml\`"
-            echo "does not touch \`landing/\`, and the copy runs from the Mac. See"
-            echo "\`docs/status.md\` and \`RUNBOOK.md\`."
             echo
             echo "**If this is TLS**, check \`certbot certificates\` on the box for a lineage"
             echo "whose SAN covers every name in the server block."

@@ -308,7 +308,6 @@ app/
 sql/               Numbered migrations + schema.sql (a clean single-file schema)
 tests/             pytest suite
 scripts/           Standalone data-pipeline scripts, with their own requirements
-landing/           The static landing page, unrelated to the app itself
 ```
 
 Routes are registered with **no URL prefix**, so endpoint names are
