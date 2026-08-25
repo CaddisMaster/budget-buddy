@@ -257,13 +257,18 @@ server itself — **read it before touching anything on the Droplet.**
 - ⚠️ **A missing env var is the one deploy failure with no signal.** Check
   `git diff v<last>..HEAD -- .env.example` **before** cutting. Verify a secret landed by **length,
   not presence**; `/settings` carries an admin-only Integrations panel that answers this
-- **Schema changes:** the deploy job applies pending migrations ITSELF — `pg_dump` →
-  `scripts/migrate.py` → *then* pull and swap (`RUNBOOK.md` §Migrations is the source of
-  truth). ⚠️ **That order is right for an additive migration and WRONG for a DROP**, which
-  lands while the old image is still serving. A DROP whose tables the DEPLOYED image still
-  reads must be held back a release — judged against the running version, never against
-  `main`. ⚠️ This line used to read "apply by hand", which contradicted the runbook and is
-  what sent a session down the manual path at 0.8.0 prep
+- **Schema changes:** the deploy job applies pending migrations ITSELF, in **two phases**
+  since #277 — `pg_dump` → `migrate.py --phase before-pull` → pull and swap →
+  `migrate.py --phase after-pull` (`RUNBOOK.md` §Migrations is the source of truth).
+  **A migration that drops a table or column MUST carry `-- deploy: after-pull` in its
+  header**; silence means additive, which is the right default for everything else.
+  Forgetting it fails `tests/test_migration_phases.py`, so the ordering is no longer a
+  thing anyone has to remember — and a DROP no longer has to be held back a release.
+  ⚠️ **A migration cannot be in both phases**: an `after-pull` file that also *adds*
+  schema fails the suite and must be split in two. ⚠️ This line has been wrong twice —
+  it read "apply by hand" (contradicting the runbook, which sent a session down the
+  manual path at 0.8.0 prep), then described the DROP hazard as a rule to remember
+  rather than a thing the pipeline handles
 - **Droplet access** is maintainer-only and lives in the gitignored `CLAUDE.local.md`.
   `/opt/budget-buddy` is a **pure deploy dir — no git, no source**; `scp` changes up
 

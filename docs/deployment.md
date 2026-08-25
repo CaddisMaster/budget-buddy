@@ -56,10 +56,30 @@
   returns 200 whatever the token's permissions are, so `GET /repos` proves only that the token is
   *valid*; `issues: write` is unprovable without writing, and was finally confirmed by the first
   real form submission (#133).
-- **Schema changes:** `schema.sql` only runs on a *fresh* DB. For prod, apply the numbered `sql/`
-  migration **by hand** — pg_dump first. **Order matters:** additive migrations (new
-  columns/tables) go **BEFORE** `docker compose pull` (new code must never query a missing
-  column); column/table **DROPs go AFTER** the pull (old code still SELECTs them until the swap).
+- **Schema changes:** `schema.sql` only runs on a *fresh* DB. For prod, **`release.yml` applies
+  pending migrations itself** — pg_dump first, then the runner, then the swap. ⚠️ This bullet
+  used to say "apply the numbered migration **by hand**", which contradicted `RUNBOOK.md`
+  §Migrations and is what sent a session down the manual path at `0.8.0` prep.
+  **Order matters, and since #277 the pipeline enforces it rather than the operator:**
+  - A migration declares its phase with a header pragma, `-- deploy: after-pull`. **Silence
+    means `before-pull`**, which is right for additive schema — new code must never query a
+    column that does not exist yet.
+  - **A DROP must declare `after-pull`.** The old container keeps SELECTing the object right up
+    until the swap completes, so the drop lands after `up -d`. `after-pull` is *always* safe for
+    a drop, so there is no legitimate before-pull drop and the rule admits no exception.
+  - `release.yml` runs `scripts/migrate.py --phase before-pull` at step 2 and
+    `--phase after-pull` at step 5. Running the script with **no** `--phase` applies everything
+    in one pass — what a local or disaster-recovery run wants.
+  - **The guard is `tests/test_migration_phases.py`, not the prose above**: a migration that
+    drops a table or column without the pragma fails the suite, and an `after-pull` migration
+    that also *adds* schema fails too — a mixed migration cannot be phased and must be split
+    into two files. `sql/13` is the grandfathered counterexample; it is already applied
+    everywhere and cannot be split now without orphaning its `schema_migrations` row.
+  - ⚠️ **Splitting a batch across the swap reorders it** — every before-pull file, then every
+    after-pull one. That is accepted deliberately: a corpus-wide numeric ordering rule was
+    written for #277 and removed the same afternoon after refusing both real batches it saw
+    (`27`/`28`, `36`/`37`), neither of which shares a table. The runner prints what it holds
+    back for the other phase; that visibility is the answer, not a rule.
 - **Releases:** each gets a GitHub Release whose notes list every bundled item (and which, once
   the Release is what *triggers* the deploy). `CHANGELOG.md` is the durable record —
   update it under `## [Unreleased]` in every PR. **No tags exist in this repo yet**; the first
