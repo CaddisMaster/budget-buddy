@@ -8,7 +8,7 @@ from flask_login import current_user, login_required
 
 from app import bcrypt, limiter
 from app.db import db_cursor
-from app.helpers import GENERIC_ERROR, hx_toast
+from app.helpers import DEV_VERSION, GENERIC_ERROR, app_commit, app_version, hx_toast
 from app.jobs import load_job_runs, summarize_job_runs
 from app.mailer import mail_enabled
 
@@ -215,6 +215,13 @@ def settings():
     return render_template('settings.html',
                            integrations=integration_status(),
                            scheduler_on=scheduler_enabled(),
+                           # #305 — which build is actually serving. Admin-only
+                           # for the same reason as the Integrations table
+                           # above: deployment detail, and the one endpoint
+                           # anyone can reach must keep saying nothing.
+                           app_version=app_version(),
+                           app_commit=app_commit(),
+                           dev_build=app_version() == DEV_VERSION,
                            job_runs=summarize_job_runs(
                                runs,
                                scheduler_on=scheduler_enabled(),

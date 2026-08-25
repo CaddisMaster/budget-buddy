@@ -15,6 +15,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends postgresql-clie
 # gunicorn binds :5000 (>1024) so no privileged-port need.
 RUN useradd --create-home --uid 10001 appuser
 COPY --chown=appuser:appuser . .
+
+# #305 — the version this image WAS BUILT AS, so a deploy can be verified.
+#
+# ⚠️ This is deliberately a build arg and not a runtime env var from the
+# Droplet's .env. `TAG` there records what compose was TOLD to pull; this
+# records what the image IS, which is the only one of the two that a stale or
+# hand-restored .env cannot make lie. #190 removed the cause of a silent stale
+# deploy — production sat three releases back with /healthz green — but left
+# nobody able to SEE which version was serving.
+#
+# The defaults matter: CI's docker-build job, the local override and a bare
+# `docker build .` all pass no build arg, and an undefaulted ARG interpolates to
+# the empty string, which renders as a blank cell indistinguishable from a lost
+# version. Keep both in `base` — `prod` and `dev` inherit ENV from it, and an
+# ENV set below `FROM base AS dev` would stamp only the image nobody ships.
+#
+# Placed after COPY on purpose: a new version invalidates this layer and
+# everything under it, and there is nothing under it but metadata.
+ARG APP_VERSION=dev
+ARG APP_COMMIT=dev
+ENV APP_VERSION=${APP_VERSION}
+ENV APP_COMMIT=${APP_COMMIT}
+
 USER appuser
 EXPOSE 5000
 # --threads keeps one process (in-memory Flask-Limiter stays consistent) while

@@ -302,11 +302,17 @@ describes the last session rather than the current tree, and it asserts rather t
   tests, and it is indistinguishable from a real one at a glance (seen on #288). The number to
   trust is the `main` run, or the classifier's own `app=/image=/sql=` line in the "What changed"
   job log
-- ⚠️ **The `css_v` deploy handle worked at `0.8.0` — by luck, not by design.** Production served
-  the same `style.css` hash the tag builds, because the front-end overhaul rewrote the
-  stylesheet. **A release touching no static asset is back to trusting the pipeline.** Decide the
-  verification handle **before** cutting; a version on `/healthz` would end this permanently and
-  still does not exist
+- ✅ **The deploy handle is the version stamp, not `css_v`** (#305). The image is built with
+  `--build-arg APP_VERSION`/`APP_COMMIT`, so `/settings` reports which build is serving and both
+  deploy workflows fail if the running container is not the release they just deployed. **A
+  release no longer needs a handle chosen before cutting** — which `css_v` did, and it proved
+  nothing at `0.4.1` or `0.7.0` and worked at `0.8.0` only because the front-end overhaul
+  happened to rewrite the stylesheet.
+  ⚠️ **It is a build arg, NOT a `.env` variable** — `TAG` there records what compose was *told*
+  to pull, which a stale or hand-restored `.env` can make lie. Do not add it to `.env.example`.
+  ⚠️ **It is admin-only and must never reach `/healthz`.** This file proposed exactly that for
+  months, against a deliberate decision written in `main.healthz` and `admin.integration_status`;
+  `tests/test_version_stamp.py` now states the boundary so the suggestion cannot come back
 - **Standing decisions that must not be re-opened** are listed in `docs/status.md`. Check there
   before re-filing anything that looks like an obvious improvement
 

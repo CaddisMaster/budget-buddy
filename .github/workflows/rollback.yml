@@ -80,6 +80,28 @@ jobs:
                echo \"pinned \$(grep '^TAG=' .env)\"
                TAG='${VERSION}' docker compose pull web
                TAG='${VERSION}' docker compose up -d
+
+               # #305 — confirm the container that came up IS the version asked
+               # for. A rollback is the case where guessing is least acceptable,
+               # and the /healthz check below cannot tell 'rolled back to 0.7.0'
+               # from 'never left 0.9.0' — it returns 200 from either.
+               #
+               # ⚠️ An UNSTAMPED image is tolerated, unlike in release.yml. Every
+               # image built before #305 reports nothing here, and those are
+               # exactly the versions a rollback reaches for. Failing the run
+               # would break rolling back to them — during an incident, which is
+               # the worst possible time to be strict about a metadata gap. A
+               # WRONG stamp is still a hard failure; only a missing one warns.
+               RUNNING=\"\$(docker compose exec -T web printenv APP_VERSION | tr -d '\r')\"
+               if [ -z \"\$RUNNING\" ] || [ \"\$RUNNING\" = 'dev' ]; then
+                 echo \"::warning::Rolled back to ${VERSION}, which predates the version stamp (#305) — cannot verify what is running.\"
+               elif [ \"\$RUNNING\" != '${VERSION}' ]; then
+                 echo \"::error::Asked for ${VERSION} but the running container reports '\$RUNNING'\"
+                 exit 1
+               else
+                 echo \"running version \$RUNNING (matches ${VERSION})\"
+               fi
+
                docker compose ps"
 
       - name: Verify the rolled-back app is healthy

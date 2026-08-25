@@ -56,6 +56,27 @@
   returns 200 whatever the token's permissions are, so `GET /repos` proves only that the token is
   *valid*; `issues: write` is unprovable without writing, and was finally confirmed by the first
   real form submission (#133).
+- **The running version is observable, and the pipeline checks it** (#305). The image is built
+  with `--build-arg APP_VERSION=<version> --build-arg APP_COMMIT=<sha>`, both derived in
+  `release.yml`'s `meta` step from the release tag it already uses for the image tags. The app
+  reads them via `helpers.app_version()` / `app_commit()` and renders a **Deployment** card on
+  `/settings`, beside Integrations.
+  - ⚠️ **A build arg, NOT an env var — do not add it to `.env` or `.env.example`.** `TAG` in the
+    Droplet's `.env` records what compose was *told* to pull; this records what the image *is*,
+    and only the second survives a stale or hand-restored `.env`. This is also why it cannot
+    become the "missing env var with no signal" failure: nobody has to remember to set it.
+  - ⚠️ **Admin-only. It must never reach `/healthz`** — that endpoint exists to leak nothing
+    (`main.healthz`, and rule 1 above `admin.integration_status`). `CLAUDE.md` proposed putting
+    it there for months; `tests/test_version_stamp.py` now states the boundary as a test.
+  - **`release.yml` asserts it after `up -d` and BEFORE the after-pull DROPs.** Ordering is
+    load-bearing: #277's reasoning only holds once the new image is serving, so dropping tables
+    against a container that is silently still the old one is the outage #277 exists to prevent.
+  - **`rollback.yml` asserts it too, with one deliberate difference:** an image with no stamp
+    **warns** rather than failing. Every image built before #305 reports nothing, and those are
+    exactly the versions a rollback reaches for — refusing them mid-incident would be worse than
+    the gap. A *wrong* stamp is still a hard failure.
+  - An unstamped build (CI's docker-build job, a bare `docker build .`, local compose) reports
+    `dev`, and `/settings` says so in words rather than rendering a blank cell.
 - **Schema changes:** `schema.sql` only runs on a *fresh* DB. For prod, **`release.yml` applies
   pending migrations itself** — pg_dump first, then the runner, then the swap. ⚠️ This bullet
   used to say "apply the numbered migration **by hand**", which contradicted `RUNBOOK.md`

@@ -22,7 +22,11 @@ v0.7.0 was                                   -> 44ef4f4a
 Plus a second independent witness: `/login` carries the brand mark added in #256.
 ⚠️ **Do not assume this handle exists next time.** It works only because the overhaul happened
 to rewrite the stylesheet; a release touching no static asset is back to trusting the pipeline.
-A version on `/healthz` still does not exist. **Decide the handle before cutting.**
+**Decide the handle before cutting.**
+✅ **Superseded for `0.9.0` onward by the version stamp (#305)** — the image carries the version
+it was built as, `/settings` reports it, and both deploy workflows fail on a mismatch. `css_v` is
+no longer the handle and no handle has to be chosen per release. The answer is deliberately
+**not** on `/healthz`; see `CLAUDE.md`'s deploy bullet for why.
 
 **Seven PRs on release day**, on top of the front-end overhaul already on `main`:
 

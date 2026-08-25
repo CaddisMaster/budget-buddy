@@ -121,3 +121,114 @@ def test_the_release_pins_before_it_runs_any_other_compose_command():
     # The COMMAND, not the word: a comment above the pin explains why it comes
     # first and mentions pg_dump, which an `.index("pg_dump")` would find.
     assert body.index("mv .env.tmp .env") < body.index("docker compose exec -T db pg_dump")
+
+
+# --- #305: the deployed version is OBSERVABLE, not just pinned ---------------
+#
+# #190 removed the cause of a silent stale deploy; it gave nobody a way to see
+# which version is actually serving. These assert the other half: the image
+# carries the version it was built as, and both workflows refuse to report
+# success against a container that is not the release they just deployed.
+
+DOCKERFILE = REPO_ROOT / "Dockerfile"
+
+
+def _dockerfile():
+    if not DOCKERFILE.exists():
+        pytest.skip(_NOT_IN_IMAGE)
+    return DOCKERFILE.read_text()
+
+
+@pytest.mark.parametrize("variable", ["APP_VERSION", "APP_COMMIT"])
+def test_the_image_declares_the_stamp_with_a_default(variable):
+    """A bare `docker build .`, CI's docker-build job and the local override all
+    pass no build arg. An undefaulted ARG interpolates to the empty string, and
+    an empty version renders as an empty cell that looks exactly like a stamped
+    build whose version went missing."""
+    body = _dockerfile()
+    assert re.search(rf"^ARG {variable}=\S", body, re.M), (
+        f"Dockerfile must declare ARG {variable} with a non-empty default (#305)")
+    assert re.search(rf"^ENV {variable}=", body, re.M), (
+        f"ARG {variable} alone does not survive into the running container — "
+        "a build arg is build-time only, so it needs a matching ENV")
+
+
+@pytest.mark.parametrize("variable", ["APP_VERSION", "APP_COMMIT"])
+def test_the_stamp_is_set_in_the_base_stage(variable):
+    """⚠️ Placement, not presence. Only `base` is inherited by both `dev` and
+    `prod`; an ENV added below `FROM base AS dev` would stamp the dev image and
+    leave the shipped one reporting nothing — which no local run could catch,
+    since local dev IS the dev stage."""
+    body = _dockerfile()
+    # The DIRECTIVE, not the words — anchored to line start for the same reason
+    # the pg_dump ordering test below matches a command rather than a name. The
+    # comment above these ARGs explains why they must sit in `base`, and it says
+    # "FROM base AS dev" to do so, which a plain .index() finds first.
+    env = re.search(rf"^ENV {variable}=", body, re.M).start()
+    dev_stage = re.search(r"^FROM base AS dev\b", body, re.M).start()
+    assert env < dev_stage, (
+        f"ENV {variable} is set after the dev stage begins, so the prod image "
+        "does not inherit it (#305)")
+
+
+def test_the_release_builds_the_image_with_the_version_it_derived():
+    """The stamp has to come from the same place the tags do. A hand-maintained
+    second copy of the version is a copy that can disagree with the tag it
+    ships under, which is precisely the confusion this issue exists to end."""
+    if not RELEASE_WF.exists():
+        pytest.skip(_NOT_IN_IMAGE)
+    body = RELEASE_WF.read_text()
+    assert "APP_VERSION=${{ steps.meta.outputs.version }}" in body, (
+        "release.yml does not pass the derived version as a build arg (#305)")
+    assert "APP_COMMIT=${{ steps.meta.outputs.sha_short }}" in body, (
+        "release.yml does not pass the derived commit as a build arg (#305)")
+    assert 'echo "sha_short=${sha_short}" >> "$GITHUB_OUTPUT"' in body, (
+        "the meta step computes sha_short but does not publish it as an output")
+
+
+@pytest.mark.parametrize("workflow", [RELEASE_WF, ROLLBACK_WF],
+                         ids=["release", "rollback"])
+def test_the_deploy_refuses_a_container_that_is_not_the_release(workflow):
+    """Both workflows, for the same reason the pin test covers both: a rollback
+    that cannot tell it rolled back is the case where guessing is least
+    acceptable. `/healthz` returning 200 says the app is alive, never which
+    version is alive — that distinction is the whole of #305."""
+    if not workflow.exists():
+        pytest.skip(_NOT_IN_IMAGE)
+    body = workflow.read_text()
+    assert "printenv APP_VERSION" in body, (
+        f"{workflow.name} never asks the running container what it is (#305)")
+    check = body.index("printenv APP_VERSION")
+    assert "exit 1" in body[check:], (
+        f"{workflow.name} reads the running version but does not fail on a "
+        "mismatch — a check that cannot go red is decoration")
+
+
+def test_the_release_checks_the_version_before_it_drops_anything():
+    """⚠️ Ordering, and it is invisible. The after-pull migrations are DROPs
+    (#277), so they run against whatever `up -d` actually left running. If the
+    swap silently left the old image up, dropping tables it still SELECTs is the
+    exact outage #277 existed to prevent — so the identity check has to come
+    first, while the only thing that has happened is a container swap."""
+    if not RELEASE_WF.exists():
+        pytest.skip(_NOT_IN_IMAGE)
+    body = RELEASE_WF.read_text()
+    assert body.index("printenv APP_VERSION") < body.index("--phase after-pull")
+
+
+# --- the rollback's one deliberate difference -------------------------------
+
+def test_the_rollback_tolerates_an_image_that_predates_the_stamp():
+    """⚠️ Asymmetry, stated because it looks like an oversight. `release.yml`
+    demands an exact match — it always deploys an image it just built, so an
+    unstamped one there is a real fault. Every image built before #305 reports
+    nothing, and those are precisely the versions a rollback reaches for, so the
+    same strictness would refuse to roll back to them *during an incident*. A
+    wrong stamp stays a hard failure; only a missing one warns."""
+    if not ROLLBACK_WF.exists():
+        pytest.skip(_NOT_IN_IMAGE)
+    body = ROLLBACK_WF.read_text()
+    assert "::warning::" in body, (
+        "rollback.yml must WARN on an unstamped image, not fail (#305)")
+    assert "::error::" in body, (
+        "rollback.yml must still fail on a version that does not match")
