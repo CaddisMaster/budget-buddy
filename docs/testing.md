@@ -50,6 +50,20 @@ visible tmux pane; tmux was retired with the terminal front end, so **`./test.sh
 path** and a stale `runtests` on `PATH` should be deleted rather than repaired. The `flock` above
 is unaffected — it always was the guard that actually held, and it lives in `test.sh` itself.
 
+⚠️ **`ws-test` is gone too** (2026-08-26), and it is worth knowing it existed. tmux came back
+briefly on 2026-08-25, and with it a per-project `inotifywait` loop that re-ran `./test.sh` on
+every `close_write` under `app/` and `tests/`. It was retired with tmux the next day, so
+**nothing re-runs the suite on save any more — every run is one you started by hand.** If you
+find yourself editing and wondering why no tests ran, that is why.
+
+⚠️ **If a watcher is ever rebuilt, it must stay a plain `inotifywait` loop.** `watchexec` and
+`entr` were both tried and both hang: `test.sh` drives `docker compose run`, which attaches to a
+**controlling** terminal, and watchexec puts the child in its own process group — so the child
+gets a pty on stdin but no controlling tty, and docker's attach waits forever at
+`Container … Created`. Wrapping it in `script -qec` to fake a pty hangs in a second, different
+place. The retired script and its full write-up are in `personal-vault/infra/vm/tmux/ws-test`.
+This is a property of `test.sh`, not of tmux, so it will bite the same way under any front end.
+
 It runs in a throwaway `web` container on prod's Python 3.14 — no local venv;
 `requirements-dev.txt` adds `pytest`, `pytest-xdist` and `ruff`. Needs the dev `db` container up (route/isolation
 tests hit it). Also runs in **GitHub Actions CI** on every push/PR (`.github/workflows/ci.yml`,
