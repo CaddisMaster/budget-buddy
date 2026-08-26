@@ -314,22 +314,38 @@
 - ⚠️ **On Linux, bind-mounted file ownership is LITERAL — `.env` at mode 600 crash-loops the app.** Docker Desktop translates UIDs across its file sharing on macOS, so a secrets file owned by your host user "just works" there. A Linux bind mount does no such thing: the host user is typically uid `1000` and the image's `appuser` is uid **`10001`**, so the container cannot read its own config and gunicorn dies at import with `PermissionError: [Errno 13] Permission denied: '/app/.env'`. The obvious fix — `chmod 644` — makes a file holding `ANTHROPIC_API_KEY` world-readable. Grant exactly the one uid instead: `setfacl -m u:10001:r .env` (needs the `acl` package; check with `getfacl -p .env`). ⚠️ This applies to **any** new secret file mounted into a container, not just `.env`
 - ⚠️ **There is deliberately NO dev container** (#80, removed 2026-07-28). One was added in #76 and removed two PRs later: it shipped broken twice, needed `git`/`procps`/`curl` in the image's `dev` stage purely for the editor, and split the workflow because it has no Docker inside it. The `.venv` fixes the editor on its own with no maintenance. **Do not re-add one** without a reason that the venv does not already cover. ⚠️ **The trap this bullet carries is LIVE again as of 2026-08-17** (it was briefly moot while there was no editor at all): VS Code resolves **workspace** settings above **remote** ones, which is what bit #78 — a setting you believe you set on the remote can be silently overridden by one committed or cached in the workspace. Check which scope a setting actually resolved in before concluding the remote is misconfigured
 - ⚠️ **The dev front end is VS Code on the Mac, driving the isolated Linux VM over Remote-SSH**
-  (2026-08-17, replacing the Ghostty + tmux arrangement that ran 2026-08-14 → 17). Development
-  still happens **in the VM** — the Mac is a thin client and the repo, the containers and the
-  agents all live on the far side of the SSH link. What changed is only the front end. ⚠️ **This
-  re-arms one isolation risk**: VS Code's `remote.SSH.enableAgentForwarding` **defaults to
-  `true`**, which would forward the Mac's SSH agent into the VM — and that agent holds the key
-  that opens production, which the VM is deliberately not allowed to reach. Set it to `false`.
+  (re-confirmed 2026-08-26). Development still happens **in the VM** — the Mac is a thin client
+  and the repo, the containers and the agents all live on the far side of the SSH link. What
+  changed is only the front end. ⚠️ **This re-arms one isolation risk**: VS Code's
+  `remote.SSH.enableAgentForwarding` **defaults to `true`**, which would forward the Mac's SSH
+  agent into the VM — and that agent holds the key that opens production, which the VM is
+  deliberately not allowed to reach. Set it to `false`. Verified holding on 2026-08-26
+  (`SSH_AUTH_SOCK` unset in the VM; the Droplet answers `Permission denied (publickey)`).
   See `CLAUDE.local.md` for the isolation rule it protects.
-- ⚠️ **NOTHING SURVIVES A DROPPED CONNECTION any more** (2026-08-17). tmux was retired along with
-  the terminal front end, and it was the only thing making the VM's running state outlive the
-  link to it. A dropped SSH link, a closed lid, a sleeping Mac or a quit VS Code now **kills
-  every process started from that session** — a running agent, a long `docker compose` command,
-  an open `psql`. This is a deliberate trade (the workflow is simpler and there is one less
-  machine-local dotfile to keep current), not an oversight, but it changes how long-running work
-  should be started: **anything that must outlive the connection needs `nohup`/`setsid` or a
-  systemd unit, chosen explicitly.** A VM reboot was always fatal to running state; the change is
-  that an ordinary disconnect now is too.
+  ⚠️ **This bullet has been true, false and true again — do not read its date as "unchanged
+  since".** The front end has swapped **four times**: VS Code → Ghostty + tmux (2026-08-14) →
+  VS Code (2026-08-17) → Ghostty + tmux (2026-08-25) → **VS Code (2026-08-26)**. The two swaps
+  in between never reached this file, so between 2026-08-25 and 2026-08-26 it asserted a front
+  end that was not running. **Check `tmux ls` and your own process ancestry before trusting
+  any claim here about the workspace**, and if you change front ends, edit this bullet and the
+  next one together — they are the pair that goes stale.
+- ⚠️ **NOTHING SURVIVES A DROPPED CONNECTION** (true again as of 2026-08-26; briefly false
+  2026-08-25 → 26 while tmux was revived). tmux is retired again, and it was the only thing
+  making the VM's running state outlive the link to it. A dropped SSH link, a closed lid, a
+  sleeping Mac or a quit VS Code **kills every process started from that session** — a running
+  agent, a long `docker compose` command, an open `psql`. This is a deliberate trade (the
+  workflow is simpler and there is one less machine-local dotfile to keep current), not an
+  oversight, but it changes how long-running work should be started: **anything that must
+  outlive the connection needs `nohup`/`setsid` or a systemd unit, chosen explicitly.** A VM
+  reboot was always fatal to running state; an ordinary disconnect now is too.
+  ✅ **Detached containers are the exception, and it is worth knowing which.** `docker compose
+  up -d` does not belong to your terminal, so the stack survives; `docker compose logs -f` is
+  only a *view* of it and dies with the session. Killing the tmux server on 2026-08-26 took
+  three Claude sessions and two log tails with it and left all five containers running. So a
+  dropped link loses your **agents and your scrollback**, not your database.
+  ⚠️ **This is the third time this bullet has flipped.** Do not write "any more" or "now" into
+  it without a date — the previous version said "any more (2026-08-17)" and was simply wrong
+  for the day tmux was back.
 - **Security headers + cookies** (`app/__init__.py`): one `@app.after_request` sets X-Frame-Options/X-Content-Type-Options/CSP `frame-ancestors 'none'`/Referrer-Policy (+ HSTS in prod). Cookies are `HttpOnly` + `SameSite=Lax`; **`Secure` + HSTS gated on `COOKIE_SECURE`** (Droplet-only) so local HTTP dev + tests still work. CSP is `frame-ancestors` only — a full policy would break the inline scripts
 - Flask-Limiter: 60 req/min/IP, in-memory storage (single Gunicorn worker)
 - Templates read rows by **attribute** (`t.amount`, `account.credit_limit`); row partials reuse the list query's row shape. The three remaining `[0]` indexes in templates are Python lists (flash messages, top_categories, remaining_items), not rows
