@@ -39,6 +39,19 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The names the AI seams are known by are now checked, not just written
+  down.** Every model call, email, push and GitHub call goes through a single
+  isolated `_call_*()` function so tests can stub it, which makes those names
+  the map anyone reads to understand how any of it is tested — and they get
+  cited constantly, in module docstrings, in the comments explaining a call's
+  arguments, and in the tests doing the stubbing. Nothing executed those
+  citations, and two had gone stale: one counted the seams as they stood before
+  three of them were removed, and one pointed at a seam under a name it has
+  never had. Both are corrected, and a test now asserts that every such name
+  mentioned anywhere resolves to a seam that exists, so the next one fails in
+  its own pull request instead of misleading a reader months later. No
+  behaviour changed.
+
 - **The Anthropic SDK moved to `1.0.0`** (from `0.122.0`). A major version, so
   it was read rather than rubber-stamped: `1.0.0` removes `temperature`,
   `top_p`, `top_k`, `messages.parse(stream=...)`, the Text Completions API and
