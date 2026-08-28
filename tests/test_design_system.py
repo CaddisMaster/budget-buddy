@@ -27,11 +27,31 @@ LITERAL_ALLOWED = {"#fff", "#ffffff", "#000", "#000000"}
 # Tokens whose whole purpose is to differ between light and dark. A token that
 # exists only in :root renders the dark theme with a light-theme value — the
 # failure is silent and looks like "dark mode is a bit off" rather than a bug.
+#
+# ⚠️ THIS LIST HAD FALLEN 14 BEHIND THE STYLESHEET (#309, tranche 8a). It named
+# twelve tokens while the dark block redefined twenty-six, so fourteen deliberate
+# dark steps were unasserted — delete `--danger-soft`'s and a pale pink (#fceceb)
+# renders on the dark surface, with a green suite. The eight `--series-*` steps
+# are the worst of them: their own comment in style.css says each "clears 3:1
+# against --surface here, which the light steps do not, so they cannot simply be
+# reused", so losing them is a contrast failure in every chart.
+#
+# The list stayed short because nothing made it grow. It is now held to the
+# stylesheet from BOTH sides — see
+# test_the_theme_token_list_has_not_fallen_behind_the_stylesheet. Derivation
+# alone cannot replace it: a token dropped from the dark block simply stops
+# being discovered, so an external record of "this must be themed" is the only
+# thing that can notice a deletion.
 THEME_TOKENS = (
     "--bg", "--surface", "--surface-2", "--surface-raise",
     "--text", "--text-muted", "--border",
     "--grad-hero", "--grad-accent",
     "--shadow-sm", "--shadow-md", "--shadow-lg",
+    "--accent-soft", "--accent-2-soft",
+    "--success-soft", "--danger-soft", "--danger-hover",
+    "--series-1", "--series-2", "--series-3", "--series-4",
+    "--series-5", "--series-6", "--series-7", "--series-8",
+    "--series-other",
 )
 
 
@@ -140,6 +160,37 @@ def test_theme_tokens_are_defined_in_both_modes(css_no_comments):
         assert re.search(rf"{token}:", light), f"{token} missing from :root"
         assert re.search(rf"{token}:", dark), \
             f"{token} has no dark step — dark mode renders it with the light value"
+
+
+def test_the_theme_token_list_has_not_fallen_behind_the_stylesheet(css_no_comments):
+    """THEME_TOKENS must name everything the dark block actually re-steps.
+
+    The test above asserts every LISTED token is themed. Nothing asserted the
+    list was complete, so it sat at twelve while the stylesheet moved to
+    twenty-six — every token added to the dark block after the list was written
+    went unwatched, which is the failure mode #309 keeps finding: a
+    hand-maintained list that only ever fails for members someone remembered to
+    add.
+
+    Held from both sides deliberately. This direction catches the list falling
+    behind; `test_theme_tokens_are_defined_in_both_modes` catches a dark step
+    being deleted. Neither is redundant — a deleted dark step simply stops being
+    discoverable, so derivation alone would go quiet at exactly the wrong moment.
+    """
+    _, dark = _token_blocks(css_no_comments)
+    stepped = set(re.findall(r"(--[\w-]+)\s*:", dark))
+    assert len(stepped) >= 12, (
+        f"only parsed {len(stepped)} token(s) out of the dark block — the "
+        "parser is broken, not the stylesheet. Without this floor an empty "
+        "parse would make the assertion below vacuously true."
+    )
+
+    unwatched = sorted(stepped - set(THEME_TOKENS))
+    assert not unwatched, (
+        "the dark block re-steps these tokens and THEME_TOKENS does not name "
+        f"them, so nothing would notice if the dark step were deleted: {unwatched}. "
+        "Add them to THEME_TOKENS."
+    )
 
 
 def test_the_ai_accent_stays_exclusive_to_ai(css_no_comments):

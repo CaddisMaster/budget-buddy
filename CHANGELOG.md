@@ -39,6 +39,24 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **Fourteen of dark mode's colours were not being checked.** The suite has a
+  list of the colours that must have a separate dark-theme value, because one
+  that does not gets rendered with its light value on a dark background — a
+  failure that looks like "dark mode is a bit off" rather than like a bug. The
+  list named twelve. The stylesheet had grown to twenty-six, and nothing made
+  the list grow with it, so every colour added since it was written went
+  unwatched: deleting the dark step for the "over budget" tint would have put a
+  pale pink on a dark surface with the whole suite still green. Verified by
+  doing exactly that — it passes twenty out of twenty against the old list and
+  fails against the new one.
+  The eight chart colours are the ones that mattered most. Their dark values
+  exist specifically so each stays legible against the dark background, which
+  the light values do not, so losing them would have quietly made every chart
+  harder to read. The list is now held to the stylesheet from both directions:
+  a colour that loses its dark value fails, and a colour that gains one without
+  being added to the list fails too, so it cannot fall behind again. No colour
+  changed.
+
 - **The dev-data generator's cleanup list is now checked against the schema.**
   Wiping a seeded user means deleting from every table that user owns, in an
   order that respects the foreign keys — and that list existed in three separate
