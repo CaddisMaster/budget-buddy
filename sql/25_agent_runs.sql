@@ -12,6 +12,9 @@
 -- runner upsert via ON CONFLICT … DO UPDATE (the insights pattern, weekly-
 -- keyed instead of monthly).
 --
+-- ⚠️ THE NEXT LINE IS HISTORY, NOT INSTRUCTION. Since #277 the deploy
+--    pipeline applies migrations itself, either side of the image swap
+--    (`-- deploy:` pragma). See sql/schema.sql's header.
 -- Apply BY HAND to prod (pg_dump backup first) BEFORE pulling the new image,
 -- so the new code can read `agent_runs` on the very first dashboard load.
 

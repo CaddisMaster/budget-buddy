@@ -13,6 +13,9 @@
 -- inherently month-scoped, but a monthly snapshot matches the twins' cadence and
 -- reuses their exact load/upsert plumbing ("this month's coaching for your goals").
 --
+-- ⚠️ THE NEXT LINE IS HISTORY, NOT INSTRUCTION. Since #277 the deploy
+--    pipeline applies migrations itself, either side of the image swap
+--    (`-- deploy:` pragma). See sql/schema.sql's header.
 -- Apply BY HAND to prod (pg_dump backup first) BEFORE pulling the new image, so
 -- the new code can read `goal_coach` on the very first /goals load.
 

@@ -14,6 +14,9 @@
 -- due occurrence going forward (no back-fill) and advances next_due, reusing
 -- compute_next_due()/compute_initial_semimonthly_due() and all six frequencies.
 --
+-- ⚠️ THE NEXT LINE IS HISTORY, NOT INSTRUCTION. Since #277 the deploy
+--    pipeline applies migrations itself, either side of the image swap
+--    (`-- deploy:` pragma). See sql/schema.sql's header.
 -- Apply BY HAND to prod (pg_dump backup first) BEFORE pulling the new image, so
 -- the new code can read `transfer_schedules` on the very first /transfers load.
 

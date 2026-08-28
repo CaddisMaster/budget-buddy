@@ -6,6 +6,9 @@
 -- Now a schedule is a separate template that NEVER appears in History; it only
 -- generates a plain transaction on each due date, going forward.
 --
+-- ⚠️ THE NEXT LINE IS HISTORY, NOT INSTRUCTION. Since #277 the deploy
+--    pipeline applies migrations itself, either side of the image swap
+--    (`-- deploy:` pragma). See sql/schema.sql's header.
 -- Apply BY HAND to prod (pg_dump backup first) BEFORE pulling the new image, so
 -- the new code can read `schedules` and the old anchor rows are already gone.
 
