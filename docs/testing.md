@@ -242,6 +242,7 @@ anon → 302. What each file covers:
 - `test_forecast.py` — now **arithmetic only** (#234 left it no routes and no model seam): pure `project_expenses()` and `compute_forecast()` incl. the end-date gate. Its narration half moved to `test_month_read.py`
 - `test_schedules.py` — semimonthly init math, materialize/catch-up/gates, the **4-thread FOR UPDATE concurrency test** (verified red without the lock), CRUD
 - `test_recurring.py` — `compute_next_due()`, all 6 frequencies (pure)
+- `test_month_labels.py` — #309: `recent_months()` (pure). ⚠️ The load-bearing one is `test_every_label_parses_back_as_a_date`, which asserts the PROPERTY — every label is a real month, strictly one step apart — rather than a list of expected strings. The bug it caught (`'2025-00'`, `'2025--10'` past thirteen months) passed both a length check and an ordering check, and no caller asks for a window that long, so it was invisible from every call site. Verified red against the pre-fix arithmetic; the ≤13-month cases stay green, which is what shows the fix moved nothing real
 - `test_routes.py` — pages 200 logged-in / 302 anon; login/logout (POST 302, GET 405)
 - `test_isolation.py` — A can't touch B's data (all tables); missing/other-user → 404; write-side IDOR
 - `test_crud.py` — create/edit/delete happy paths (incl. kind CRUD, flip-clears-budget, credit-limit persist)

@@ -28,6 +28,7 @@ import app.ai as ai
 from app.ai import _MonthRead
 from app.helpers import (
     GENERIC_ERROR,
+    MAX_PAGE,
     parse_int_param,
     parse_month_param,
     parse_page_param,
@@ -74,6 +75,29 @@ def test_parse_int_param(raw, expected):
     assert parse_int_param(raw) == expected
 
 
+def test_parse_page_param_clamps_the_upper_bound_too():
+    """The low clamp was only half the guard (#309, tranche 1).
+
+    `parse_page_param` exists so a tampered ?page cannot reach SQL — its
+    docstring says so, naming the negative OFFSET a page of 0 or -1 would
+    produce. But Python ints are unbounded and only the floor was clamped, so
+    `?page=10**20` sailed through as itself. History multiplies it by PER_PAGE
+    into an OFFSET, and a value past 2**63-1 makes Postgres raise
+    `bigint out of range` — the exact class of failure the clamp was written to
+    prevent, arriving through the end nobody bounded.
+
+    The ceiling is behaviour-neutral on real data: any page past the last one
+    already renders empty, so clamping high changes nothing a user can reach.
+    """
+    assert parse_page_param(str(10 ** 20)) == MAX_PAGE
+    assert parse_page_param(10 ** 20) == MAX_PAGE
+    # The bound has to survive the arithmetic History does with it, which is
+    # what the database actually sees.
+    assert (MAX_PAGE - 1) * 25 < 2 ** 63
+    # Ordinary pages are untouched.
+    assert parse_page_param("3") == 3
+
+
 # --- malformed query params → 200 fallback, not 500 --------------------------
 
 @pytest.mark.parametrize("qs", ["?month=foo", "?month=2024", "?month=2026-13"])
@@ -86,6 +110,19 @@ def test_dashboard_bad_month_falls_back_to_all_time(client_a, qs):
                                 "?month=foo&page=abc"])
 def test_history_bad_filters_fall_back(client_a, qs):
     response = client_a.get(f"/transactions{qs}")
+    assert response.status_code == 200
+
+
+def test_history_an_absurd_page_number_does_not_500(client_a):
+    """The end-to-end half of the clamp above (#309, tranche 1).
+
+    `?page=100000000000000000000` reached `OFFSET (page - 1) * PER_PAGE` intact
+    and Postgres answered `bigint out of range`, which on a read path is an
+    unhandled psycopg2 error — a 500 from a query string, on a page every
+    logged-in user can reach. The pure-parser test states the bound; this one
+    states that History survives the input, because the two could drift.
+    """
+    response = client_a.get(f"/transactions?page={10 ** 20}")
     assert response.status_code == 200
 
 
