@@ -101,15 +101,28 @@ def parse_month_param(raw):
     return raw
 
 
+# The pagination ceiling. Python ints are unbounded, so without this a tampered
+# ?page is carried into `(page - 1) * PER_PAGE` at its full width and Postgres
+# answers `bigint out of range` — a 500 on a read path, from a query string
+# (#309). A million pages is ~25M rows at PER_PAGE, so no page a user can
+# actually reach is affected: past the last real page the query returns nothing
+# either way.
+MAX_PAGE = 1_000_000
+
+
 def parse_page_param(raw):
-    """Pagination number off a query string: a positive int, else 1. Clamped —
-    page 0/negative would flow into a negative SQL OFFSET (a DB error), not
-    just a weird page."""
+    """Pagination number off a query string: a positive int, else 1.
+
+    Clamped at BOTH ends. Page 0/negative would flow into a negative SQL OFFSET
+    (a DB error), not just a weird page — and an absurdly large one overflows
+    the same OFFSET off the other side, which is the same failure wearing a
+    different sign. See MAX_PAGE above.
+    """
     try:
         page = int(raw)
     except (TypeError, ValueError):
         return 1
-    return max(page, 1)
+    return min(max(page, 1), MAX_PAGE)
 
 
 def parse_int_param(raw):
@@ -152,10 +165,14 @@ def recent_months(count=12, today=None):
     today = today or datetime.today()
     months = []
     for i in range(count):
-        month = today.month - i
-        year = today.year
-        if month <= 0:
-            month += 12
-            year -= 1
-        months.append(f'{year}-{month:02d}')
+        # Count in absolute months rather than correcting a negative one, so
+        # the wrap holds for ANY count (#309, tranche 1). The previous form
+        # subtracted i from today.month and applied a single `+= 12`, which
+        # corrects exactly one year: at count=14 from January it emitted
+        # '2025-00', and at count=24 '2025--10'. No caller passes more than 12
+        # today, so nothing was wrong on screen — but a wrong month LABEL is
+        # silent, and the arithmetic that cannot go wrong is no longer than
+        # the arithmetic that can.
+        absolute = today.year * 12 + (today.month - 1) - i
+        months.append(f'{absolute // 12}-{absolute % 12 + 1:02d}')
     return months

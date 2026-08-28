@@ -55,6 +55,23 @@ this project uses the `0.x` versioning scheme described in
 
 ### Fixed
 
+- **A tampered `?page` on History returned a 500 instead of a page.** The
+  pagination guard clamped the bottom end only — page 0 or -1 became page 1,
+  because a negative SQL `OFFSET` is a database error. Python integers have no
+  ceiling, though, so `?page=100000000000000000000` was carried through at full
+  width, multiplied by the page size, and handed to Postgres, which answered
+  `bigint out of range`. That is the same failure the clamp was written to
+  prevent, arriving through the end nobody had bounded, and it was reachable by
+  any logged-in user editing a query string. Pages are now clamped at both
+  ends. Nothing a real account can reach changes: past the last page the query
+  returned an empty list before and returns one now.
+- **The month-filter labels went wrong past thirteen months.** `recent_months()`
+  built each label by subtracting from the current month and correcting a
+  negative result once — exactly one year of correction — so a two-year window
+  counted down through `2025-00` and into `2025--10`. Every caller asks for
+  twelve months or fewer, so nothing on screen was ever wrong; the arithmetic
+  now counts in absolute months, which cannot go wrong at any size, and a test
+  asserts every label is a real month rather than checking the list's length.
 - **A schema migration that drops a table can no longer run against the code
   that still reads it.** The deploy applied every pending migration *before*
   pulling the new image. That is the right order for an additive migration — the
