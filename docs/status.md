@@ -56,20 +56,31 @@ that is RUNNING. Corrected in #276.
 The runbook was right; the `CLAUDE.md` bullet was stale and cost a session's planning before
 anyone read it. Corrected in #276.
 
-### On `main`, not yet deployed (2026-08-28) — the full-repo review, tranches 1–4
+### On `main`, not yet deployed (2026-08-28) — the full-repo review, tranches 1–7
 
-▶️ **RESUME HERE: the next tranche is 5, `app/static/` (18 files).** #309 runs the review in
-tranches and a tranche is a PR; four have merged and six remain. The table in #309 has the full
-split, but the two things worth knowing before opening it:
+▶️ **RESUME HERE: the next tranche is 8, `tests/` (73 files, ~17.5k lines).** #309 runs the review
+in tranches and a tranche is a PR; **seven have merged and three remain**. The table in #309 has
+the full split.
 
-- **Tranche 5's honesty rule.** `apexcharts.min.js` (576 KB), `htmx.min.js`, two `.woff2` and four
-  `.png` get a **provenance pass, not a line-by-line read** — version, licence, and that the
-  accompanying `LICENSE`/`OFL` matches — and the PR must SAY that is what they got. `style.css`,
-  `sw.js` and `manifest.json` are read properly. ⚠️ ApexCharts is pinned at **4.7.0 because 5.x
-  went dual-licensed**; verify the licence of the version that is actually vendored, not the one
-  it had when it was vendored.
-- **Tranche 8 (`tests/`, 72 files) is by far the largest** and #309 asks whether it should be
-  split. Nothing so far suggests findings cluster, so it is still one tranche.
+⚠️ **Tranche 8 is the one #309 asked whether to split, and the answer is now yes — with
+evidence.** The earlier text here said "nothing so far suggests findings cluster". That is no
+longer true. Tranches 5, 6 and 7 each turned up a test that passed without checking anything, and
+all three were the same mechanism rather than the same subject:
+
+- `test_money_figures_are_tabular` required `.hero-stat-val`, a class no template has carried
+  since #227 — found only because tranche 5 deleted the dead rule and the suite went red.
+- `AI_SURFACES` in `test_design_system.py` is a hand-maintained tuple whose docstring says it
+  exists so that ADDING a surface without the material fails. It cannot catch one that PREDATES
+  the list, and it does not — see #323.
+- A test written during tranche 6 was deleted rather than shipped, because loosening the regex it
+  guarded did not make it fail.
+
+**So the findings cluster by FAILURE MODE, not by feature area.** A split along "dashboard tests /
+budget tests / schedule tests" would scatter them; a split along "what the test actually reads"
+concentrates them. Whatever split is chosen, read the source-scanning tests as one group.
+
+⚠️ Also read `docs/testing.md` first — the xdist isolation rules are what make `-n 10` safe, and a
+test parametrized on a per-worker value aborts the whole run at collection.
 
 | Tranche | PR | What it covered |
 |---|---|---|
@@ -77,54 +88,62 @@ split, but the two things worth knowing before opening it:
 | 2 | #317 | `app/blueprints/` — all 21 files, 6366 lines |
 | 3 | #318 | the seams — `ai.py`, `mailer.py`, `pusher.py`, `github.py`, `jobs.py` |
 | 4 | #320 | `app/templates/` — all 47 files |
+| 5 | #325 | `app/static/` — 18 files; vendored bundles got a provenance pass |
+| 6 | #327 | `sql/` — 37 migrations + `schema.sql` |
+| 7 | #330 | `scripts/` — all 10 files, 2207 lines |
 
-**40 of 262 tracked files.** Recount rather than trusting that (`git ls-files | wc -l`) — the
-commits this review produces change it.
+**Recount rather than trusting any number here** (`git ls-files | wc -l`) — the commits this
+review produces change it.
 
-**Four defects fixed, and they were all the same shape:** a rule applied at one end of a range, or
-in one of two twinned places, and not the other. Worth carrying forward as a search pattern rather
-than four separate facts.
+#### What tranches 5–7 actually found
 
-- `parse_page_param` clamped the floor and not the ceiling, so `?page=10**20` reached
-  `(page-1)*PER_PAGE` and Postgres answered `bigint out of range` — **a 500 from a query string**,
-  on a page every logged-in user can reach.
-- `recent_months()` corrected a negative month **once**, so a window longer than thirteen months
-  counted through `'2025-00'` into `'2025--10'`. No caller asks for that many, so nothing on
-  screen was ever wrong — which is exactly why it needed a test rather than a comment.
-- `accounts.credit_utilization` had **no NaN guard and its twin did**. `numeric` accepts `'NaN'`
-  (verified; `numeric(10,2)` rejects `Infinity`, so NaN is the only reachable case), and NaN slips
-  a `<= 0` check — so one bad card turned the whole cross-card "available credit" figure into
-  `nan`. Three sites had spelled that one rule three different ways; they are identical now, which
-  is the actual fix.
-- `transfers._validate` never parsed its date, so a typo produced `GENERIC_ERROR` and a logged
-  traceback. The **recurring**-transfer form twenty lines below it in the same file parses
-  correctly.
+**Tranche 5 (`app/static/`).** All three vendored bundles verified **byte-identical to upstream**
+(ApexCharts 4.7.0 js + css, htmx 2.0.4) by fetching the pinned release and diffing.
 
-**Three guards added, each where a comment had been carrying the weight alone** — `docs/gotchas.md`
-says a documented trap is not a guard, and these are that lesson applied:
+- ⚠️ **htmx had no provenance at all** — no version recorded anywhere, no licence beside it, while
+  ApexCharts had both plus two tests. Not a compliance gap (2.x is **0BSD**, which asks for
+  nothing), but htmx **changed licence across a major** — 1.x was BSD-2-Clause — which is exactly
+  the ApexCharts trap, unguarded. Now vendored, documented and asserted on both halves.
+- History's Amount/Balance headers were aligned by `th:nth-child(4)`/`(8)`, the **third** place
+  that table's column order is load-bearing and the only one still counting positions.
+- Four comments named features that were removed (the Goal Coach, #232's stacked cards).
 
-- `test_history_row_shape.py` — `HistoryRow` is filled **positionally** from **two** queries, so a
-  column added to one shifts every field after it silently. ⚠️ Its first cut matched **four**
-  queries (three others in that module also read `FROM transactions t`) and still passed two of
-  four assertions.
-- `test_doc_claims.py`'s seam-name check — every `_call_*` identifier must resolve. ⚠️ Its first
-  cut **failed on its own docstring**, which spelled out an example dangling name.
-- `test_month_labels.py` — asserts every month label is a real month, as a property rather than a
-  list of strings.
+**Tranche 6 (`sql/`).** Both of #309's questions answered by measurement in throwaway containers.
 
-⚠️ **Both of those "first cut" notes are the same lesson**: a test that scans source finds its own
-explanatory prose, and a pattern anchored too loosely matches the wrong thing and still goes green.
-Check what a new source-scanning test actually matched before trusting it.
+- ⚠️ **The chain does NOT build `schema.sql` and cannot.** `users` is created only in `schema.sql`,
+  `transactions.frequency` is `ALTER`ed by `sql/11` and created by nothing, `sql/09` re-adds
+  `sql/04`'s constraints. Known and deliberate — but written down only inside a CI comment, so a
+  reader of `sql/` found nothing. `schema.sql`'s header says it now, along with the
+  `migrate.py --baseline` step it had been omitting.
+- ⚠️ **Fourteen headers still said "Apply BY HAND to prod … BEFORE pulling the new image."** Wrong
+  since #277. **The same sentence in `CLAUDE.md` cost a session's planning at `0.8.0` prep** — it
+  was fixed there and left standing in fourteen files nobody re-read. Marked as history, not
+  deleted: each header is a dated record and #277's rule is built on `sql/13`'s.
+- Every DROP does carry its phase pragma. That half is sound.
 
-**Five issues filed, all on `0.9.0`.** #315 is the one to read first:
+**Tranche 7 (`scripts/`).** The four big scripts needed nothing — `migrate.py`, `release_prep.py`,
+`restore_check.py` and `seed_dev.py` are each a documented pure/seam split with real tests.
+
+- ⚠️ **`seed_dev.WIPE_ORDER` is the THIRD copy of the FK-safe delete order.** #267 reconciled the
+  `verify` skill's copy against `conftest._delete_user` and pinned both; it could not reach this
+  one, because `seed_dev.py` deliberately imports nothing from `tests/`. It is correct today, and
+  it is now pinned — **drifting is not reliably loud**, since a missed table whose FK cascades is
+  swept up by the final `DELETE FROM users`.
+- `check_site_drift.py` carried a dead `REPO_ROOT` and still printed "agree with this checkout"
+  after #299 removed the last thing that read the tree.
+
+#### Issues the review has filed, all on `0.9.0`
+
+**#315 is still the one to read first.** The five from tranches 1–4 (#312, #314, #315, #316, #319)
+are described in the older section below; these five are new on 2026-08-28:
 
 | Issue | What |
 |---|---|
-| **#315** | **Two categories with the same name merge into one budget row, inventing an overrun.** Budgeted 200, spent 110, reported as *10 over* — and `compute_month_facts` feeds that fabricated overrun to the month read, whose prompt says to treat figures as ground truth |
-| #314 | A NaN already stored in a `numeric` column reaches arithmetic in several places; `goals.compute_goal_projection` **raises**. Real fix is a `CHECK` constraint — a migration, so it stands alone |
-| #312 | An amount too large for the column fails as an unexpected error, not as bad input |
-| #316 | The Ask box sends unbounded user text to a billed model call |
-| #319 | The digest email is branded `#4f46e5` against the app's `#378ADD` |
+| **#328** | **The `scripts/` ingest pipeline cannot insert a row** — `transactions.user_id` has been `NOT NULL` with no default since `sql/10`. Proven against the dev database, not inferred. It also swallows the failure and exits 0, `data/` has never existed, and `test_connection.py` is referenced by nothing. Deleting five files is a fork |
+| #326 | A fresh database and production disagree about the sequences behind three PKs. `account.account_id` is the one that diverges by NAME — because it is the only PK not called `id`, the irregularity `CLAUDE.md` already warns about. Fix is a migration, so it stands alone |
+| #329 | A 500 from `/healthz` is classified `UNREACHABLE`, which files no issue — so a certificate not covering its hostname pages you and the app being hard down does not |
+| #323 | History's Auto-Categorize banner is the third AI surface and never got the shared material; `AI_SURFACES` omits it, so the guard passes vacuously |
+| #324 | `.page-greeting`/`.page-sub` match no rule, so Home's subtitle is the only page lede in the app rendering at full body weight |
 
 ⚠️ **Nothing here is deployed.** Prod is still `0.8.0`, and this work sits in `## [Unreleased]`
 alongside the four PRs that were already there.

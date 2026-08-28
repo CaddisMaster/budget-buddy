@@ -290,11 +290,14 @@ describes the last session rather than the current tree, and it asserts rather t
   `0.8.0` milestone is closed at 47 issues
 - **The tracker is NO LONGER empty** (changed 2026-08-28 — this bullet said the opposite for
   three days and the line "expect to have to find work rather than pick it up" is now wrong).
-  **#309**, the full-repo read, is the open thread: four of its ten tranches have merged and it
-  is the thing to resume. It has also *filed* work — **#312**, **#314**, **#315**, **#316** and
-  **#319** all came out of reading, and **#315** is the one to read first (two categories sharing
-  a name merge into one budget row and invent an overrun, which the AI month read then narrates
-  as ground truth). **#36** stays date-parked to ~Dec 2026 with no milestone.
+  **#309**, the full-repo read, is the open thread: **seven of its ten tranches have merged**
+  and it is the thing to resume. It has also *filed* ten issues — **#312**, **#314**, **#315**,
+  **#316**, **#319** from tranches 1–4, and **#323**, **#324**, **#326**, **#328**, **#329**
+  from tranches 5–7. **#315** is still the one to read first (two categories sharing a name
+  merge into one budget row and invent an overrun, which the AI month read then narrates as
+  ground truth); **#328** is the loudest (the `scripts/` ingest pipeline cannot insert a row and
+  has not been able to since the app gained users). **#36** stays date-parked to ~Dec 2026 with
+  no milestone.
   ⚠️ **`docs/status.md` is where the review's resume point lives** — which tranche is next and
   what its scope is. A **`0.9.0` milestone is open**
 - ⚠️ **`anthropic` is on `1.0.0`** (#286, merged 2026-08-25) alongside the minor/patch group
