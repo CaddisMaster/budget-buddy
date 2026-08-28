@@ -55,6 +55,27 @@ this project uses the `0.x` versioning scheme described in
 
 ### Fixed
 
+- **A credit card with a corrupt limit turned the whole "available credit"
+  figure into `nan`.** PostgreSQL's `numeric` accepts `NaN`, and NaN compares
+  False to everything — so it slipped a plain `<= 0` check and came out the far
+  side as a utilization dict full of `nan` with a healthy-looking tier. One such
+  card was enough to poison the cross-card total on /accounts, which is the same
+  one-NaN-poisons-the-sum failure the amount validators were written to prevent.
+  Nothing can write one today, but the column is older than the validator, and
+  the sibling function that computes card interest already guarded against
+  exactly this and said why. The two now guard identically: three sites across
+  two files had spelled one rule three different ways — twice as `x != x`, once
+  not at all — and that divergence is how the missing one stayed invisible.
+- **A transfer with an unparseable date reported a server fault instead of a bad
+  date.** The one-off transfer form checked only that its date field was
+  non-empty and handed the string to PostgreSQL, whose complaint was then
+  correctly treated as an unexpected write failure. So a typo produced
+  "Something went wrong — please try again" — unactionable, since resubmitting
+  fails identically — and put an exception traceback in the log for what was
+  ordinary bad input. Every other form in the app already parsed its date,
+  including the recurring-transfer form in the same file; this one now gives the
+  same answer they do. Nothing was ever written in either case.
+
 - **A tampered `?page` on History returned a 500 instead of a page.** The
   pagination guard clamped the bottom end only — page 0 or -1 became page 1,
   because a negative SQL `OFFSET` is a database error. Python integers have no

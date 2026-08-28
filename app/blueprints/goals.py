@@ -70,7 +70,13 @@ def compute_goal_projection(target_amount, saved, target_date,
     monthly_net_inflow = float(monthly_net_inflow)
     if apr is not None:
         apr = float(apr)  # psycopg2 numeric → Decimal; coerce
-        if apr <= 0 or apr != apr:  # unusable (incl. NaN) → interest-free math
+        # Spelled exactly as accounts.credit_utilization / monthly_interest
+        # (#309). This read `apr != apr`, which is correct but was a THIRD
+        # spelling of one rule across two files — and the divergence is how it
+        # went unnoticed that credit_utilization had no guard at all. Identical
+        # lines are the mechanism; a comment saying "remember the NaN case"
+        # is what was already there and did not work.
+        if not math.isfinite(apr) or apr <= 0:  # unusable → interest-free math
             apr = None
 
     remaining = round(target_amount - saved, 2)

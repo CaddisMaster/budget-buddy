@@ -17,6 +17,7 @@ from app.blueprints.accounts import (
     _parse_credit_limit,
     credit_card_utilization_facts,
     credit_utilization,
+    monthly_interest,
 )
 from app.db import get_db_connection
 from tests.conftest import create_account, create_transaction
@@ -41,6 +42,68 @@ def test_utilization_none_without_usable_limit():
     assert credit_utilization(-100.0, None) is None
     assert credit_utilization(-100.0, 0) is None
     assert credit_utilization(-100.0, -500) is None
+
+
+def test_utilization_rejects_a_nan_limit_like_its_twin_does():
+    """#309, tranche 2 — the two card helpers guarded differently.
+
+    `monthly_interest` rejects a NaN apr and says why: stored values predate
+    the validator that would have caught them. `credit_utilization` shares
+    that premise exactly — `credit_limit` is older than
+    `_parse_credit_limit` — but had no such guard, and NaN slips a plain
+    `<= 0` check because NaN compares False to everything. That is the same
+    reasoning `helpers.parse_signed_amount` is built on, quoted in its own
+    docstring.
+
+    Verified storable, not hypothesised: `numeric(10,2)` accepts 'NaN'
+    (Infinity it rejects, which is why only NaN is tested here).
+
+    Unguarded, this returned a dict of nan with tier 'ok' — so /accounts
+    rendered 'nan%', and because the summary line sums `available` across
+    cards, ONE such card turned the whole 'Total available credit' figure
+    into nan. One NaN poisoning an aggregate is the exact failure the amount
+    validators exist to prevent.
+    """
+    nan = Decimal("NaN")
+    assert monthly_interest(-500.0, nan) is None      # the twin, already correct
+    assert credit_utilization(-500.0, nan) is None    # the one that was not
+
+    # A real card is untouched — the guard rejects non-finite, not small.
+    assert credit_utilization(-500.0, Decimal("1000.00"))["pct"] == 50.0
+
+
+def test_the_summary_arithmetic_survives_a_nan_card():
+    """The consequence, stated separately from the guard: a NaN card must not
+    be able to reach the cross-card sum at all. Asserted as the property the
+    page depends on rather than by rendering it, because 'nan' in the HTML is
+    what this looked like from the outside."""
+    cards = [credit_utilization(-500.0, Decimal("1000.00")),
+             credit_utilization(-500.0, Decimal("NaN"))]
+    usable = [c for c in cards if c]
+    assert len(usable) == 1
+    total = sum(c["available"] for c in usable)
+    assert total == 500.0
+
+
+def test_all_three_non_finite_guards_are_spelled_the_same_way():
+    """One rule, one spelling (#309, tranche 2).
+
+    The guard exists in three places — `credit_utilization`,
+    `monthly_interest` and `goals.compute_goal_projection`. It was written
+    three different ways: two as `x != x`, one not at all. Asserting the
+    BEHAVIOUR at all three sites rather than the source text, because the
+    spelling is a means and the rejection is the end.
+    """
+    from app.blueprints.goals import compute_goal_projection
+
+    nan = Decimal("NaN")
+    assert credit_utilization(-500.0, nan) is None
+    assert monthly_interest(-500.0, nan) is None
+    # goals falls back to interest-free math rather than returning None, so the
+    # tell is that it produced a real figure instead of a nan one.
+    projection = compute_goal_projection(1000.0, 250.0, None, 100.0, apr=nan)
+    assert projection["est_monthly_interest"] is None
+    assert projection["remaining"] == 750.0
 
 
 def test_utilization_decimal_inputs_do_not_raise():

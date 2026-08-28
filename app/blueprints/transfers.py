@@ -54,6 +54,18 @@ def _validate(form, user_account_ids):
         errors.append(amount_error)
     if not transfer_date:
         errors.append('Date is required')
+    else:
+        # ⚠️ Parse it, don't just check it is non-empty (#309). Handing an
+        # unparseable string to Postgres raises `invalid input syntax for type
+        # date`, which the write path correctly treats as an UNEXPECTED failure
+        # — so a typo was reported as GENERIC_ERROR and logged with a traceback.
+        # `transactions.py` and the recurring-transfer form below both already
+        # parse here; this was the one form that did not, and the message is
+        # deliberately the same string all three use.
+        try:
+            datetime.strptime(transfer_date, '%Y-%m-%d')
+        except ValueError:
+            errors.append('Date must be a valid date')
     if not from_account or not to_account:
         errors.append('Both a From and a To account are required')
     elif from_account == to_account:

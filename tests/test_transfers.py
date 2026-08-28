@@ -57,6 +57,62 @@ def test_transfer_to_same_account_rejected(client_a, users):
     assert account_balance(acct) == before  # nothing recorded
 
 
+def test_a_bad_transfer_date_is_a_validation_error_not_a_server_fault(client_a, users):
+    """#309, tranche 2 — the one-off transfer form did not validate its date.
+
+    Every other form in the app parses its date and answers "Date must be a
+    valid date": `transactions.py` does it on both create and edit, and the
+    RECURRING transfer form twenty lines further down this same blueprint does
+    it too. The one-off form checked only that the field was non-empty and
+    handed the string to Postgres, which raised `invalid input syntax for type
+    date`. That is caught as an unexpected write failure — so the user was told
+    "Something went wrong — please try again" about a typo, and the server
+    logged an exception traceback for it.
+
+    Nothing was ever written, so this is about the report rather than the data:
+    a generic fault message is unactionable (retrying the same date fails
+    identically) and it buries genuine unexpected failures in the log.
+    """
+    from app.helpers import GENERIC_ERROR
+    from tests.conftest import count_transactions_like
+
+    other = create_account(users["a"]["id"], "bad-date-to")
+    response = client_a.post(
+        "/transfers",
+        data={
+            "from_account": users["a"]["account_id"],
+            "to_account": other,
+            "amount": "5.00",
+            "transfer_date": "not-a-date",
+            "description": "bad-transfer-date",
+        },
+        follow_redirects=True,
+    )
+    text = response.data.decode()
+    assert "Date must be a valid date" in text
+    assert GENERIC_ERROR not in text
+    # The pre-existing behaviour that must not regress: nothing is written.
+    assert count_transactions_like(users["a"]["id"], "bad-transfer-date") == 0
+
+
+def test_a_valid_transfer_date_still_posts(client_a, users):
+    """The other side of the guard — it must reject a non-date, not dates."""
+    other = create_account(users["a"]["id"], "good-date-to")
+    before = account_balance(other)
+    client_a.post(
+        "/transfers",
+        data={
+            "from_account": users["a"]["account_id"],
+            "to_account": other,
+            "amount": "12.00",
+            "transfer_date": TODAY,
+            "description": "good-transfer-date",
+        },
+        follow_redirects=True,
+    )
+    assert account_balance(other) == before + 12
+
+
 # --- analytics exclusion vs balance inclusion -------------------------------
 
 def test_transfer_excluded_from_analytics_but_kept_in_balance(client_a, users):
