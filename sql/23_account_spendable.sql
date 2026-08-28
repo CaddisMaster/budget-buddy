@@ -8,6 +8,9 @@
 -- INTO it count as money leaving the spendable pool). Default true = zero
 -- behavior change until an account is unticked. Purely additive.
 --
+-- ⚠️ THE NEXT LINE IS HISTORY, NOT INSTRUCTION. Since #277 the deploy
+--    pipeline applies migrations itself, either side of the image swap
+--    (`-- deploy:` pragma). See sql/schema.sql's header.
 -- Apply BY HAND to prod (pg_dump backup first) BEFORE pulling the new image,
 -- so the new code can read `spendable` on the very first load.
 

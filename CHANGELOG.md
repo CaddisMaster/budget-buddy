@@ -39,6 +39,24 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **Fourteen migration files no longer tell you to deploy them by hand.** Each
+  header carried "Apply BY HAND to prod (pg_dump backup first) BEFORE pulling
+  the new image" — true when it was written, and wrong since the deploy pipeline
+  took that job over. The same sentence lived in the project's own guidance until
+  it sent a session down the manual path during a release, so this is a known
+  way to lose an afternoon rather than a hypothetical one. The wording stays,
+  because each header is a dated record of what actually happened and one of them
+  is the reasoning the current rule is built on; every one is now marked as
+  history rather than instruction.
+  The schema file's header says how a fresh database is really built, which it
+  did not: loading it is only half, and without the second step the migration
+  runner refuses to start. It also states plainly that the numbered files are
+  **not** a replayable history — most of them fail against an empty database,
+  because the users table is created only in the schema file and one migration
+  alters a column nothing creates. That was known, but the only place it was
+  written down was a comment inside a CI job.
+  No schema changed and nothing in the app moved.
+
 - **The stylesheet was read end to end, and it no longer claims things that are
   not true.** The other vendored bundle, htmx, now ships the licence it is used
   under — the chart library and both typefaces already did, and htmx was the one

@@ -7,6 +7,9 @@
 -- is entered. The ~monthly interest (debt × apr/100/12) is derived at read
 -- time, never stored. The app caps input at 100. Purely additive.
 --
+-- ⚠️ THE NEXT LINE IS HISTORY, NOT INSTRUCTION. Since #277 the deploy
+--    pipeline applies migrations itself, either side of the image swap
+--    (`-- deploy:` pragma). See sql/schema.sql's header.
 -- Apply BY HAND to prod (pg_dump backup first) BEFORE pulling the new image,
 -- so the new code can read `apr` on the very first load.
 

@@ -4,6 +4,9 @@
 -- the table without the FK indexes; transfer_group_id is looked up on every
 -- transfer edit/delete. Invisible at solo scale, but cheap and correct.
 --
+-- ⚠️ THE NEXT LINE IS HISTORY, NOT INSTRUCTION. Since #277 the deploy
+--    pipeline applies migrations itself, either side of the image swap
+--    (`-- deploy:` pragma). See sql/schema.sql's header.
 -- Apply by hand to an existing DB (pg_dump first). New DBs get these from
 -- schema.sql.
 

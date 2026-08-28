@@ -9,6 +9,9 @@
 -- amount, so they are dropped. Every category re-populates the Budgets cockpit
 -- from its live suggestion until the user sets an explicit amount.
 --
+-- ⚠️ THE NEXT LINE IS HISTORY, NOT INSTRUCTION. Since #277 the deploy
+--    pipeline applies migrations itself, either side of the image swap
+--    (`-- deploy:` pragma). See sql/schema.sql's header.
 -- Apply BY HAND to prod (pg_dump backup first) BEFORE pulling the new image, so
 -- the new code never queries period_start/period_end after they're gone.
 --

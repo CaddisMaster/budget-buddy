@@ -223,10 +223,16 @@ jobs:
     # The plan for this phase wanted CI to assert that schema.sql and the
     # numbered migrations produce identical schemas. That is impossible here:
     # the numbered files are forward-only deltas, not a replayable history —
-    # `users` is created only in schema.sql, and replaying from empty yields 4
-    # tables of 13. So this job asserts the property that actually matters and
-    # is actually true: a migration added in this pull request applies cleanly
-    # to the schema PRODUCTION would apply it to.
+    # `users` is created only in schema.sql, so most of the chain fails from
+    # empty and the tables it builds are a fraction of schema.sql's. So this job
+    # asserts the property that actually matters and is actually true: a
+    # migration added in this pull request applies cleanly to the schema
+    # PRODUCTION would apply it to.
+    #
+    # ⚠️ This comment used to say "yields 4 tables of 13". #309 measured it and
+    # got different figures — the counts were true when written and every
+    # migration since has moved them. sql/schema.sql's header carries the
+    # command that measures it instead of a number that rots.
     #
     # ⚠️ Getting there requires the MERGE BASE's schema.sql, not HEAD's, and
     # that is not a refinement — it is the whole job (#159). The obvious

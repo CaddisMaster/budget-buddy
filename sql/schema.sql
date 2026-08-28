@@ -1,6 +1,55 @@
 -- ============================================================
 -- Budget Buddy — Complete Database Schema
--- Run this single file on a fresh database to set up everything
+--
+-- THIS FILE BUILDS A FRESH DATABASE. The numbered files beside it do not.
+--
+--   psql -U <owner> -d <database> -f sql/schema.sql
+--   python scripts/migrate.py --baseline      # <- REQUIRED second step
+--
+-- ⚠️ The baseline is not optional and this header used to omit it. Loading
+-- this file alone leaves `schema_migrations` EMPTY, and `migrate.py` then
+-- refuses to run at all ("error: schema_migrations is empty") rather than
+-- guessing whether the database is fresh or merely untracked.
+--
+-- ── ⚠️ THE NUMBERED MIGRATIONS ARE NOT A REPLAYABLE HISTORY ────────────────
+--
+-- They are forward-only deltas against whatever the database happened to be at
+-- the time, several of them from before a runner existed. Replaying 01..NN
+-- against an empty database does NOT produce this file and cannot:
+--
+--   * `users` is created ONLY here. Twelve migrations reference it, so
+--     everything from sql/10 onward fails without it.
+--   * `transactions.frequency` is ALTERed by sql/11 and created by nothing.
+--   * sql/09 re-adds constraints sql/04 already added.
+--
+-- Measured on 2026-08-28, not assumed: most of the chain fails to apply and
+-- the tables it does build are a small fraction of this file's. No number is
+-- recorded here, because the next migration changes it — measure it instead:
+--
+--   docker run -d --rm --name bbchk -e POSTGRES_PASSWORD=x \
+--     -e POSTGRES_DB=chk postgres:16
+--   for f in sql/[0-9]*.sql; do
+--     docker exec -i bbchk psql -U postgres -d chk -v ON_ERROR_STOP=1 -q < "$f" \
+--       || echo "FAILED: $f"
+--   done
+--
+-- That is why `migrate.py --baseline` records migrations as applied WITHOUT
+-- executing them; see its module docstring for the full reasoning.
+--
+-- ── ⚠️ "APPLY BY HAND" IN AN OLDER HEADER IS HISTORY, NOT INSTRUCTION ──────
+--
+-- Fourteen of the numbered files tell you to apply them by hand to production
+-- before pulling the image. That was true when each was written and has been
+-- wrong since #277: `release.yml` runs `migrate.py --phase before-pull` before
+-- the image swap and `--phase after-pull` after it, so the pipeline does this
+-- itself. A migration declares which side it belongs on with a `-- deploy:`
+-- pragma, and `tests/test_migration_phases.py` fails any DROP that omits one.
+--
+-- The stale wording is left in place because each header is a dated record of
+-- what actually happened, and #277's own reasoning leans on sql/13's. It is
+-- marked in each file instead. ⚠️ The same instruction lived in `CLAUDE.md`
+-- until 0.8.0 prep, where it cost a session's planning before anyone read
+-- `RUNBOOK.md` — do not follow it from here either.
 -- ============================================================
 
 -- ------------------------------------------------------------

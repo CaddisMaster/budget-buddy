@@ -6,8 +6,12 @@
 -- execution in the app inherited superuser: DROP anything, read every database
 -- on the cluster, create roles, or COPY ... FROM PROGRAM to run shell commands.
 --
--- The application performs no DDL at runtime. Schema changes are applied by
--- hand from this directory. So DML is all it needs.
+-- The application performs no DDL at runtime. Schema changes are applied from
+-- this directory by scripts/migrate.py, connecting as the OWNER — never as this
+-- role. So DML is all the app needs.
+-- ⚠️ "applied by hand" is what this said until #309 read it. The conclusion was
+-- always right; the reason stopped being true at #277, when the deploy pipeline
+-- took the job over. A stale reason is how a correct rule gets argued away.
 --
 -- The superuser is NOT removed — it remains the owner, and is what migrations
 -- and pg_dump run as.
