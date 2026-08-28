@@ -168,3 +168,70 @@ def test_the_pinned_chart_library_is_still_an_mit_release():
         "a watermark enforcer. 4.7.0 is the last MIT release. If this bump is "
         "deliberate, the licence question has to be answered first."
     )
+
+
+# --- seam names referenced in prose actually exist (#309, tranche 3) ----------
+
+# Names deliberately referenced while absent. Each entry is a seam that was
+# REMOVED, named by a test asserting it stayed removed — so the reference is the
+# point, not a mistake. Adding to this list should be a deliberate act.
+DELIBERATELY_ABSENT_SEAMS = {
+    # Removed with the Goal Coach (#262); tests/test_goal_coach_removed.py
+    # asserts app.ai no longer defines it.
+    "_call_coach_model",
+}
+
+# Whole-identifier match. The negative lookbehind stops a longer identifier
+# that merely CONTAINS the prefix — the sdk-call-shape test module's own name is
+# the live example — from reading as a seam reference. Requiring a letter after
+# the prefix stops a glob written with a wildcard from matching.
+_SEAM_REFERENCE = re.compile(r"(?<![A-Za-z0-9])_call_[a-z][a-z0-9_]*")
+
+
+def test_every_seam_name_mentioned_anywhere_actually_exists():
+    """A `_call_*` name in a comment or docstring must resolve to a real seam.
+
+    The isolated `_call_*()` seams are the app's whole story about testing
+    anything that touches a network, so they get named constantly — in module
+    docstrings, in the comments explaining a call's arguments, and in the tests
+    that stub them. Those references are the map a reader follows, and nothing
+    executed them: #309 found a test docstring pointing at the budget-review
+    seam under a name it has never had.
+
+    This is a structured claim in the sense this file means it — an identifier
+    either resolves or it does not, so there is no fuzzy match and no way for a
+    reworded paragraph to fail it.
+
+    ⚠️ **This docstring deliberately spells out no example of a dangling name,
+    and neither should any fix it prompts.** A file test that scans source for a
+    pattern will find that pattern in the prose explaining the rule — which is
+    how the first cut of this test failed on itself, and how an unrelated
+    Dockerfile test once failed on a correct file by matching its own comment.
+    Name the seam that exists, describe the wrong one.
+
+    ⚠️ Needs no `.dockerignore` skip, unlike everything above: it reads `.py`
+    files, which are genuinely in the shipped image. `*.md` is what gets
+    stripped.
+    """
+    defined = set()
+    for path in (REPO_ROOT / "app").rglob("*.py"):
+        defined.update(re.findall(r"^def (_call_[a-z0-9_]+)", path.read_text(),
+                                  re.MULTILINE))
+    assert "_call_ask_model" in defined, "sanity: found no seam definitions at all"
+
+    dangling = {}
+    for directory in ("app", "tests"):
+        for path in (REPO_ROOT / directory).rglob("*.py"):
+            for name in _SEAM_REFERENCE.findall(path.read_text()):
+                if name in defined or name in DELIBERATELY_ABSENT_SEAMS:
+                    continue
+                dangling.setdefault(name, set()).add(
+                    str(path.relative_to(REPO_ROOT)))
+
+    assert not dangling, (
+        "these _call_* names are referenced but defined nowhere in app/ — "
+        "either the name is wrong or the seam was removed and the reference "
+        "should join DELIBERATELY_ABSENT_SEAMS: "
+        + "; ".join(f"{name} ({', '.join(sorted(files))})"
+                    for name, files in sorted(dangling.items()))
+    )

@@ -63,8 +63,13 @@ def test_neither_method_accepts_arbitrary_kwargs(messages):
 
 
 def test_parse_accepts_what_the_structured_beats_pass(messages):
-    """`_call_month_read_model`, `_call_categorize_model`, `_call_budget_review_model`
-    and `_call_digest_model` all call `messages.parse()` with these."""
+    """`_call_month_read_model`, `_call_categorize_model`, `_call_budget_model`
+    and `_call_digest_model` all call `messages.parse()` with these.
+
+    (The budget one was named wrongly here until #309 — a seam name that has
+    never existed. Harmless to the assertion, which introspects the SDK rather
+    than this app, but it is the kind of pointer a reader follows and does not
+    find, which is why `test_doc_claims.py` now checks these names resolve.)"""
     names, _ = _params(messages.parse)
     for kw in ("model", "max_tokens", "system", "messages", "output_format"):
         assert kw in names, f"messages.parse() no longer accepts {kw!r}"
