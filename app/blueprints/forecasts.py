@@ -13,9 +13,14 @@ projection and the remaining scheduled income/bills. It is pure of models and
 always has been: nothing here calls Claude, and no figure it returns was ever
 written by one.
 
-⚠️ This module no longer defines a blueprint — it has no routes. The `forecasts`
-TABLE still exists and is now unread; dropping it is a migration, and a migration
-stands alone in its own PR.
+⚠️ This module no longer defines a blueprint — it has no routes.
+
+⚠️ The `forecasts` TABLE is GONE — `sql/36` dropped it alongside `goal_coach`
+once nothing referenced either. This note used to say the table "still exists"
+and that dropping it was outstanding work; that was true when #232 removed the
+card and stopped being true at `sql/36`, so a reader following it would have
+written a migration for a table that is not there. Older backups still contain
+it, which is fine: `restore_check.py` has no expected-table list.
 """
 import calendar
 from datetime import date

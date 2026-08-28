@@ -1,3 +1,4 @@
+import math
 from datetime import date
 
 import psycopg2
@@ -54,7 +55,15 @@ def credit_utilization(balance, credit_limit):
     # psycopg2 hands numeric back as Decimal; coerce both so mixed
     # Decimal/float arithmetic can't raise.
     limit = float(credit_limit)
-    if limit <= 0:
+    # ⚠️ `math.isfinite`, not a bare `<= 0` (#309). NaN compares False to
+    # everything, so it slips a range check — the same property
+    # `helpers.parse_signed_amount` was written against, for the same reason:
+    # `numeric(10,2)` accepts 'NaN', and one NaN card turned the cross-card
+    # "available credit" sum on /accounts into nan. `credit_limit` is older
+    # than `_parse_credit_limit`, so a stored value can predate the validation
+    # that would now reject it — which is exactly the argument monthly_interest
+    # below already makes for its own guard.
+    if not math.isfinite(limit) or limit <= 0:
         return None
     debt = max(0.0, -float(balance))
     pct = round(debt / limit * 100, 1)
@@ -83,7 +92,11 @@ def monthly_interest(balance, apr):
     # psycopg2 hands numeric back as Decimal; coerce both so mixed
     # Decimal/float arithmetic can't raise.
     apr = float(apr)
-    if apr <= 0 or apr != apr:  # apr != apr catches NaN
+    # The same guard as credit_utilization above, deliberately spelled the same
+    # way. This used to read `apr != apr`, which caught NaN and nothing else —
+    # correct, but a second idiom for one rule, and the twin having a different
+    # spelling is how it went unnoticed that the twin had no guard at all.
+    if not math.isfinite(apr) or apr <= 0:
         return None
     debt = max(0.0, -float(balance))
     if debt <= 0:

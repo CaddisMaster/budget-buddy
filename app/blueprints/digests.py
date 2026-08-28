@@ -161,8 +161,14 @@ def send_weekly_digests(*, today=None):
             narrative = generate_digest(facts)
 
             # Money agent (v10.10) — this week's findings, as their own email
-            # section. Reuse the week's cached run if the user already triggered
-            # one from the dashboard (don't re-pay Sonnet); otherwise run it now.
+            # section. Reuse this week's cached run if one exists (don't re-pay
+            # Sonnet); otherwise run it now. ⚠️ That cache used to be shared with
+            # a dashboard card the user could trigger themselves, and this
+            # comment still said so — #232 deleted the card and the /agent/run
+            # route, so the digest is the ONLY thing that writes agent_runs now
+            # (see app/blueprints/agent.py). The cache still earns its place: a
+            # re-run of the send inside the same week reuses the row rather than
+            # paying twice.
             # Its own try/except: one flaky investigation must not cost the user
             # their digest — the email just goes out without the section.
             agent_run = None

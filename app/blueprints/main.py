@@ -135,10 +135,19 @@ def fold_chart_tail(rows, limit=PALETTE_SIZE, label='Other'):
 # arbitrary 6-subset distinct unless there are as many hues as categories, and
 # #83's own validation caps the palette at 8. One of the two had to give.
 #
-# What makes giving it up safe NOW is the #108 fold: at most 6 real slices are
-# drawn from 8 hues, so a free hue ALWAYS exists and probing always succeeds.
-# #83 rejected probing when 10+ slices could be drawn and it would have failed
-# anyway. The fold changed that arithmetic.
+# What makes giving it up safe NOW is the #108 fold: the drawn set can never
+# exceed the palette, so probing always succeeds. #83 rejected probing when 10+
+# slices could be drawn and it would have failed anyway. The fold changed that
+# arithmetic.
+#
+# ⚠️ This read "at most 6 real slices are drawn from 8 hues, so a free hue
+# ALWAYS exists" — the pre-#257 numbers (#309). The fold cuts at PALETTE_SIZE
+# now, so at 8 drawn categories there is no spare hue; there are exactly as
+# many slots as rows, which is a different argument reaching the same
+# conclusion. Pass 2 can only run out of slots with MORE rows than the palette,
+# and the fold makes that unreachable — so state the relationship (drawn <=
+# palette), never the two numbers, which is how this went stale in the first
+# place.
 #
 # Creation order is still the PREFERENCE, so a category keeps its familiar hue
 # and only a genuinely colliding one moves.
