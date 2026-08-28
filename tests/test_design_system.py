@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 STATIC = Path(__file__).resolve().parents[1] / "app" / "static"
+TEMPLATES = Path(__file__).resolve().parents[1] / "app" / "templates"
 CSS_PATH = STATIC / "style.css"
 
 # Colours that may legitimately appear as a literal outside the token blocks:
@@ -111,7 +112,13 @@ def test_money_figures_are_tabular(css_no_comments):
                if "font-variant-numeric: tabular-nums" in rule[1]]
     assert tabular, "nothing sets tabular-nums"
     selectors = " ".join(sel for sel, _ in tabular)
-    for needed in ("td", ".hero-net", ".stat-value", ".hero-stat-val"):
+    # ⚠️ `.hero-stat-val` used to be in this list and was REMOVED in #309's
+    # tranche 5, along with the rule it was pinning. No template has carried
+    # that class since #227 replaced the hero's inline stats with the two flow
+    # cards beside it — so this test was requiring a selector that matched
+    # nothing, which is a check that cannot fail for the right reason. Every
+    # name below is one a template actually renders; keep it that way.
+    for needed in ("td", ".hero-net", ".stat-value", ".flow-val", ".stat-tile-val"):
         assert needed in selectors, f"{needed} does not get tabular figures"
 
 
@@ -200,10 +207,84 @@ def test_the_chart_library_and_its_licence_are_vendored():
         "this build carries the dual-license watermark enforcer"
 
 
+def test_htmx_is_vendored_with_the_licence_it_ships_under():
+    """The rule the typefaces and the chart library already follow, applied to
+    the one vendored bundle that was exempt from it (#309, tranche 5).
+
+    ⚠️ This is provenance, not compliance. htmx 2.x is **0BSD**, which asks for
+    nothing in return — no notice, no attribution — so shipping the text beside
+    the file was never an obligation and its absence broke no licence.
+
+    It is here because htmx **changed licence across a major version**: 1.x was
+    BSD-2-Clause, 2.x is 0BSD. That is the identical trap ApexCharts is guarded
+    against two tests up (MIT through 4.7.0, dual-licensed at 5.x), and htmx had
+    no version pinned anywhere and no licence text to compare a bump against.
+    A vendored dependency whose terms you cannot look up without leaving the
+    repo is one you will upgrade blind.
+    """
+    lib = STATIC / "htmx.min.js"
+    licence = STATIC / "htmx.LICENSE.txt"
+    assert lib.is_file(), "htmx is not vendored"
+    assert licence.is_file(), "htmx ships without the licence it is used under"
+
+    text = licence.read_text()
+    assert "Zero-Clause BSD" in text, (
+        "the vendored htmx licence is no longer the 0BSD text 2.x ships. "
+        "1.x was BSD-2-Clause, which DOES require the notice be retained — if "
+        "this is a downgrade, the redistribution terms changed with it."
+    )
+
+
 def test_the_retired_chart_library_is_gone():
     """Chart.js was replaced, not merely unreferenced — 208KB of dead JS in the
     image is 208KB every deploy ships and every browser may cache."""
     assert not (STATIC / "chart.umd.min.js").exists()
+
+
+# --- the ledger's columns are addressed by name, not by index (#309, t5) ------
+
+
+def test_history_headers_are_aligned_by_class_not_by_column_index(css_no_comments):
+    """The stylesheet and the template have to agree about two columns, and a
+    column INDEX is the one way of saying it that can go silently wrong.
+
+    These rules were `.txn-table th:nth-child(4)` and `(8)` — right for Amount
+    and Balance only while they are the 4th and 8th of the nine `<th>`s. Insert
+    a column anywhere to their left and the stylesheet right-aligns two innocent
+    headers over two left-aligned figures, which renders fine and is wrong.
+
+    ⚠️ Not hypothetical, and not a fresh worry: #309's previous tranche added
+    `test_history_row_shape.py` because the SAME table is filled POSITIONALLY on
+    the Python side. This is the third place that table's column order is
+    load-bearing, and it was the only one addressing it by number.
+
+    ⚠️ Asserted against `css_no_comments` deliberately. The comment left in
+    style.css explaining this change spells out `th:nth-child(4)`, so a scan of
+    the raw stylesheet would match its own rationale and fail a correct file.
+    """
+    header_rules = re.findall(r"\.txn-table th[^,{]*", css_no_comments)
+    assert header_rules, "nothing styles the history table's headers any more"
+
+    positional = [r.strip() for r in header_rules if "nth-child" in r]
+    assert not positional, (
+        "the history table's headers are addressed by column index: "
+        + ", ".join(positional)
+        + ". The cells below them carry .c-amount/.c-bal; use the same classes "
+        "so inserting a column cannot silently move the alignment."
+    )
+
+    # The other half of the agreement: the classes the sheet targets are really
+    # on the header cells. Without this the test above passes on a stylesheet
+    # whose selectors match nothing at all.
+    history = (TEMPLATES / "history.html").read_text()
+    thead = re.search(r"<thead>.*?</thead>", history, re.S)
+    assert thead, "history.html has no <thead> to check"
+
+    for cls, label in (("c-amount", "Amount"), ("c-bal", "Balance")):
+        assert f'<th class="{cls}">{label}</th>' in thead.group(0), (
+            f"history.html's {label} header does not carry .{cls}, so the "
+            "stylesheet rule that right-aligns it matches nothing"
+        )
 
 
 # --- the AI material is one material (#225 follow-up) -------------------------
@@ -211,7 +292,6 @@ def test_the_retired_chart_library_is_gone():
 # Every surface where a model is the one speaking, and the element that must
 # carry the shared material. Listed rather than discovered so that ADDING an AI
 # surface without giving it the material fails here.
-TEMPLATES = Path(__file__).resolve().parents[1] / "app" / "templates"
 AI_SURFACES = (
     ("partials/_ask_panel.html", 'id="ask-panel"'),
     ("budgets.html", "ai-banner"),

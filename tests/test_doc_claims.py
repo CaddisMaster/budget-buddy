@@ -42,6 +42,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 CLAUDE_MD = REPO_ROOT / "CLAUDE.md"
 RUNBOOK = REPO_ROOT / "RUNBOOK.md"
 APEXCHARTS = REPO_ROOT / "app" / "static" / "apexcharts.min.js"
+HTMX = REPO_ROOT / "app" / "static" / "htmx.min.js"
 
 _NOT_IN_IMAGE = "not present in the shipped image — .dockerignore excludes it"
 
@@ -167,6 +168,42 @@ def test_the_pinned_chart_library_is_still_an_mit_release():
         f"CLAUDE.md pins ApexCharts {major}.x — 5.x+ is dual-licensed and 6.x ships "
         "a watermark enforcer. 4.7.0 is the last MIT release. If this bump is "
         "deliberate, the licence question has to be answered first."
+    )
+
+
+# ---------------------------------------------------------------------------
+# The other vendored bundle — htmx had no pinned version at all (#309, t5)
+# ---------------------------------------------------------------------------
+
+
+def _documented_htmx_version():
+    match = re.search(r"htmx (\d+)\.(\d+)\.(\d+)", CLAUDE_MD.read_text(encoding="utf-8"))
+    assert match, "CLAUDE.md no longer states a pinned htmx version"
+    return tuple(int(g) for g in match.groups())
+
+
+@pytest.mark.skipif(not (CLAUDE_MD.exists() and HTMX.exists()), reason=_NOT_IN_IMAGE)
+def test_the_vendored_htmx_is_the_version_the_docs_claim():
+    """The same claim ApexCharts has carried since #234, for the bundle beside it.
+
+    ⚠️ htmx is the harder of the two to check by eye: the minified file carries
+    NO banner comment — the first bytes are `var htmx=function(){` — so opening
+    it tells you nothing about which release it is. The version lives in the
+    runtime config object instead, which is why this asserts on that shape
+    rather than on a header.
+
+    #309 found this file pinned nowhere: `CLAUDE.md` said "vendored
+    `htmx.min.js`" with no version, and no licence shipped beside it, while its
+    neighbour had both plus two tests. The asymmetry was the finding — see
+    test_design_system.py for the licence half.
+    """
+    major, minor, patch = _documented_htmx_version()
+    stamp = f'version:"{major}.{minor}.{patch}"'
+
+    assert stamp in HTMX.read_text(encoding="utf-8", errors="replace"), (
+        f"CLAUDE.md documents htmx {major}.{minor}.{patch}, but "
+        "app/static/htmx.min.js does not carry that version stamp — the doc "
+        "and the artifact have drifted"
     )
 
 

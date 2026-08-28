@@ -39,6 +39,36 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The stylesheet was read end to end, and it no longer claims things that are
+  not true.** The other vendored bundle, htmx, now ships the licence it is used
+  under — the chart library and both typefaces already did, and htmx was the one
+  exception. That was never a compliance problem: htmx 2.x is 0BSD, which asks
+  for nothing in return. It is a provenance one. htmx **changed licence across a
+  major version** — 1.x was BSD-2-Clause, which does require the notice be kept
+  — and that is the same trap the chart library carries a loud warning about,
+  except htmx had no version pinned anywhere and no licence text to compare a
+  bump against. Both are now recorded and both are asserted, and all three
+  vendored bundles were verified byte-identical to the releases they claim to
+  be.
+  Twelve lines of dead CSS went with it: two colour tokens and five classes
+  left behind when the home page was rebuilt, none of them reachable from any
+  template. One of those classes was being kept alive by a test that required
+  it — a check that had been passing against a selector matching nothing since
+  the rebuild, and that now names the elements the page really renders.
+  Four comments were corrected rather than deleted. They described the app's
+  AI surfaces, and each one had outlived a feature that was removed: they named
+  a coach that no longer exists, counted rules that were deleted, and gave a
+  total that was one too high. Nothing about how the app looks or behaves
+  changed.
+
+- **History's two figure columns are styled by name instead of by position.**
+  The right-alignment on the Amount and Balance headers was written as "the
+  fourth column" and "the eighth", which is true only for as long as nothing is
+  inserted to their left. The cells underneath already carried names; the
+  headers do now too, and a test holds the two halves together. This is the
+  third place that table's column order is load-bearing, and it was the only one
+  still counting.
+
 - **The History table's column order is now checked against the row shape it
   fills.** History is the one screen where a database row reaches the page by
   position rather than by name, which means the query's column order and the
