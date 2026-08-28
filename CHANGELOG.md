@@ -39,6 +39,21 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The dev-data generator's cleanup list is now checked against the schema.**
+  Wiping a seeded user means deleting from every table that user owns, in an
+  order that respects the foreign keys — and that list existed in three separate
+  places. Two of them were reconciled a release ago after one silently went stale
+  and tore down nothing at all; the third lives in a script that deliberately
+  imports nothing from the test suite, so it was missed. It happens to be correct
+  today. What made it worth pinning is that drifting is not reliably noisy: a
+  missed table whose foreign key cascades gets swept up by the final delete, so
+  the list can rot with no symptom until someone adds a table that does not
+  cascade, and then the failure points at the wrong file.
+  Also removed a constant and an import in the drift checker that survived the
+  landing page moving to its own repository, and corrected its output, which
+  still claimed to be comparing production against the checkout it was run
+  from — something it stopped doing at the same time. No behaviour changed.
+
 - **Fourteen migration files no longer tell you to deploy them by hand.** Each
   header carried "Apply BY HAND to prod (pg_dump backup first) BEFORE pulling
   the new image" — true when it was written, and wrong since the deploy pipeline

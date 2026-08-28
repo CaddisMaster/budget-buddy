@@ -6,6 +6,8 @@ read. That is what makes "the same seed produces the same data" assertable at
 all, and it keeps the expensive DB round-trip down to the few properties that
 genuinely need one.
 """
+import pathlib
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -21,6 +23,77 @@ TODAY = date(2026, 7, 28)
 # and two workers seeding the same username would collide on users.username.
 SEED_USER = TEST_PREFIX + "seed_user"
 SEED_PASSWORD = "seed-password-123"
+
+
+# ── The wipe list, against the schema it has to cover (#309, tranche 7) ──────
+
+# ⚠️ THIS IS THE THIRD COPY of "every table a user owns, children first".
+# #267 found the `verify` skill carrying a hand-maintained copy of
+# `conftest._delete_user`'s list, watched it rot when sql/36 dropped two tables,
+# and fixed it by making the skill CALL the function. `tests/test_verify_skill.py`
+# then pinned the two survivors. It did not reach `seed_dev.WIPE_ORDER`, which
+# lives in scripts/ and cannot import from tests/ — the script is deliberately
+# standalone, so deduplicating it is not on the table. Pinning it is.
+
+_SCHEMA = pathlib.Path(__file__).resolve().parents[1] / "sql" / "schema.sql"
+
+# `CREATE TABLE public.<name> (` — schema.sql qualifies every one.
+_CREATE_TABLE = re.compile(r"CREATE TABLE (?:IF NOT EXISTS )?public\.(\w+)", re.I)
+# A `user_id` column inside a CREATE TABLE body is what makes a table user-owned.
+_USER_ID = re.compile(r"^\s*user_id\b", re.M)
+
+
+def _user_owned_tables():
+    """Tables in sql/schema.sql that carry a user_id column."""
+    text = _SCHEMA.read_text()
+    bounds = [(m.group(1), m.end()) for m in _CREATE_TABLE.finditer(text)]
+    assert bounds, "sql/schema.sql declares no CREATE TABLE — the parser is broken"
+
+    owned = set()
+    for i, (name, start) in enumerate(bounds):
+        end = bounds[i + 1][1] if i + 1 < len(bounds) else len(text)
+        body = text[start:end]
+        # Stop at the closing paren so a following table's columns cannot leak in.
+        body = body.split("\n);", 1)[0]
+        if _USER_ID.search(body):
+            owned.add(name)
+    return owned
+
+
+def test_the_wipe_list_covers_every_table_a_user_owns():
+    """A table missing here is not reliably loud, which is the whole problem.
+
+    `wipe_user()` deletes the listed tables and then the user row. A missed
+    table whose FK is ON DELETE CASCADE is swept up by that last DELETE, so the
+    list drifts with NO symptom — until someone adds a table with ON DELETE
+    RESTRICT (transactions → categories/account already are), and then
+    `--force` fails at the user row for a reason that points at the wrong file.
+    """
+    owned = _user_owned_tables()
+    assert len(owned) >= 10, (
+        f"only found {len(owned)} user-owned table(s) in sql/schema.sql — the "
+        "parser is broken, not the schema. Without this floor a regex that "
+        "matched nothing would make the assertion below vacuously true."
+    )
+
+    missing = sorted(owned - set(seed_dev.WIPE_ORDER))
+    assert not missing, (
+        f"seed_dev.WIPE_ORDER does not delete from {missing}, which sql/schema.sql "
+        "gives a user_id. Add them, children before parents."
+    )
+
+
+def test_the_wipe_list_only_names_tables_that_exist():
+    """The rot #267 actually saw: sql/36 dropped two tables and one copy of the
+    list kept naming them. Stated against schema.sql rather than a live database
+    so it fails in the PR that drops the table, not on someone's next run."""
+    text = _SCHEMA.read_text()
+    declared = set(_CREATE_TABLE.findall(text))
+    gone = sorted(set(seed_dev.WIPE_ORDER) - declared)
+    assert not gone, (
+        f"seed_dev.WIPE_ORDER deletes from {gone}, which sql/schema.sql does not "
+        "declare. A dropped table left in the list is the #267 failure exactly."
+    )
 
 
 # ── Pure generator ───────────────────────────────────────────────────────────

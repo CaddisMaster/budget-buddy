@@ -55,9 +55,6 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from pathlib import Path
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
 
 HEALTH_URL = "https://budget.seandesmet.com/healthz"
 
@@ -242,11 +239,11 @@ def main(argv=None) -> int:
 
     print()
     if drifted:
-        print(f"DRIFT: {len(drifted)} check(s) disagree with this checkout.")
+        print(f"DRIFT: {len(drifted)} check(s) disagree with the rules in this file.")
     if unreachable:
         print(f"UNREACHABLE: {len(unreachable)} target(s) could not be reached after retries.")
     if not drifted and not unreachable:
-        print("All checks agree with this checkout.")
+        print("All checks agree with the rules in this file.")
 
     if drifted:
         return 1
