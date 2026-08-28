@@ -25,7 +25,6 @@
 /* Variables */
 :root {
   --sidebar-width: 220px;
-  --sidebar-collapsed: 0px;
 
   /* Type (#225). Space Grotesk carries the character — headings, and every
      figure that is money. Instrument Sans is the reading face. Both fall back
@@ -67,7 +66,6 @@
   --on-dark-muted: #A9BEEA;
   --on-dark-pos: #6EE7B7;
   --on-dark-neg: #FCA5A5;
-  --hero-rule: rgba(255,255,255,0.18);
   --chip-up-bg: rgba(16,185,129,0.18);
   --chip-down-bg: rgba(244,63,94,0.18);
   --spark-line: #7DD3FC;
@@ -208,11 +206,11 @@ h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.01em
    ⚠️ td is deliberately blanket rather than a .money class: amounts appear in
    ~15 templates' table cells, and one missed class is an invisible defect. */
 td,
-.hero-net, .hero-stat-val, .stat-value,
+.hero-net, .stat-value,
 .goal-figures, .goal-summary-saved, .credit-meta {
   font-variant-numeric: tabular-nums;
 }
-.hero-net, .hero-stat-val, .stat-value, .goal-summary-saved {
+.hero-net, .stat-value, .goal-summary-saved {
   font-family: var(--font-display);
 }
 
@@ -237,7 +235,6 @@ td,
 .brand { display: flex; align-items: center; gap: 9px; font-family: var(--font-display); font-weight: 600; font-size: var(--fs-md); letter-spacing: -0.02em; color: var(--sidebar-ink); }
 .brand-mark { width: 26px; height: 26px; flex-shrink: 0; display: block; }
 .brand-mark svg { width: 100%; height: 100%; display: block; }
-.sidebar-title { font-weight: 500; font-size: 15px; }
 .sidebar nav { padding: 0.6rem 0.6rem; }
 .sidebar nav a { display: flex; align-items: center; gap: 11px; padding: 0.55rem 0.7rem; margin: 1px 0; border-radius: var(--radius-sm); color: var(--sidebar-ink-muted); font-size: 14px; font-weight: 500; transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease); }
 .sidebar nav a svg { width: 18px; height: 18px; flex-shrink: 0; opacity: 0.85; }
@@ -429,7 +426,14 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
    tabular-nums is what lets the decimal points line up; right-alignment alone
    cannot do it with proportional digits. */
 .txn-table td.c-amount, .txn-table td.c-bal { text-align: right; font-variant-numeric: tabular-nums; font-weight: 650; white-space: nowrap; }
-.txn-table th:nth-child(4), .txn-table th:nth-child(8) { text-align: right; }
+/* ⚠️ Addressed by CLASS, not by position. These were th:nth-child(4) and
+   (8) — correct only while Amount and Balance happen to be the 4th and 8th
+   columns, and #309 tranche 4 had just added test_history_row_shape.py because
+   the SAME table is filled positionally on the Python side. A column inserted
+   anywhere left of Amount would have right-aligned two innocent headers over
+   two left-aligned ones, with nothing raised. The cells below already carried
+   .c-amount/.c-bal; the headers now carry them too. */
+.txn-table th.c-amount, .txn-table th.c-bal { text-align: right; }
 .txn-table td.c-amount { font-size: 14px; }
 .txn-table td.c-bal { font-size: 14px; }
 .txn-table td.c-date, .txn-table td.c-cat, .txn-table td.c-acct, .txn-table td.c-type { color: var(--text-muted); font-size: 13px; }
@@ -485,12 +489,6 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .login-brand { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 600; font-size: var(--fs-lg); letter-spacing: -0.02em; color: var(--text); }
 .login-brand .brand-mark { width: 32px; height: 32px; flex-shrink: 0; display: block; }
 .login-lede { margin: 0.35rem 0 1.5rem; color: var(--text-muted); font-size: 14px; }
-
-
-
-
-
-
 
 .card.editing { box-shadow: 0 0 0 2px var(--accent); }
 
@@ -681,11 +679,14 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
    place on the page where a model is speaking, and making that a change of
    MATERIAL rather than a badge is what the mockup was doing. Its own ink
    tokens, for the same reason the hero has them. */
-/* THE AI MATERIAL, shared by every surface where a model is the one speaking:
-   Home's Ask panel, the Goal Coach on /goals, and the budget-review banner on
-   /budgets. It began as .ask-panel alone; Goals and Budgets carried only
-   `border-left: 3px solid var(--accent-2)`, so one feature looked like two
-   different things depending on which page you were on.
+/* THE AI MATERIAL. It began as .ask-panel alone, while the other AI surfaces
+   carried only `border-left: 3px solid var(--accent-2)` — so one feature
+   looked like two different things depending on which page you were on.
+   ⚠️ TWO surfaces carry it today: Home's Ask panel and the budget-review
+   banner on /budgets. This comment used to name a third, the Goal Coach on
+   /goals, which #262 removed. The app's THIRD AI surface is the
+   Auto-Categorize banner on History (partials/_cleanup_banner.html) and it
+   does NOT carry this material — that is #323, not an omission here.
 
    ⚠️ It is a dark surface in BOTH themes, deliberately — the point is a change
    of MATERIAL rather than a badge, which is also why it carries its own ink
@@ -709,10 +710,12 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .ai-surface input::placeholder { color: var(--on-read-muted); }
 /* The one ACTION on a panel keeps the accent, so it still reads as an action. */
 .ai-surface .btn-primary { background: var(--grad-accent); border-color: transparent; color: #fff; }
-/* ⚠️ These four are the ones that inherit --text-muted from their own rules
-   further down the sheet and would otherwise render near-invisible: the
-   <details> chevron, the right-aligned headline, the facts strip's labels and
-   every "Generated …" timestamp. */
+/* ⚠️ Descendants that inherit --text-muted from their own rules further down
+   the sheet, and would otherwise render near-invisible on a dark surface.
+   This comment used to name four (a <details> chevron, a right-aligned
+   headline, a facts strip's labels, a "Generated …" timestamp) — every one of
+   those went with the four stacked cards in #232, and the list outlived them.
+   Two remain, and each is re-inked where it is used, not by a blanket rule. */
 .ai-surface .htmx-indicator { color: var(--on-read-muted); }
 .ai-surface .ask-foot { border-top-color: var(--read-rule); }
 
@@ -773,7 +776,6 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .chart-card { background: var(--surface-raise); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: 1.2rem 1.25rem; }
 .chart-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 0.9rem; color: var(--text); }
 .chart-card.wide { grid-column: 1 / -1; }
-.chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; }
 .chart-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
 .chart-toggle button { border: none; background: transparent; color: var(--text-muted); font: inherit; font-size: 12px; padding: 0.15rem 0.7rem; cursor: pointer; }
 .chart-toggle button.active { background: var(--accent-soft); color: var(--text); font-weight: 600; }
@@ -1008,7 +1010,6 @@ body.bulk-mode td.bulk-col { cursor: pointer; } /* whole cell toggles the box */
   .stats-grid { grid-template-columns: 1fr 1fr; }
   .hero { padding: 1.2rem 1.25rem; }
   .hero-net { font-size: var(--fs-xl); }
-  .hero-stats { grid-template-columns: 1fr 1fr; }
   td, th { padding: 0.5rem 0.6rem; font-size: 13px; }
   /* The quick-add pill becomes a floating action button; toasts sit above it. */
   .quick-add-btn { position: fixed; right: 1rem; bottom: calc(1rem + env(safe-area-inset-bottom)); width: 56px; height: 56px; border-radius: 50%; justify-content: center; padding: 0; box-shadow: var(--shadow-lg); z-index: 90; }
@@ -1081,14 +1082,17 @@ body.bulk-mode td.bulk-col { cursor: pointer; } /* whole cell toggles the box */
    The five surfaces the original comment named are down to Home's panel, the
    budget review and the cleanup banner. */
 /* ⚠️ .ai-card is now only a left rule for anything NOT carrying .ai-surface.
-   The material above replaced it on the three real AI surfaces. */
+   The material above replaced it on TWO of the three real AI surfaces — the
+   cleanup banner is still on this left rule alone (#323). */
 .ai-card { border-left: 3px solid var(--accent-2); }
 .ai-card.ai-surface { border-left: none; }
-/* The Budgets review entry point: one row, so it lays itself out. */
+/* The one-row AI entry points — the Budgets review and History's
+   Auto-Categorize banner. ⚠️ The cleanup banner carried these five
+   declarations as an inline style attribute instead, so the class had one
+   consumer and its twin had a copy; #309 pointed it at the class. */
 .ai-banner { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem; }
 .ai-spark { width: 18px; height: 18px; color: var(--accent-2); flex-shrink: 0; }
 .ai-badge { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-2); background: var(--accent-2-soft); border: 1px solid var(--accent-2); border-radius: 999px; padding: 1px 7px; }
-.ai-intro { font-size: 12px; color: var(--text-muted); margin: 0 0 0.6rem; }
 /* Ask answer panel (#34). Was styled inline against var(--bg-subtle) — a token
    that is defined nowhere. The inline declaration carried a #f6f7f9 fallback,
    so it never failed loudly: it hard-coded a pale grey that reads fine in light
@@ -1098,10 +1102,11 @@ body.bulk-mode td.bulk-col { cursor: pointer; } /* whole cell toggles the box */
 .ask-answer p { margin: 0; white-space: pre-line; }
 .ask-answer .ask-tools { font-size: 11px; color: var(--text-muted); margin: 0.5rem 0 0; }
 
-/* ⚠️ These .insight-* / .fact* classes outlived the cards they were named for
-   (#232 removed Insight, Forecast and the money agent). Their remaining
-   consumers are the goal-coach card and the budget-review banner — rename them
-   only together with those two templates. */
+/* ⚠️ .insight-summary outlived the card it was named for (#232 removed
+   Insight, Forecast and the money agent; #262 took the Goal Coach). It has
+   exactly ONE consumer left — partials/_budget_review.html — so rename it only
+   together with that template. The .fact* classes this comment also claimed
+   are gone entirely; nothing defines or uses one. */
 .insight-summary { font-size: 15px; line-height: 1.5; margin: 0.9rem 0; }
 /* Budget report (v10.9): hit/miss month cells + trend words. The tr:hover
    overrides keep the verdict tint from being wiped by the global hover rule. */

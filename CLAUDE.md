@@ -31,8 +31,9 @@ budget.seandesmet.com on a DigitalOcean Droplet behind Nginx + Gunicorn with Let
 
 - **Backend:** Python / Flask, psycopg2, Flask-Login, Flask-Bcrypt, Flask-Limiter, Gunicorn
 - **Database:** PostgreSQL (Docker container)
-- **Frontend:** Jinja2 templates + HTMX (vendored `htmx.min.js`, inline CRUD), ApexCharts 4.7.0 (vendored,
-  **MIT — 5.x+ is dual-licensed, do not upgrade blind**), vanilla CSS
+- **Frontend:** Jinja2 templates + htmx 2.0.4 (vendored, **0BSD — 1.x was BSD-2-Clause**, inline
+  CRUD), ApexCharts 4.7.0 (vendored, **MIT — 5.x+ is dual-licensed, do not upgrade blind**),
+  vanilla CSS. Both licences ship beside their bundle in `app/static/`
 - **Infrastructure:** Docker Compose, DigitalOcean, Nginx, Certbot
 
 ## Project map
@@ -101,9 +102,10 @@ These apply to nearly every change, which is why they are here rather than in `d
 **Docs are checked**
 - `tests/test_doc_claims.py` asserts the doc claims a machine can check: every path in the project
   map above exists, `RUNBOOK.md` hardcodes no versioned
-  certbot lineage, and the vendored ApexCharts version and licence match what this file claims.
-  **Structured claims only — prose is deliberately out of scope.** Editing the project map or the
-  pinned chart version means the suite is now the thing that agrees or disagrees with you
+  certbot lineage, and the vendored ApexCharts and htmx versions and licences match what this
+  file claims.
+  **Structured claims only — prose is deliberately out of scope.** Editing the project map or a
+  pinned vendored version means the suite is now the thing that agrees or disagrees with you
 - `scripts/check_site_drift.py` (daily, `site-drift.yml`) compares the LIVE site against `main`:
   SAN coverage per hostname, certificate expiry, `/healthz`. Needs no secret
   and no Droplet access. **Drift files one deduped issue; unreachable files nothing**
