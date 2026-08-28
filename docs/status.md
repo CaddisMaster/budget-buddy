@@ -56,6 +56,79 @@ that is RUNNING. Corrected in #276.
 The runbook was right; the `CLAUDE.md` bullet was stale and cost a session's planning before
 anyone read it. Corrected in #276.
 
+### On `main`, not yet deployed (2026-08-28) — the full-repo review, tranches 1–4
+
+▶️ **RESUME HERE: the next tranche is 5, `app/static/` (18 files).** #309 runs the review in
+tranches and a tranche is a PR; four have merged and six remain. The table in #309 has the full
+split, but the two things worth knowing before opening it:
+
+- **Tranche 5's honesty rule.** `apexcharts.min.js` (576 KB), `htmx.min.js`, two `.woff2` and four
+  `.png` get a **provenance pass, not a line-by-line read** — version, licence, and that the
+  accompanying `LICENSE`/`OFL` matches — and the PR must SAY that is what they got. `style.css`,
+  `sw.js` and `manifest.json` are read properly. ⚠️ ApexCharts is pinned at **4.7.0 because 5.x
+  went dual-licensed**; verify the licence of the version that is actually vendored, not the one
+  it had when it was vendored.
+- **Tranche 8 (`tests/`, 72 files) is by far the largest** and #309 asks whether it should be
+  split. Nothing so far suggests findings cluster, so it is still one tranche.
+
+| Tranche | PR | What it covered |
+|---|---|---|
+| 1 | #313 | `app/` core — `__init__.py`, `db.py`, `helpers.py`, `models.py` |
+| 2 | #317 | `app/blueprints/` — all 21 files, 6366 lines |
+| 3 | #318 | the seams — `ai.py`, `mailer.py`, `pusher.py`, `github.py`, `jobs.py` |
+| 4 | #320 | `app/templates/` — all 47 files |
+
+**40 of 262 tracked files.** Recount rather than trusting that (`git ls-files | wc -l`) — the
+commits this review produces change it.
+
+**Four defects fixed, and they were all the same shape:** a rule applied at one end of a range, or
+in one of two twinned places, and not the other. Worth carrying forward as a search pattern rather
+than four separate facts.
+
+- `parse_page_param` clamped the floor and not the ceiling, so `?page=10**20` reached
+  `(page-1)*PER_PAGE` and Postgres answered `bigint out of range` — **a 500 from a query string**,
+  on a page every logged-in user can reach.
+- `recent_months()` corrected a negative month **once**, so a window longer than thirteen months
+  counted through `'2025-00'` into `'2025--10'`. No caller asks for that many, so nothing on
+  screen was ever wrong — which is exactly why it needed a test rather than a comment.
+- `accounts.credit_utilization` had **no NaN guard and its twin did**. `numeric` accepts `'NaN'`
+  (verified; `numeric(10,2)` rejects `Infinity`, so NaN is the only reachable case), and NaN slips
+  a `<= 0` check — so one bad card turned the whole cross-card "available credit" figure into
+  `nan`. Three sites had spelled that one rule three different ways; they are identical now, which
+  is the actual fix.
+- `transfers._validate` never parsed its date, so a typo produced `GENERIC_ERROR` and a logged
+  traceback. The **recurring**-transfer form twenty lines below it in the same file parses
+  correctly.
+
+**Three guards added, each where a comment had been carrying the weight alone** — `docs/gotchas.md`
+says a documented trap is not a guard, and these are that lesson applied:
+
+- `test_history_row_shape.py` — `HistoryRow` is filled **positionally** from **two** queries, so a
+  column added to one shifts every field after it silently. ⚠️ Its first cut matched **four**
+  queries (three others in that module also read `FROM transactions t`) and still passed two of
+  four assertions.
+- `test_doc_claims.py`'s seam-name check — every `_call_*` identifier must resolve. ⚠️ Its first
+  cut **failed on its own docstring**, which spelled out an example dangling name.
+- `test_month_labels.py` — asserts every month label is a real month, as a property rather than a
+  list of strings.
+
+⚠️ **Both of those "first cut" notes are the same lesson**: a test that scans source finds its own
+explanatory prose, and a pattern anchored too loosely matches the wrong thing and still goes green.
+Check what a new source-scanning test actually matched before trusting it.
+
+**Five issues filed, all on `0.9.0`.** #315 is the one to read first:
+
+| Issue | What |
+|---|---|
+| **#315** | **Two categories with the same name merge into one budget row, inventing an overrun.** Budgeted 200, spent 110, reported as *10 over* — and `compute_month_facts` feeds that fabricated overrun to the month read, whose prompt says to treat figures as ground truth |
+| #314 | A NaN already stored in a `numeric` column reaches arithmetic in several places; `goals.compute_goal_projection` **raises**. Real fix is a `CHECK` constraint — a migration, so it stands alone |
+| #312 | An amount too large for the column fails as an unexpected error, not as bad input |
+| #316 | The Ask box sends unbounded user text to a billed model call |
+| #319 | The digest email is branded `#4f46e5` against the app's `#378ADD` |
+
+⚠️ **Nothing here is deployed.** Prod is still `0.8.0`, and this work sits in `## [Unreleased]`
+alongside the four PRs that were already there.
+
 ### On `main`, not yet deployed (2026-08-25)
 
 **Five PRs merged across two sessions; nothing shipped.** Prod is still `0.8.0`. A **`0.9.0` milestone is open** —
