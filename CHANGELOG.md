@@ -39,6 +39,18 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The History table's column order is now checked against the row shape it
+  fills.** History is the one screen where a database row reaches the page by
+  position rather than by name, which means the query's column order and the
+  row's field order are a single unit: add a column to one without the other
+  and every value after it shifts along by one. Nothing errors — the row still
+  has the right number of values, they are just the wrong ones — so the first
+  sign would be wrong figures on screen. There are also two queries filling
+  that same shape, not one, and the second only supplies the pending rows
+  pinned to the top of page one, so a mismatch there would show on the handful
+  of rows least likely to be in front of whoever made the change. Both are now
+  asserted. No behaviour changed.
+
 - **The names the AI seams are known by are now checked, not just written
   down.** Every model call, email, push and GitHub call goes through a single
   isolated `_call_*()` function so tests can stub it, which makes those names
