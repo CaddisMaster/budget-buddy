@@ -599,8 +599,15 @@ def _call_budget_model(facts, category_names, today, api_key):
 # the next 7 days of scheduled items) and hands them to Claude as JSON; the model
 # only narrates them into a short email recap + a tip or two. Same isolated-seam,
 # narrate-don't-compute, graceful-ParseError contract as Insight/Forecast — it is
-# just delivered by email instead of a dashboard card. Its own 7th seam so tests
-# stub it independently.
+# just delivered by email instead of a dashboard card. Its own seam, like every
+# other beat, so tests stub it independently.
+#
+# ⚠️ This read "its own 7th seam" (#309). It was the seventh when written — the
+# count included the v9 quick-add parser and separate insight/forecast
+# narrations, all of which #232 removed. There are six model seams now and this
+# is the fifth of them in file order. An ordinal is a fact about the file at one
+# moment; what the sentence actually means is "it has one of its own", so say
+# that instead.
 # ---------------------------------------------------------------------------
 
 class _Digest(BaseModel):
