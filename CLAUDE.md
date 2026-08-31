@@ -288,21 +288,20 @@ describes the last session rather than the current tree, and it asserts rather t
   project was abandoned and its repo deleted, and since it never shipped in a release its
   changelog entry was deleted outright rather than answered with a `### Removed` line. The
   `0.8.0` milestone is closed at 47 issues
-- **The tracker is NO LONGER empty** (changed 2026-08-28 — this bullet said the opposite for
-  three days and the line "expect to have to find work rather than pick it up" is now wrong).
-  **#309**, the full-repo read, is the open thread and the thing to resume. **`app/`, `sql/`,
-  `scripts/` and `tests/` have all been read in full**; what remains is **tranche 9** (`.github/`
-  + `.claude/`) and **tranche 10** (root config). It has also *filed* issues in every tranche —
-  **#312**, **#314**, **#315**, **#316**, **#319** from tranches 1–4, **#323**, **#324**,
-  **#326**, **#328**, **#329** from tranches 5–7, and **#333** from tranche 8. **#315** is still
-  the one to read first (two categories sharing a name merge into one budget row and invent an
-  overrun, which the AI month read then narrates as ground truth); **#328** is the loudest (the
-  `scripts/` ingest pipeline cannot insert a row and has not been able to since the app gained
-  users). **#36** stays date-parked to ~Dec 2026 with no milestone.
-  ⚠️ **`docs/status.md` is where the review's resume point lives** — which tranche is next and
-  what its scope is. ⚠️ **That resume point has gone stale twice running** (#331, then #337),
-  each time because a tranche merged without touching it, so **check it against
-  `git log --oneline | grep "#309"` rather than trusting it**. A **`0.9.0` milestone is open**
+- **The tracker is NO LONGER empty**, and its contents are now mostly **#309's output rather than
+  #309 itself**. ✅ **The full-repo read is COMPLETE** (closed 2026-08-31, ten tranches): every
+  tracked file — `app/`, `sql/`, `scripts/`, `tests/`, `.github/`, `.claude/` and the root build
+  config — has been read once, on purpose. It filed **twelve issues**: **#312**, **#314**,
+  **#315**, **#316**, **#319** (tranches 1–4), **#323**, **#324**, **#326**, **#328**, **#329**
+  (5–7), **#333** (8) and **#339** (9). **#315** is still the one to read first (two categories
+  sharing a name merge into one budget row and invent an overrun, which the AI month read then
+  narrates as ground truth); **#328** is the loudest (the `scripts/` ingest pipeline cannot insert
+  a row and has not been able to since the app gained users). **#36** stays date-parked to
+  ~Dec 2026 with no milestone. A **`0.9.0` milestone is open**.
+  ⚠️ **`docs/status.md` carried the review's resume point, and it went stale THREE times** (#331,
+  #337, #343) — every time because a tranche merged without touching it. **The loop ended because
+  the work finished, not because the problem was solved**; the next tranche-shaped piece of work
+  will reproduce it unless something mechanical links merging to updating
 - ⚠️ **`anthropic` is on `1.0.0`** (#286, merged 2026-08-25) alongside the minor/patch group
   (#285). The major bump was read rather than rubber-stamped, because the mocked `_call_*_model()`
   seams mean a green suite says nothing about an SDK change. **`tests/test_sdk_call_shape.py`
