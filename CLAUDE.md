@@ -275,6 +275,12 @@ server itself — **read it before touching anything on the Droplet.**
 
 ## Current status
 
+▶️ **NEXT UP: weigh cutting `0.9.0` — #345.** Prod is on `0.8.0` (2026-08-20); `main` is 34
+commits ahead with no new env vars and no new migrations. #345 carries the measured pre-release
+state and the three things this release exercises for the first time. Decide it before starting
+new work; if you defer, record why.
+
+
 ⚠️ **[`docs/status.md`](docs/status.md) is the detail, and it lags `main` by construction** — it
 describes the last session rather than the current tree, and it asserts rather than going quiet.
 **Reconcile against `git log` and `gh issue list` at the start of every session.**

@@ -5,6 +5,23 @@
 
 ## Current Status
 
+▶️ **NEXT SESSION: weigh cutting `0.9.0` before starting anything new — #345.** Prod has been on
+`0.8.0` since 2026-08-20 and `main` is 34 commits ahead. #345 carries the measured pre-release
+state so it does not have to be re-derived: **no new env vars, no new migrations**, a
+`### Added` in the changelog (so **MINOR → `0.9.0`** per `VERSIONING.md`), and a stale What's-new
+strip still reading `data-version="v0.8.0"`.
+
+⚠️ **Three changes on `main` execute for the FIRST time at this release** and cannot be verified
+anywhere else — the two-phase migration deploy (#277, here in its *empty-pass* form, which must
+exit 0 twice), the version-stamp assertion (#305, watch for `running version 0.9.0 (matches
+0.9.0)`), and `anthropic` 1.0.0 making its first live call from the shipped image (#286). #345
+says what to watch in the log for each.
+
+✅ **`release-prep` is trustworthy again as of #340.** Before that it would have told you a DROP
+needs a manual out-of-band step (wrong since #277) and to verify the deploy with `css_v` (retired
+by #305). If you are reading a session transcript older than 2026-08-31, distrust both.
+
+
 ### ✅ `0.8.0` SHIPPED AND LIVE (2026-08-20)
 
 **Prod runs `0.8.0`, deployed and verified 2026-08-20.** The `0.8.0` milestone is **closed at
