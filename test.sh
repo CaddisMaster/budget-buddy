@@ -4,7 +4,7 @@
 # production. Nothing is installed on your machine.
 #
 # Usage:
-#   ./test.sh                       # run the whole suite (parallel, ~17s)
+#   ./test.sh                       # run the whole suite (parallel)
 #   ./test.sh tests/test_routes.py  # run one file
 #   ./test.sh -k semimonthly        # run tests matching a keyword
 #   ./test.sh -v                    # verbose output
@@ -22,23 +22,42 @@
 # TEST_PREFIX from the xdist worker id so every worker owns its own database
 # rows — read the note there before changing how test users are named.
 #
-# ⚠️ The default is a BOUNDED 10 workers, deliberately not `-n auto`. On a Mac,
-# `auto` means one worker per core (15 here) — all of them inside the Docker VM,
-# each hammering Postgres and the VirtioFS-mounted source tree. The host's
-# VirtualMachineService then reports the aggregate as ~1000% CPU, the fans spin
-# up, and the machine is unpleasant to use while the suite runs. That is fine
-# once; it is not fine when a verification protocol asks for five consecutive
-# runs (see #128/#157), which is how this was found.
+# The default is a BOUNDED 10 workers rather than `-n auto`. Why it is bounded
+# at all is a claim about the machine, so it is measured, dated, and says which
+# machine — because that machine has already changed once underneath it.
 #
-# The trade, all figures MEASURED on the 806-test suite rather than estimated:
+# ⚠️ RE-MEASURED 2026-08-31 (#309, tranche 10), on the `jupiter` VM, 8 cores,
+# the 1,239-test suite:
+#
+#     -n auto (8)   61.1s
+#     -n 10         61.8s
+#     -n 6          76.2s
+#     -n 4         106.6s
+#
+# So on the current machine the bound does nothing: `auto` is EIGHT workers,
+# which is fewer than the default of 10, and marginally faster. The two are
+# within noise of each other and both are ~1.7x faster than -n 4.
+#
+# ⚠️ The original rationale — reproduced here because it explains the 10, and
+# because it is what a future move back would make true again — was measured on
+# a 15-core Mac against an 806-test suite:
 #
 #     -n auto (15)   ~21s   every core pinned, fans audible
 #     -n 10          ~29s   five cores left for the rest of the machine
 #     -n 4           ~67s
 #
-# 10 is the chosen point: it gives up ~8 seconds and keeps the machine usable.
-# Wall-clock was never the binding constraint — the old ~204s serial time was.
-# If you want the 21s back for one run, pass `-n auto` explicitly.
+# There, `auto` meant 15 workers inside the Docker VM, the host reported ~1000%
+# CPU, and the machine was unpleasant to use during the five consecutive runs a
+# verification protocol asks for (#128/#157). None of that describes an 8-core
+# Linux VM: there are no cores left over to protect, and `-n auto` is now the
+# gentler setting rather than the aggressive one.
+#
+# ⚠️ Do not trust either table without checking which machine you are on
+# (`nproc`). Development moved from the Mac to the VM on 2026-08-14 and the
+# front end has flipped five times in twelve days; a figure here is a
+# measurement of a moment, not a property of the suite. The default is left at
+# 10 because it measures the same as `auto` here and still protects a 15-core
+# host if development moves back — but if you are tuning, re-measure first.
 #
 # ⚠️ CI is deliberately NOT affected: ci.yml invokes `pytest -q -n auto`
 # directly and never goes through this script. Ephemeral runners have no

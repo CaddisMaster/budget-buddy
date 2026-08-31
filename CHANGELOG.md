@@ -39,6 +39,33 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The linter that edits code on save was two versions behind the one that
+  judges it.** The project pins its linter in three places so that a check
+  passing locally means it will pass in CI — that is the whole point of pinning
+  it. Two of the three agreed. The third, which is the copy that runs
+  automatically before a commit and *rewrites* code as it goes, was two releases
+  older. So the oldest linter in the project was the one making edits while the
+  newest decided whether they were acceptable, which is exactly the gap the
+  pinning exists to close. The test guarding this compared two of the three and
+  was named for it; it now compares all three, so a fourth copy cannot slip in
+  unnoticed.
+
+- **The pre-commit rules protected a file that no longer exists and left the
+  real one uncovered.** A charting library was swapped out months ago; the rule
+  telling the automatic formatters to leave vendored third-party files alone was
+  never updated, so it exempted the deleted library and not the 563 KB
+  replacement that is actually in the repository. Nothing had been damaged, but
+  it was one upstream update away from mattering.
+
+- **The test runner's tuning notes described a machine that stopped running the
+  tests two weeks ago.** They explained, with measurements, why the suite uses a
+  capped number of parallel workers on a 15-core laptop. Development moved to an
+  8-core virtual machine, where the cap is now higher than the core count and
+  the advice to "run it unbounded if you want it faster" would actually run it
+  with *fewer* workers. Re-measured on the machine that runs it today, with both
+  sets of figures kept and labelled, and a note to check which machine you are on
+  before trusting either.
+
 - **The automated helpers were still being sent to a file that stopped holding
   the answers eleven days after they were written.** The project's main
   instructions file was split into a short index plus a set of reference
