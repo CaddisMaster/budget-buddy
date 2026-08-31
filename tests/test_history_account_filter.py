@@ -23,10 +23,10 @@ user's `account_id` selects nothing rather than leaking. The isolation test
 below states that as a property.
 """
 import pytest
-from conftest import create_account, create_transaction
 
 from app.blueprints.transactions import PER_PAGE, _load_history
 from app.db import get_db_connection
+from tests.conftest import create_account, create_transaction
 
 
 def _ledger(html):

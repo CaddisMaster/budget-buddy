@@ -25,9 +25,9 @@ from datetime import date
 from pathlib import Path
 
 import pytest
-from conftest import create_category, create_transaction
 
 from app.blueprints.main import PALETTE_SIZE
+from tests.conftest import create_category, create_transaction
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = REPO_ROOT / "sql/schema.sql"

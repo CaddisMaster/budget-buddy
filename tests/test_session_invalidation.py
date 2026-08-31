@@ -25,10 +25,10 @@ tested below:
    reads as a bug rather than as security.
 """
 import pytest
-from conftest import PASSWORD, _login
 
 from app.db import db_cursor
 from app.models import User
+from tests.conftest import PASSWORD, _login
 
 
 def _token(user_id):

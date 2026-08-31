@@ -13,7 +13,7 @@ all run while CI (which has no ANTHROPIC_API_KEY) stays offline and free.
 The locked principle — "the app computes the numbers, the model only narrates" —
 is exercised by build_read_facts() running directly against seeded data.
 """
-from datetime import date
+from datetime import date, timedelta
 
 import app.ai as ai
 from app.ai import ParseError, _MonthRead
@@ -134,19 +134,43 @@ def test_read_facts_carry_both_the_month_and_the_projection(users):
         assert key in facts["projection"]
 
 
-def test_read_facts_projection_sees_a_bill_still_to_land(users):
+def test_read_facts_projection_sees_a_bill_still_to_land(users, forecast_today):
+    """⚠️ Rewritten in #309 tranche 8b — this test could not fail.
+
+    It asserted `remaining_scheduled_expense >= 0` on a figure that is a sum of
+    positive amounts, so the comparison was a tautology; and it scheduled the
+    bill for `date.today()`, which `_remaining_scheduled` deliberately EXCLUDES
+    (the window opens strictly after today, because anything due today was
+    already materialized by the due-runners — see test_occurrences.py). Measured
+    rather than reasoned about, with the clock frozen to three different days:
+
+        due TODAY, mid-month      remaining=0     items=0
+        due TOMORROW, mid-month   remaining=75.0  items=1
+        due TODAY, last day       remaining=0     items=0
+
+    So the bill it created was invisible on every day of the month, and the
+    assertion passed anyway. "£610 is still to leave" is the one thing the
+    projection half of the month read exists to say, and nothing checked it.
+
+    Reverted both ways against `_remaining_scheduled` returning nothing: the old
+    assertion passed, this one fails. Same mutation, opposite verdict.
+    """
     a = users["a"]["id"]
     acct = create_account(a, "read-bill-acct")
     cat = create_category(a, "read-bill-cat")
-    year, month = _this_month()
+    year, month = forecast_today.year, forecast_today.month
     create_transaction(a, acct, 500, date(year, month, 1), "income")
-    # A schedule due later today or beyond is still "to leave the account".
-    create_schedule(a, acct, 75, "monthly", date.today(),
+    # Strictly after today, and inside the month — the "still to leave" window.
+    due = forecast_today + timedelta(days=1)
+    create_schedule(a, acct, 75, "monthly", due,
                     category_id=cat, transaction_type="expense",
                     description="read-bill")
 
-    facts = build_read_facts(a, year, month)
-    assert facts["projection"]["remaining_scheduled_expense"] >= 0
+    projection = build_read_facts(a, year, month)["projection"]
+
+    assert projection["remaining_scheduled_expense"] == 75.0
+    assert [i["due"] for i in projection["remaining_items"]
+            if i["amount"] == 75.0] == [due.isoformat()]
 
 
 def test_read_facts_only_see_own_rows(users):

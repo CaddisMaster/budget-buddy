@@ -9,19 +9,18 @@ client doubles as the hidden-section case.
 """
 from datetime import date
 
-from conftest import (
-    create_budget,
-    create_category,
-    create_transaction,
-    create_transfer,
-)
-
 from app.blueprints.budgets import (
     _report_months,
     build_budget_report,
     load_budget_report,
 )
 from app.helpers import recent_months
+from tests.conftest import (
+    create_budget,
+    create_category,
+    create_transaction,
+    create_transfer,
+)
 
 MONTHS = ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06']
 

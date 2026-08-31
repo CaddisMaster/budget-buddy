@@ -12,16 +12,16 @@ from datetime import date, timedelta
 from types import SimpleNamespace
 
 import pytest
-from conftest import (
+
+import app.ai as ai
+from app.ai import ParseError, _normalize_budget_proposals, propose_budgets
+from app.blueprints.budgets import compute_budget_review_facts
+from tests.conftest import (
     create_budget,
     create_category,
     create_transaction,
     fetch_budget_by_category,
 )
-
-import app.ai as ai
-from app.ai import ParseError, _normalize_budget_proposals, propose_budgets
-from app.blueprints.budgets import compute_budget_review_facts
 
 HX = {"HX-Request": "true"}
 
