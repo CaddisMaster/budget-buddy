@@ -39,6 +39,35 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The automated helpers were still being sent to a file that stopped holding
+  the answers eleven days after they were written.** The project's main
+  instructions file was split into a short index plus a set of reference
+  documents last month. The reference documents were updated; the four automated
+  things that read the instructions with nobody watching were not. One of them
+  exists specifically to check a change against the project's list of
+  known-dangerous mistakes — and it was being pointed at a section that no longer
+  exists, so it would have found four general rules where the real list holds
+  around twenty, and reported all clear. A check that quietly stops checking is
+  worse than no check, because it still produces a reassuring answer. All four
+  now point at the right documents, and a test fails if that drifts again.
+
+- **The release checklist would have given wrong instructions on the next
+  release.** It still said that a database change which deletes something has to
+  be applied by hand, separately from the deploy — which stopped being true when
+  the deploy pipeline learned to do both halves itself. That is the third place
+  that same out-of-date sentence has been found and corrected, and this was the
+  one that would have said it out loud at exactly the wrong moment. The same
+  checklist also still explained how to confirm a deploy landed using a technique
+  that was replaced, and which had twice proved nothing.
+
+- **A deploy note contradicted itself, and the wrong half recommended the thing
+  that caused an outage.** One comment in the release process correctly recorded
+  that the server now refuses to start without being told which version to run —
+  a safeguard added after production silently sat three releases out of date with
+  every indicator green. Seventy lines later, another comment described the old
+  behaviour as current and suggested the exact shortcut that caused it. Corrected,
+  with the history kept.
+
 - **Part of the test suite quietly stopped running on the last day of every
   month.** Five tests covering the month-ahead projection — the arithmetic
   behind "where is this month going", which feeds both the home page's written

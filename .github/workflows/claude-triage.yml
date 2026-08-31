@@ -204,8 +204,12 @@ jobs:
             Your job is to do the mechanical verification a human would otherwise do
             in the first ten minutes of picking this up:
 
-            1. Read CLAUDE.md first. It documents the architecture, the gotchas and
-               the conventions, and it is usually where the answer already is.
+            1. Read CLAUDE.md first — it is a short pointer file — and then the
+               `docs/` file it points at for your area: `docs/gotchas.md` for the
+               invariants, `docs/architecture.md` for the module map and table
+               shapes, `docs/testing.md` for the suite. CLAUDE.md alone is NOT
+               enough: it was split on 2026-08-17 and now carries four grouped
+               Non-negotiables where `docs/gotchas.md` carries the rest.
             2. Locate the code the issue is actually about and read it.
             3. Where the issue states or implies a cause, CHECK IT against the code.
                If it offers several hypotheses, work out which one is true. Compute
@@ -260,8 +264,15 @@ jobs:
 
             Steps:
 
-            1. Read CLAUDE.md first — architecture, gotchas, conventions, and the
-               "Current Status" and "Roadmap" sections.
+            1. Read CLAUDE.md first — it is a short pointer file — then
+               `docs/gotchas.md` (the invariants), `docs/architecture.md` (the
+               module map and table shapes) and `docs/status.md` (current state,
+               and the standing decisions that must not be re-opened). CLAUDE.md's
+               own "Current status" section is a summary of the last of those and
+               lags `main` by construction.
+
+               ⚠️ There is no "Roadmap" section — this step named one until #309
+               tranche 9. The roadmap is GitHub issues and milestones.
             2. Find the code the idea touches and read it. Ground everything you say
                in what is actually there.
             3. CHECK IT AGAINST SETTLED DECISIONS. CLAUDE.md records choices that are

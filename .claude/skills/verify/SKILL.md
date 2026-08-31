@@ -62,7 +62,7 @@ encoding. `--data-urlencode` is harmless but changes nothing.
 
 ### HTMX endpoints with no form on the page
 
-`/ask`, `/insights/generate` etc. take the token from the `hx-headers` attribute
+`/ask`, `/insights/read` etc. take the token from the `hx-headers` attribute
 on `<body>`. **Scrape it from `/`, not `/dashboard`** — `/dashboard` is a 302 stub
 that redirects to `/`, so the body is empty and the token comes back blank:
 
@@ -80,7 +80,17 @@ Send `HX-Request: true` to get the fragment (row partial) instead of a redirect.
 - Schedule: POST `/scheduled` (`transaction_type`, `amount`, `account_id`, `frequency`, `next_due`, optional `end_date`) → row fragment under HTMX.
 - Recurring transfers need **two** accounts — the whole `/transfers` UI is hidden below that, so a one-account user sees no form.
 - Scheduled jobs: `docker compose exec -T web flask run-daily` (materialize + bill reminders), `flask send-digests` (weekly email).
-- Live AI (real key in `.env`, calls are cheap Haiku): `/ask` with `question=`, `/insights/generate` with `year`+`month`.
+- Live AI (real key in `.env`, calls are cheap Haiku): `/ask` with `question=`,
+  `/insights/read` with **no parameters at all**.
+  ⚠️ Both of those read `/insights/generate` with `year`+`month` until #309
+  tranche 9. That route was removed by #232 when Home's four AI surfaces became
+  one, and `tests/test_month_read.py::test_the_retired_ai_routes_are_gone` pins
+  it — along with `/forecasts/generate` and `/agent/run` — at 404. The panel that
+  replaced it is always the CURRENT month and reads no parameter, deliberately:
+  posting `year`/`month` to it is ignored, which
+  `test_param_hardening.py::test_the_month_read_ignores_a_posted_year_and_month`
+  asserts. So the old line sent you to a 404 and told you to pass two fields the
+  live route refuses on principle.
 
 ## Clean up
 
