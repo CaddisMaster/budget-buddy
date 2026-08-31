@@ -56,31 +56,29 @@ that is RUNNING. Corrected in #276.
 The runbook was right; the `CLAUDE.md` bullet was stale and cost a session's planning before
 anyone read it. Corrected in #276.
 
-### On `main`, not yet deployed (2026-08-28) — the full-repo review, tranches 1–7
+### On `main`, not yet deployed (2026-08-31) — the full-repo review, tranches 1–8
 
-▶️ **RESUME HERE: the next tranche is 8, `tests/` (73 files, ~17.5k lines).** #309 runs the review
-in tranches and a tranche is a PR; **seven have merged and three remain**. The table in #309 has
-the full split.
+▶️ **RESUME HERE: the next tranche is 9, `.github/` + `.claude/` (21 files, 1785+ lines).** #309
+runs the review in tranches and a tranche is a PR; **nine have merged and two remain** — tranche 9
+and then tranche 10 (root config: `Dockerfile`, both compose files, `test.sh`, `pyproject.toml`,
+`pytest.ini`, `requirements*.txt`, `.dockerignore`, `.gitignore`, `.pre-commit-config.yaml`,
+`run.py`, `.env.example`). The table in #309 has the full split.
 
-⚠️ **Tranche 8 is the one #309 asked whether to split, and the answer is now yes — with
-evidence.** The earlier text here said "nothing so far suggests findings cluster". That is no
-longer true. Tranches 5, 6 and 7 each turned up a test that passed without checking anything, and
-all three were the same mechanism rather than the same subject:
+⚠️ **`app/`, `sql/`, `scripts/` and `tests/` have all been read in full.** What is left is the
+harness and the build — the two areas where a defect does not show up in the application at all,
+which is exactly why they were left until the code they serve was understood.
 
-- `test_money_figures_are_tabular` required `.hero-stat-val`, a class no template has carried
-  since #227 — found only because tranche 5 deleted the dead rule and the suite went red.
-- `AI_SURFACES` in `test_design_system.py` is a hand-maintained tuple whose docstring says it
-  exists so that ADDING a surface without the material fails. It cannot catch one that PREDATES
-  the list, and it does not — see #323.
-- A test written during tranche 6 was deleted rather than shipped, because loosening the regex it
-  guarded did not make it fail.
+⚠️ **THIS RESUME POINT HAS NOW GONE STALE TWICE IN A ROW, and that is a property of the file
+rather than an accident.** #331 was filed because it named tranche 5 three tranches on; #332
+corrected it; tranche 8a then merged (#334) without touching it, so by the time 8b started it was
+wrong again. #337 is the correction you are reading. **The file goes stale on precisely the step
+that makes it stale — merging a tranche — and nothing connects the two.** Treat the resume point
+as a claim to check against `git log --oneline | grep "#309"` rather than as a fact, until that is
+either given a mechanism or accepted as a standing cost.
 
-**So the findings cluster by FAILURE MODE, not by feature area.** A split along "dashboard tests /
-budget tests / schedule tests" would scatter them; a split along "what the test actually reads"
-concentrates them. Whatever split is chosen, read the source-scanning tests as one group.
-
-⚠️ Also read `docs/testing.md` first — the xdist isolation rules are what make `-n 10` safe, and a
-test parametrized on a per-worker value aborts the whole run at collection.
+⚠️ Read `docs/testing.md` before tranche 9 touches anything that runs the suite — `.github/` owns
+the CI invocations and `.claude/` owns the agents and the `verify` skill, and both make claims
+about how tests run.
 
 | Tranche | PR | What it covered |
 |---|---|---|
@@ -91,6 +89,8 @@ test parametrized on a per-worker value aborts the whole run at collection.
 | 5 | #325 | `app/static/` — 18 files; vendored bundles got a provenance pass |
 | 6 | #327 | `sql/` — 37 migrations + `schema.sql` |
 | 7 | #330 | `scripts/` — all 10 files, 2207 lines |
+| 8a | #334 | `tests/` — `conftest.py` + the 19 files that read a repo file, ~4,900 lines |
+| 8b | #336 | `tests/` — the remaining 54 files, ~12,700 lines |
 
 **Recount rather than trusting any number here** (`git ls-files | wc -l`) — the commits this
 review produces change it.
@@ -132,10 +132,65 @@ review produces change it.
 - `check_site_drift.py` carried a dead `REPO_ROOT` and still printed "agree with this checkout"
   after #299 removed the last thing that read the tree.
 
+#### What tranche 8 (`tests/`) actually found
+
+**The split was settled by evidence, not by size** (#309, comment of 2026-08-28): findings in
+`tests/` cluster by **what a test reads and whether that reading can be empty**, not by feature
+area. So 8a took `conftest.py` plus the 19 files that read a repo file, and 8b took the remaining
+54. All the known instances lived in 8a's group, and the split held up.
+
+**Tranche 8a (#334).** `THEME_TOKENS` in `test_design_system.py` named **twelve** tokens that must
+carry a dark-mode value; the dark block redefines **twenty-six**. The fourteen unasserted ones
+include all eight `--series-*` chart hues, whose dark steps exist specifically because the light
+ones do not clear 3:1 against the dark surface — so losing them is a contrast failure in every
+chart, silently. Same shape as `AI_SURFACES`, for the third time in this review: a hand-maintained
+list can only ever fail for a member somebody added.
+
+**Tranche 8b (#336).** Found by reconciling two numbers rather than by reading: the suite reported
+**1232 passed / 9 skipped** against the **1237 / 4** 8a had recorded three days earlier. Same
+total — five tests had moved from passing to *skipping*, because the date was 2026-08-31.
+
+- ⚠️ **Five tests in `test_forecast.py` skip on the last day of every month.** They opened with
+  `if today.day >= days_in_month: pytest.skip(...)`, so the month-ahead projection — which feeds
+  Home's one AI panel **and** the `month_projection` Ask tool — went unchecked roughly **twelve
+  days a year**, at precisely the boundary its month-end arithmetic is most likely to be wrong at.
+  `compute_forecast()` reads `date.today()` directly and offers no seam, while
+  `compute_goal_projection`, `recent_months`, `_report_months`, `compute_digest_facts` and
+  `build_seed_plan` all take an injectable `today=`. A `forecast_today` fixture in `conftest.py`
+  applies the seam from outside; all five run every day now.
+- ⚠️ **`test_read_facts_projection_sees_a_bill_still_to_land` could not fail.** It asserted
+  `remaining_scheduled_expense >= 0` — a sum of positive amounts — and dated its bill for *today*,
+  which `_remaining_scheduled` deliberately excludes. Measured across three frozen dates: the bill
+  was invisible on **every** day of the month.
+- ⚠️ **That rewrite exposed a real gap.** `_remaining_scheduled` guards #32's end date twice — the
+  SQL `WHERE` drops a *finished* schedule, `stop = min(month_last, end_date)` stops the walk for a
+  *live* one. Deleting the `min()` left the whole file green, because the existing test only ever
+  reached the SQL half. Now covered.
+- ⚠️ **Login protection was asserted against 10 of 79 method/route pairs**, and **nothing in the
+  suite derived from `url_map`**. Nothing was actually unguarded — all 79 were probed — but nothing
+  could have noticed if that changed. Now derived, with a `PUBLIC_ROUTES` allowlist so a new route
+  is **protected-by-default** and opening one is a visible edit with a reason. Unguarding
+  `/transactions/export` gives `10 passed` against the old list and `FAILED` against the new sweep.
+- ⚠️ **`conftest.py` was loaded TWICE**, as `conftest` and `tests.conftest`, from one file — nine
+  files used the bare name and thirty-seven the dotted one. Proven at runtime: different module
+  ids, `create_transaction` not even the same function object. Harmless today because every value
+  it defines at module scope is derived deterministically, but
+  `monkeypatch.setattr("tests.conftest.X", ...)` misses one copy. Normalized and guarded.
+- A skip in `test_profile_settings_login.py` named `test_push_reminders.py` as the canonical
+  always-running copy of the consent-record assertion. It lives in `test_release_announce.py` and
+  never lived there — **a skip is not a failure**, so a reader checking whether the consent record
+  was still covered would have found nothing where it said to look. The pointer is asserted now.
+
+**Suite after 8b: 1233 passed, 4 skipped.** The four remaining skips each have a real,
+non-calendar reason. ⚠️ **Recount rather than trusting that** —
+`./test.sh --collect-only -q -n0 | tail -1`.
+
 #### Issues the review has filed, all on `0.9.0`
 
-**#315 is still the one to read first.** The five from tranches 1–4 (#312, #314, #315, #316, #319)
-are described in the older section below; these five are new on 2026-08-28:
+**#315 is still the one to read first**, and **#328 is still the loudest**. Those from tranches 1–4
+(#312, #314, #315, #316, #319) are described in the older section below; the rest were filed by
+tranches 5–8 and are listed here. ⚠️ Deliberately not counted — a count in this file is invalidated
+by the next tranche that files one, which is how the line above it went wrong:
 
 | Issue | What |
 |---|---|
@@ -144,6 +199,7 @@ are described in the older section below; these five are new on 2026-08-28:
 | #329 | A 500 from `/healthz` is classified `UNREACHABLE`, which files no issue — so a certificate not covering its hostname pages you and the app being hard down does not |
 | #323 | History's Auto-Categorize banner is the third AI surface and never got the shared material; `AI_SURFACES` omits it, so the guard passes vacuously |
 | #324 | `.page-greeting`/`.page-sub` match no rule, so Home's subtitle is the only page lede in the app rendering at full body weight |
+| **#333** | **`.dockerignore`'s `*.md` matches only the TOP LEVEL, so `docs/` and all of `.claude/` ship in the production image** — fifteen files. Found by tranche 8a running the suite inside the real artifact. `CLAUDE.md` is listed separately and *is* correctly absent, which is what made it invisible: the one file anyone would check for is gone. Not a disclosure (public repo), but two places state the wrong premise that `*.md` is stripped. Changes the shipped artifact, so it wants its own PR |
 
 ⚠️ **Nothing here is deployed.** Prod is still `0.8.0`, and this work sits in `## [Unreleased]`
 alongside the four PRs that were already there.
