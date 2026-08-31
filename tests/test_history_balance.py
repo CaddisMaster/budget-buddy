@@ -12,9 +12,9 @@ unfiltered tests fold it into their expectations, the month-filtered tests are
 outside its month by construction.
 """
 import pytest
-from conftest import create_transaction
 
 from app.blueprints.transactions import PER_PAGE, _load_history
+from tests.conftest import create_transaction
 
 
 def _signed(amount, ttype):

@@ -11,11 +11,10 @@ import json
 from datetime import date, timedelta
 from types import SimpleNamespace
 
-from conftest import create_account, create_category, create_schedule, create_transaction
-
 import app.ai as ai
 import app.blueprints.ask as ask
 from app.ai import ParseError, answer_question
+from tests.conftest import create_account, create_category, create_schedule, create_transaction
 
 HX = {"HX-Request": "true"}
 
@@ -281,14 +280,23 @@ def test_month_summary_tool_reports_the_month_and_its_comparison(users):
     assert "overruns" in data and "top_categories" in data
 
 
-def test_month_projection_tool_reports_what_is_still_to_land(users):
-    """The forecast card's whole point, now reachable from the Ask box."""
+def test_month_projection_tool_reports_what_is_still_to_land(users, forecast_today):
+    """The forecast card's whole point, now reachable from the Ask box.
+
+    ⚠️ Strengthened in #309 tranche 8b. It asserted only that five KEYS were
+    present, so it passed whatever the figures said — including on the last day
+    of the month, when `today + 1 day` falls outside the month and the bill it
+    sets up is not in the window at all. Key presence is worth keeping (the tool
+    is a JSON contract) but it is not what the name promises, so the bill's own
+    amount is asserted too, with the clock frozen to a day that has a window.
+    """
     a = users["a"]["id"]
-    today = date.today()
+    today = forecast_today
     acct = create_account(a, "tool-proj-acct")
     cat = create_category(a, "tool-proj-cat")
     create_transaction(a, acct, 600, today.replace(day=1), "income")
-    create_schedule(a, acct, 90, "monthly", today + timedelta(days=1),
+    due = today + timedelta(days=1)
+    create_schedule(a, acct, 90, "monthly", due,
                     transaction_type="expense", category_id=cat,
                     description="tool-proj-bill")
 
@@ -299,6 +307,11 @@ def test_month_projection_tool_reports_what_is_still_to_land(users):
     for key in ("projected_income", "projected_expenses", "projected_net",
                 "remaining_scheduled_expense", "remaining_items"):
         assert key in data
+    # ...and the bill really is in the answer, which is the thing the Ask box
+    # exists to be able to say.
+    assert data["remaining_scheduled_expense"] == 90.0
+    assert [i["due"] for i in data["remaining_items"]
+            if i["amount"] == 90.0] == [due.isoformat()]
 
 
 def test_the_new_tools_reject_a_bad_month(users):

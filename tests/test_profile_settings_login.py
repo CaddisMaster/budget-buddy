@@ -101,14 +101,20 @@ def test_profile_still_names_every_kind_of_notification(client_a):
     ⚠️ SKIPS when push is not configured, which it is not in CI or the dev
     container: the whole section is gated on push_enabled(). The canonical,
     always-running copy of this assertion is
-    test_push_reminders.py::test_profile_copy_names_every_kind_of_notification,
+    test_release_announce.py::test_profile_copy_names_every_kind_of_notification,
     which sets the VAPID env up itself. This one exists because #245 REORDERS
     the page that paragraph sits on, and a reorder is exactly the kind of
     change that could drop it.
+
+    ⚠️ That pointer named test_push_reminders.py until #309 tranche 8b, and the
+    test has never lived there. The assertion was fine; the signpost was not,
+    and a reader checking whether the consent record was still covered would
+    have found nothing where it said to look. It is asserted rather than
+    written down now — see test_the_delegated_assertions_exist below.
     """
     html = client_a.get("/profile").get_data(as_text=True)
     if 'id="push-toggle"' not in html:
-        pytest.skip("push is not configured here; see test_push_reminders.py")
+        pytest.skip("push is not configured here; see test_release_announce.py")
     assert "before" in html and "due" in html, "the bill reminder is undisclosed"
     assert "posted" in html or "changes" in html, \
         "the variable-bill nudge is undisclosed"
@@ -269,3 +275,34 @@ def test_the_two_login_failures_render_identically(anon_client, users):
         follow_redirects=True).get_data(as_text=True))
     assert unknown == wrong, \
         "the two failure pages differ, which enumerates usernames"
+
+
+# --- the two skips above delegate; this is what stops them delegating to
+#     nothing (#309, tranche 8b) ------------------------------------------------
+
+
+def test_the_delegated_assertions_exist():
+    """⚠️ Two tests in this file SKIP when their feature is unconfigured and name
+    another file as the always-running copy. That makes those names load-bearing:
+    if the named test is renamed, moved or deleted, the skip here stops being a
+    delegation and becomes a silent coverage hole — the whole assertion is gone
+    and nothing goes red, because a skip is not a failure.
+
+    One of the two pointers was already wrong when this was written (it named
+    test_push_reminders.py for a test that lives in test_release_announce.py),
+    which is the case for stating it as code rather than as prose.
+    """
+    import tests.test_feedback as feedback_tests
+    import tests.test_release_announce as announce_tests
+
+    delegated = [
+        (announce_tests, "test_profile_copy_names_every_kind_of_notification"),
+        (feedback_tests, "test_the_form_warns_that_reports_are_public"),
+    ]
+    missing = [f"{module.__name__}::{name}"
+               for module, name in delegated
+               if not callable(getattr(module, name, None))]
+    assert not missing, (
+        f"the skips in this file delegate to {missing}, which no longer exist — "
+        "so the assertion they stand in for is running nowhere"
+    )

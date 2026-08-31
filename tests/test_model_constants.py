@@ -120,6 +120,14 @@ def test_no_beat_passes_a_sampling_parameter(monkeypatch):
     )
     ai._call_agent_model(messages=[], tool_specs=[], today=today, api_key="k")
 
+    # ⚠️ The floor (#309, tranche 8b). Both calls pass empty rows/messages, so a
+    # future short-circuit on empty input would leave `calls` empty and the loop
+    # below would iterate over nothing — reporting a pass for a check that never
+    # ran. Neither seam short-circuits today; this is what keeps that true.
+    assert len(recorder.calls) == 2, (
+        f"expected both seams to reach the client, recorded {len(recorder.calls)} "
+        "call(s) — the assertions below would be vacuous"
+    )
     for sent in recorder.calls:
         for banned in ("temperature", "top_p", "top_k"):
             assert banned not in sent, f"{banned} is a 400 on Sonnet 5"

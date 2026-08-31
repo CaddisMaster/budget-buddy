@@ -10,6 +10,7 @@ RESTRICT, so letting the user-cascade fire first can hit a RESTRICT violation.
 """
 import os
 import time
+from datetime import date
 
 import psycopg2
 import pytest
@@ -637,3 +638,52 @@ def fetch_goal(goal_id):
     cur.close()
     conn.close()
     return row
+
+
+# ── The forecast clock (#309, tranche 8b) ────────────────────────────────────
+
+# Mid-month, and every month has one. `compute_forecast()`'s "still to land"
+# window is the days strictly after today up to month end, so the day has to be
+# short of the shortest month's last day — the 15th clears 28 with room.
+FROZEN_DAY = 15
+
+
+@pytest.fixture
+def forecast_today(monkeypatch):
+    """Freeze the clock `compute_forecast()` reads; yield the date it now sees.
+
+    ⚠️ Why this exists. `app/blueprints/forecasts.py` calls `date.today()`
+    directly, so its tests could not choose a date and five of them opened with
+
+        if today.day >= days_in_month:
+            pytest.skip("last day of month — no remaining-this-month window")
+
+    which silently stopped running the forecast arithmetic on the last day of
+    every month — roughly twelve days a year, and precisely the boundary the
+    month-end arithmetic is most likely to be wrong at. Found on 2026-08-31,
+    when the suite reported 1232 passed / 9 skipped against the 1237 / 4 the
+    tranche-8a PR had recorded three days earlier.
+
+    The suite already knew the answer: `compute_goal_projection`,
+    `recent_months`, `_report_months`, `compute_digest_facts` and
+    `build_seed_plan` all take an injectable `today=`. Only the forecast does
+    not, so the seam is applied from outside here rather than by widening a
+    signature the review is not otherwise touching.
+
+    Patching the module's `date` NAME (not `datetime.date` globally) keeps the
+    blast radius to this one module: `_remaining_scheduled` compares the frozen
+    value against real `date` rows from psycopg2, which a subclass supports.
+
+    ⚠️ Rows dated by the DATABASE (the `users` fixture's seeded transaction
+    defaults to `CURRENT_DATE`) are still on the real clock, so a test that
+    needs its own month-to-date spend must date it from the value yielded here.
+    """
+    frozen = date.today().replace(day=FROZEN_DAY)
+
+    class _FrozenDate(date):
+        @classmethod
+        def today(cls):
+            return frozen
+
+    monkeypatch.setattr("app.blueprints.forecasts.date", _FrozenDate)
+    return frozen

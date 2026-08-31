@@ -39,6 +39,51 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **Part of the test suite quietly stopped running on the last day of every
+  month.** Five tests covering the month-ahead projection — the arithmetic
+  behind "where is this month going", which feeds both the home page's written
+  summary and the Ask box — began with "if today is the last day of the month,
+  skip". They had done so for as long as they existed, which means roughly
+  twelve days a year the projection went unchecked, and those were precisely
+  the days its month-end arithmetic was most likely to be wrong. Found by
+  noticing the suite reported five fewer passing tests than it had three days
+  earlier, with the same total. The projection now takes its date from the test
+  rather than from the calendar, so all five run every day.
+
+- **A test that said it checked the projection could not fail.** It set up a
+  bill and then asserted that the total still to be paid was "zero or more" — a
+  sum of positive amounts, so always true — and it dated the bill for today,
+  which the projection deliberately ignores, since anything due today has
+  already been recorded. Measured rather than assumed: the bill it created was
+  invisible on every day of the month, and it passed regardless. It now checks
+  the actual figure. Two more tests of the same shape were strengthened, and a
+  real gap they were hiding is now covered: the rule that stops a bill being
+  forecast past the date its schedule ends had no test that failed when it was
+  removed, so a schedule finishing mid-month could have started predicting
+  payments that can never be charged.
+
+- **Every page is now checked for its login requirement, rather than ten of
+  them.** The suite verified that signed-out visitors are turned away by
+  working through a hand-written list of ten pages. The app has seventy-nine
+  ways in once you count every form submission and every delete — so a new page
+  shipped without its protection would have been checked by nothing, and the
+  list would have gone quieter as the app grew rather than going red. Every
+  route the app registers is now required to turn away a signed-out visitor
+  unless it is on a short list of deliberately public ones (the login page, the
+  health check, the service worker, two legacy redirects), each with its reason
+  written beside it. Nothing was actually unprotected — all seventy-nine were
+  checked — but nothing could have noticed if that changed. Confirmed by
+  removing the protection from the CSV export: the old list passed, the new
+  check fails.
+
+- **The test suite's shared setup file was being loaded twice.** Nine test files
+  referred to it by one name and thirty-seven by another; both work, and Python
+  treats them as two unrelated copies of the same file — proven, not inferred,
+  by comparing the two objects at runtime. Nothing was broken by it, because
+  everything that file defines is worked out fresh each time and came out
+  identical. It is the kind of thing that stays harmless until it suddenly is
+  not, so all nine now use the same name and a check keeps it that way.
+
 - **Fourteen of dark mode's colours were not being checked.** The suite has a
   list of the colours that must have a separate dark-theme value, because one
   that does not gets rendered with its light value on a dark background — a

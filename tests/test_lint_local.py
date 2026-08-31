@@ -145,3 +145,68 @@ def test_the_concurrent_run_lock_is_untouched():
     lock_at = body.find("flock -n 9")
     lint_at = body.find("python -m ruff check")
     assert lock_at < lint_at, "the lock must be taken before ruff runs, not after"
+
+
+# --- One name for the shared harness (#309, tranche 8b) ----------------------
+
+TESTS_DIR = Path(__file__).resolve().parent
+
+# `from conftest import ...` / `import conftest` at the start of a line. The
+# dotted form is deliberately NOT matched: `from tests.conftest import` is the
+# correct spelling and every file should hit the second pattern below.
+_BARE_CONFTEST = re.compile(r"^(?:from conftest import|import conftest\b)", re.M)
+_DOTTED_CONFTEST = re.compile(r"^from tests\.conftest import", re.M)
+
+
+def _test_sources():
+    """Every test module's text, keyed by filename. conftest.py itself is
+    excluded — it does not import itself."""
+    return {path.name: path.read_text()
+            for path in sorted(TESTS_DIR.glob("test_*.py"))}
+
+
+def test_conftest_is_imported_under_exactly_one_name():
+    """⚠️ Two spellings of one import load the module TWICE.
+
+    `pythonpath = .` (pytest.ini) puts the repo root on `sys.path`, so
+    `tests.conftest` resolves; pytest separately inserts `tests/` itself, so a
+    bare `conftest` also resolves. They are the SAME FILE and two different
+    module objects — proven rather than argued, when this was found:
+
+        conftest        id=...846064  file=/app/tests/conftest.py
+        tests.conftest  id=...343344  file=/app/tests/conftest.py
+        same object? False
+        create_transaction same func? False
+
+    Nine files used the bare form and thirty-seven the dotted one.
+
+    Nothing was broken by it, because every value conftest defines at module
+    scope is derived deterministically from the environment — `TEST_PREFIX` is
+    the same string in both copies. That is exactly why it needs a test rather
+    than a comment: it is invisible until conftest grows module-level state
+    that is not, and then the two copies disagree silently. The live footgun is
+    narrower and available today: `monkeypatch.setattr("tests.conftest.X", ...)`
+    patches one copy, and a file that imported the bare name keeps the other.
+
+    ⚠️ The floor is what stops this going vacuous. A regex that matched nothing
+    would make `assert not bare` true against a suite that had stopped
+    importing the harness at all.
+    """
+    sources = _test_sources()
+    assert len(sources) > 40, (
+        f"only found {len(sources)} test modules — the glob is broken, not the "
+        "suite. Without this floor the assertions below check nothing."
+    )
+
+    dotted = sorted(n for n, text in sources.items() if _DOTTED_CONFTEST.search(text))
+    assert len(dotted) > 20, (
+        f"only {len(dotted)} files import `tests.conftest` — the regex no longer "
+        "matches the form it is meant to accept, so the check below is vacuous."
+    )
+
+    bare = sorted(n for n, text in sources.items() if _BARE_CONFTEST.search(text))
+    assert not bare, (
+        f"{bare} import the shared harness as `conftest` rather than "
+        "`tests.conftest`. Both resolve, and loading it under two names creates "
+        "two module objects from one file — see this test's docstring."
+    )

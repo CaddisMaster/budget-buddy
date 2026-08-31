@@ -12,12 +12,12 @@ from datetime import date
 from types import SimpleNamespace
 
 import pytest
-from conftest import create_category, create_transaction
 
 import app.ai as ai
 import app.blueprints.transactions as txns
 from app.ai import ParseError, _normalize_suggestions, classify_transactions
 from app.db import get_db_connection
+from tests.conftest import create_category, create_transaction
 
 HX = {"HX-Request": "true"}
 

@@ -95,12 +95,10 @@ def test_compute_forecast_empty_month_is_zeroed(users):
     assert fc["method"] == "flat"
 
 
-def test_compute_forecast_includes_remaining_scheduled_income(users):
+def test_compute_forecast_includes_remaining_scheduled_income(users, forecast_today):
     a = users["a"]["id"]
-    today = date.today()
+    today = forecast_today
     days_in_month = calendar.monthrange(today.year, today.month)[1]
-    if today.day >= days_in_month:
-        pytest.skip("last day of month — no remaining-this-month window")
     acct = create_account(a, "fc-sched")
     due = date(today.year, today.month, days_in_month)  # later this month
     create_schedule(a, acct, 2000, "monthly", due, transaction_type="income")
@@ -110,12 +108,10 @@ def test_compute_forecast_includes_remaining_scheduled_income(users):
     assert fc["projected_income"] >= 2000.0
 
 
-def test_compute_forecast_excludes_other_users_schedules(users):
+def test_compute_forecast_excludes_other_users_schedules(users, forecast_today):
     a, b = users["a"]["id"], users["b"]["id"]
-    today = date.today()
+    today = forecast_today
     days_in_month = calendar.monthrange(today.year, today.month)[1]
-    if today.day >= days_in_month:
-        pytest.skip("last day of month — no remaining-this-month window")
     acct_b = create_account(b, "fc-sched-b")
     due = date(today.year, today.month, days_in_month)
     create_schedule(b, acct_b, 5000, "monthly", due, transaction_type="income")
@@ -123,12 +119,10 @@ def test_compute_forecast_excludes_other_users_schedules(users):
     assert fc["remaining_scheduled_income"] == 0.0   # B's schedule never leaks
 
 
-def test_compute_forecast_includes_remaining_scheduled_expense(users):
+def test_compute_forecast_includes_remaining_scheduled_expense(users, forecast_today):
     a = users["a"]["id"]
-    today = date.today()
+    today = forecast_today
     days_in_month = calendar.monthrange(today.year, today.month)[1]
-    if today.day >= days_in_month:
-        pytest.skip("last day of month — no remaining-this-month window")
     acct = create_account(a, "fc-sched-exp")
     due = date(today.year, today.month, days_in_month)
     create_schedule(a, acct, 1500, "monthly", due, transaction_type="expense")
@@ -143,12 +137,9 @@ def test_compute_forecast_includes_remaining_scheduled_expense(users):
     assert fc["projected_expenses"] < 1500.0
 
 
-def test_compute_forecast_day_weighted_path(users):
+def test_compute_forecast_day_weighted_path(users, forecast_today):
     a = users["a"]["id"]
-    today = date.today()
-    days_in_month = calendar.monthrange(today.year, today.month)[1]
-    if today.day >= days_in_month:
-        pytest.skip("last day of month — complete month returns the actual (flat)")
+    today = forecast_today
     acct = create_account(a, "fc-dw")
     month_first = date(today.year, today.month, 1)
     # 6 months of history, all dated the 1st → cumulative fraction by any day ~1.0,
@@ -217,14 +208,12 @@ def test_forecast_materialized_schedule_not_double_counted(users):
 
 # --- schedules: the end-date gate ------------------------------------------
 
-def test_compute_forecast_excludes_a_schedule_past_its_end_date(users):
+def test_compute_forecast_excludes_a_schedule_past_its_end_date(users, forecast_today):
     # #32 — projecting past a schedule's end date forecasts bills that can never
     # be charged, which is exactly the poisoned-forecast damage the issue names.
     a = users["a"]["id"]
-    today = date.today()
+    today = forecast_today
     days_in_month = calendar.monthrange(today.year, today.month)[1]
-    if today.day >= days_in_month:
-        pytest.skip("last day of month — no remaining-this-month window")
     acct = create_account(a, "fc-ended")
     due = date(today.year, today.month, days_in_month)
     create_schedule(a, acct, 3000, "monthly", due, transaction_type="income",
@@ -232,3 +221,46 @@ def test_compute_forecast_excludes_a_schedule_past_its_end_date(users):
     fc = compute_forecast(a, today.year, today.month)
     assert fc["remaining_scheduled_income"] == 0.0
     assert not any(i["due"] == due.isoformat() for i in fc["remaining_items"])
+
+
+def test_compute_forecast_truncates_a_schedule_ENDING_mid_month(users, forecast_today):
+    """⚠️ The other half of #32, and the half nothing was checking.
+
+    `_remaining_scheduled` guards the end date TWICE, and the two guards catch
+    different schedules:
+
+      * the SQL `AND (end_date IS NULL OR next_due <= end_date)`, which drops a
+        schedule that has already finished; and
+      * `stop = min(month_last, end_date)`, which stops the occurrence WALK at
+        the end date for a schedule that is still running.
+
+    The test above only ever reaches the first: its `next_due` is already past
+    its `end_date`, so the row never survives the WHERE clause and the walk is
+    never entered. Deleting the `min()` entirely left the whole file green —
+    which is how this gap was found.
+
+    Here the schedule is live (next_due precedes end_date) and recurs again
+    before month end, so the clamp is the only thing that can stop the second
+    and third occurrences being projected as bills that can never be charged.
+    """
+    a = users["a"]["id"]
+    today = forecast_today
+    days_in_month = calendar.monthrange(today.year, today.month)[1]
+    acct = create_account(a, "fc-ending")
+
+    first = today + timedelta(days=1)          # the 16th — still to land
+    ends = today + timedelta(days=5)           # the 20th — the last day it runs
+    # Weekly, so without the clamp it would also project the 23rd and the 30th,
+    # both inside the month and both after the schedule has finished.
+    assert first + timedelta(days=7) <= date(today.year, today.month, days_in_month)
+    create_schedule(a, acct, 310, "weekly", first, transaction_type="expense",
+                    end_date=ends)
+
+    fc = compute_forecast(a, today.year, today.month)
+
+    due_dates = [i["due"] for i in fc["remaining_items"] if i["amount"] == 310.0]
+    assert due_dates == [first.isoformat()], (
+        "the walk ran past the schedule's end date and projected bills that "
+        "can never be charged"
+    )
+    assert fc["remaining_scheduled_expense"] == 310.0
