@@ -56,7 +56,18 @@ you. Say so and move on; nothing in the app depends on it.
 
 ## 4. Get it merged
 
-Push, wait for CI green, squash-merge.
+Push, wait for CI green, squash-merge — then **check the run on `main`**.
+
+⚠️ **A green PR does not predict a green `main` (#281).** The `changes` classifier
+fails open on a push to `main`, so an inert PR — docs, or a workflow-only change —
+SKIPS the expensive steps and meets them for the first time *after* merge. Worse,
+a skipped step reports **pass**, not skipped: `gh pr checks` prints "Tests pass"
+for a run that executed no tests, and it is indistinguishable from a real one at a
+glance. Two merges have ridden past a red `main` this way.
+
+So after every squash-merge: `gh run list --branch main --workflow ci.yml --limit 1`,
+and read it before starting the next thing. ⚠️ **Do not re-run a red one before
+reading it** — a race goes green on re-run and hides.
 
 ⚠️ **Do not push to a branch whose PR may already have been merged.** PR #113 was merged while a
 follow-up commit was being pushed to its branch; the commit landed on the branch and never

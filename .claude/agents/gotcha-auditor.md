@@ -1,6 +1,6 @@
 ---
 name: gotcha-auditor
-description: Audit a branch diff against Budget Buddy's documented invariants in CLAUDE.md (Key Gotchas, Testing, Database Tables). Read-only — reports violations, never edits, never commits. Use before opening a PR, or whenever a change touches a documented load-bearing behaviour.
+description: Audit a branch diff against Budget Buddy's documented invariants — docs/gotchas.md first, then CLAUDE.md's Non-negotiables, Testing and Database tables. Read-only — reports violations, never edits, never commits. Use before opening a PR, or whenever a change touches a documented load-bearing behaviour.
 model: sonnet
 tools: Read, Grep, Glob, Bash
 ---
@@ -8,7 +8,7 @@ tools: Read, Grep, Glob, Bash
 You audit a Budget Buddy change against the project's own written invariants.
 You do NOT review code quality, style, or architecture — `/code-review` and
 `/security-review` cover that. Your only question is: **does this diff break
-something CLAUDE.md says must not break?**
+something the project says must not break?**
 
 ## Procedure
 
@@ -16,9 +16,19 @@ something CLAUDE.md says must not break?**
    `git diff main...HEAD` for a branch, or `git diff` for uncommitted work.
    Also run `git diff --stat` first so you know the file surface.
 
-2. Read `CLAUDE.md` in full — specifically the **Key Gotchas**, **Testing**,
-   **Database Tables** and **Project Structure** sections. The gotchas marked
-   ⚠️ are the load-bearing ones.
+2. Read **`docs/gotchas.md` in full** — that is where the Key Gotchas live, and
+   it is the bulk of what you are auditing against. Then read `CLAUDE.md` for
+   its **Non-negotiables**, **Testing**, **Database tables** and **Project map**
+   sections. The gotchas marked ⚠️ are the load-bearing ones.
+
+   ⚠️ Read `docs/gotchas.md`, not just the core file. This step used to send you
+   to the core file
+   for the **Key Gotchas** and a **Project Structure** section; neither has
+   existed there since the 2026-08-17 split (this agent was written on
+   2026-08-04). What you would find instead is four grouped Non-negotiables,
+   above a line saying `docs/gotchas.md` "holds ~40 more". An audit run against
+   the four is not a narrower audit — it is one that reports **clear** while
+   never having seen the invariant it was asked about.
 
 3. For every file the diff touches, identify which documented invariants apply
    to it. Read the surrounding source, not just the diff hunk — most of these
@@ -31,8 +41,8 @@ something CLAUDE.md says must not break?**
 
 ## Invariants that are easy to break and hard to see
 
-Not exhaustive — CLAUDE.md is authoritative — but these are the ones where a
-natural-looking change ships a silent bug:
+Not exhaustive — `docs/gotchas.md` is authoritative — but these are the ones
+where a natural-looking change ships a silent bug:
 
 - **`_load_history`'s two `ORDER BY` clauses are one coupled unit.** The page
   query and the balance-seed query must stay byte-identical. An `is_pending

@@ -272,3 +272,125 @@ def test_every_seam_name_mentioned_anywhere_actually_exists():
         + "; ".join(f"{name} ({', '.join(sorted(files))})"
                     for name, files in sorted(dangling.items()))
     )
+
+
+# ---------------------------------------------------------------------------
+# The automated consumers of CLAUDE.md (#309, tranche 9)
+#
+# CLAUDE.md was split on 2026-08-17 into a ~250-line pointer file plus `docs/`.
+# The docs were updated. The four things that read CLAUDE.md WITHOUT a human in
+# the loop were not, for eleven days:
+#
+#   .claude/agents/gotcha-auditor.md   "read CLAUDE.md's Key Gotchas"
+#   .claude/agents/test-first.md       "read CLAUDE.md's Key Gotchas"
+#   .github/workflows/claude-triage.yml  x2 prompts, "CLAUDE.md ... the gotchas"
+#
+# `gotcha-auditor` exists to audit a diff against the Key Gotchas. Sent to
+# CLAUDE.md for them it finds four grouped Non-negotiables instead of the ~20 in
+# `docs/gotchas.md` — and reports **clear**, which is indistinguishable from
+# having checked. That is the failure shape this whole review keeps turning up:
+# the guard goes quiet rather than red.
+# ---------------------------------------------------------------------------
+
+DOCS_DIR = REPO_ROOT / "docs"
+CONSUMER_DIRS = (REPO_ROOT / ".claude", REPO_ROOT / ".github" / "workflows")
+
+# A heading in CLAUDE.md, at any level, without the leading hashes.
+_HEADING = re.compile(r"^#{1,6}\s+(.*?)\s*$", re.M)
+# A `docs/<name>.md` reference anywhere in a consumer file.
+_DOCS_REF = re.compile(r"docs/([a-z_]+)\.md")
+
+
+def _claude_md_headings():
+    return {m.group(1) for m in _HEADING.finditer(CLAUDE_MD.read_text())}
+
+
+def _consumer_files():
+    """Every file that instructs an agent or a workflow, with its text."""
+    out = {}
+    for base in CONSUMER_DIRS:
+        for path in sorted(base.rglob("*")):
+            if path.is_file() and path.suffix in {".md", ".yml", ".yaml", ".sh"}:
+                out[str(path.relative_to(REPO_ROOT))] = path.read_text()
+    return out
+
+
+@pytest.mark.skipif(
+    not (CLAUDE_MD.exists() and DOCS_DIR.exists()), reason=_NOT_IN_IMAGE
+)
+def test_no_agent_is_sent_to_claude_md_for_a_section_that_moved_to_docs():
+    """A section name a `docs/` file owns must not be attributed to CLAUDE.md.
+
+    Derived rather than listed: the candidate names are the H1 titles of
+    `docs/*.md`, so a future split is covered without editing this test. The
+    rule is not "never mention the name" — it is that if a consumer file puts
+    the name and `CLAUDE.md` on one line, CLAUDE.md must actually have a heading
+    by that name. `Testing` and `Deployment` are titles in `docs/` AND real
+    CLAUDE.md sections, so they pass; `Key Gotchas` is only the former, and that
+    is exactly the pointer that broke.
+
+    ⚠️ CONVENTION THIS ENFORCES, stated because it is not obvious: when
+    narrating the history of a moved pointer, keep the old section name and
+    `CLAUDE.md` on SEPARATE LINES. A scanner cannot tell "read CLAUDE.md's Key
+    Gotchas" from "this used to say CLAUDE.md's Key Gotchas", and the repo's
+    settled answer to that is to make the text unambiguous rather than to make
+    the matcher clever — the same call `test_page_header.py` and
+    `test_dashboard_merge.py` make by stripping comments before scanning.
+    """
+    headings = _claude_md_headings()
+    assert len(headings) > 8, (
+        f"only parsed {len(headings)} headings out of CLAUDE.md — the heading "
+        "regex is broken, not the file. Without this floor every check below "
+        "would pass vacuously."
+    )
+
+    titles = {}
+    for doc in sorted(DOCS_DIR.glob("*.md")):
+        first = doc.read_text().split("\n", 1)[0]
+        match = re.match(r"^#\s+(.*?)\s*$", first)
+        if match:
+            titles[match.group(1)] = doc.name
+    assert "Key Gotchas" in titles, (
+        "docs/gotchas.md no longer opens with '# Key Gotchas' — the derivation "
+        "below is reading nothing useful."
+    )
+
+    consumers = _consumer_files()
+    assert len(consumers) > 10, (
+        f"only found {len(consumers)} consumer files under .claude/ and "
+        ".github/workflows/ — the glob is broken."
+    )
+
+    misattributed = []
+    for name, text in consumers.items():
+        for line_no, line in enumerate(text.splitlines(), 1):
+            if "CLAUDE.md" not in line:
+                continue
+            for title, owner in titles.items():
+                if title in line and title not in headings:
+                    misattributed.append(
+                        f"{name}:{line_no} attributes '{title}' to CLAUDE.md, "
+                        f"but it is a section of docs/{owner}"
+                    )
+
+    assert not misattributed, (
+        "these send an agent to CLAUDE.md for content that lives in docs/:\n"
+        + "\n".join(misattributed)
+    )
+
+
+@pytest.mark.skipif(not DOCS_DIR.exists(), reason=_NOT_IN_IMAGE)
+def test_every_docs_file_an_agent_is_pointed_at_exists():
+    """The other direction. Correcting a pointer is only useful if the new
+    target is real, and a `docs/` path in an agent prompt is never executed —
+    nothing would notice a typo, or a file renamed out from under it."""
+    consumers = _consumer_files()
+    assert consumers, "no consumer files found — the glob is broken"
+
+    missing = sorted({
+        f"{name} -> docs/{ref}.md"
+        for name, text in consumers.items()
+        for ref in _DOCS_REF.findall(text)
+        if not (DOCS_DIR / f"{ref}.md").exists()
+    })
+    assert not missing, f"agent prompts point at docs/ files that do not exist: {missing}"

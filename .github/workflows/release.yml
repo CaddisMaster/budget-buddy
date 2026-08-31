@@ -289,8 +289,19 @@ jobs:
 
                docker compose ps"
 
-          # TAG pins the exact released image. The Droplet's compose consumes it
-          # as `${TAG:-latest}`, so a hand-run `docker compose up -d` still works.
+          # TAG pins the exact released image, and step 0 above wrote it into the
+          # Droplet's `.env` so the box keeps naming this version.
+          #
+          # ⚠️ This comment used to say the compose file consumes it as
+          # `${TAG:-latest}`, "so a hand-run `docker compose up -d` still works".
+          # Both halves were wrong, and wrong in the dangerous direction — it was
+          # describing the behaviour #190 deliberately REMOVED, and recommending
+          # the exact command that caused the incident. `docker-compose.yml` reads
+          # `${TAG:?TAG is not set …}`: with no TAG, every compose command FAILS
+          # naming the variable. That is the intent. The old `:-latest` default is
+          # what once silently reverted production three releases with every
+          # indicator green, and the same line 70 lines above this one already
+          # says so. Corrected in #309 tranche 9.
 
       - name: Verify the deployed app is healthy
         run: |

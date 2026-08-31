@@ -92,6 +92,16 @@ jobs:
                # would break rolling back to them — during an incident, which is
                # the worst possible time to be strict about a metadata gap. A
                # WRONG stamp is still a hard failure; only a missing one warns.
+               # ⚠️ THE PIPE IS LOAD-BEARING, not cosmetic tidying. `printenv`
+               # exits 1 when the variable is unset, and this script runs under
+               # `set -e`, where a failing command substitution in an assignment
+               # ABORTS. Piping through `tr` makes the pipeline's status `tr`'s,
+               # which is 0 — so RUNNING comes back empty and the warn branch
+               # below is reachable. Delete the `| tr` and rolling back to any
+               # pre-#305 image stops warning and starts ABORTING the deploy
+               # script, during an incident, which is precisely what the comment
+               # above says must not happen. Verified: `V=\$(false)` aborts under
+               # `set -e`; `V=\$(false | tr -d '\r')` does not.
                RUNNING=\"\$(docker compose exec -T web printenv APP_VERSION | tr -d '\r')\"
                if [ -z \"\$RUNNING\" ] || [ \"\$RUNNING\" = 'dev' ]; then
                  echo \"::warning::Rolled back to ${VERSION}, which predates the version stamp (#305) — cannot verify what is running.\"

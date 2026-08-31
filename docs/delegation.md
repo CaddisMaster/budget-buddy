@@ -75,7 +75,7 @@ that edit files and **two reporters** that only read:
 |---|---|---|
 | `sweeper` | Read/Grep/Glob/**Edit** | Mechanical multi-file sweeps from an explicit spec file |
 | `test-first` | Read/Grep/Glob/**Edit** | Makes an orchestrator-written failing test pass, editing app code only |
-| `gotcha-auditor` | Read/Grep/Glob/**Bash** | Audits a branch diff against this file's Key Gotchas |
+| `gotcha-auditor` | Read/Grep/Glob/**Bash** | Audits a branch diff against `docs/gotchas.md`'s Key Gotchas |
 | `release-prep` | Read/Grep/Glob/**Bash** | Runs the pre-release checklist against `main`, reports go/no-go |
 
 **Why delegate at all:** the scarce resource on this project is the orchestrator's context

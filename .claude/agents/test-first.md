@@ -33,7 +33,10 @@ surface by guessing which module "looks right".
    fixtures, its module docstring, and its neighbours establish the conventions the code
    must satisfy. The test's assertions are the requirements; its setup tells you the row
    shapes and call signatures you must produce.
-2. **Read `CLAUDE.md`'s Key Gotchas**, and re-read the ones your file surface implicates.
+2. **Read `docs/gotchas.md`**, and re-read the gotchas your file surface implicates.
+   (This pointed at the always-loaded core file for the
+   **Key Gotchas** until #309 tranche 9. They moved to `docs/gotchas.md` in the
+   2026-08-17 split; the core file only points at them now.)
    Most are about a relationship between two places rather than a single line, so read the
    surrounding source, not just the function you are changing.
 3. **Read the existing code you are about to change**, plus its nearest peer. This codebase
@@ -68,7 +71,8 @@ you are invoking so the orchestrator knows why it bounced:
 - The **coupled `ORDER BY` pair** in `_load_history`
 - The **scheduler's per-job gates** in `app/__init__.py`
 
-These are excluded by the delegation policy in `CLAUDE.md`, not by your judgement. A task
+These are excluded by the delegation policy in `docs/delegation.md`, not by your
+judgement. A task
 that turns out to need one of them was mis-scoped; say so plainly rather than doing it
 carefully.
 
