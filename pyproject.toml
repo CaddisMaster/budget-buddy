@@ -29,7 +29,12 @@ ignore = [
     # The date-and-time rules (DTZ) are deliberately not selected at all. This
     # application reasons in *local calendar dates* throughout — a bill due on
     # the 15th is due on the 15th, not at an instant in UTC — so `date.today()`
-    # is correct here, and DTZ would flag 159 intentional uses.
+    # is correct here, and DTZ would flag every one of them.
+    #
+    # ⚠️ This said "159 intentional uses" until #309 tranche 10; it was 242 by
+    # then. Measure it rather than recording it — the number moves with every
+    # feature and the decision does not:
+    #     docker compose exec -T web ruff check --select DTZ --statistics .
 ]
 
 [tool.ruff.lint.per-file-ignores]

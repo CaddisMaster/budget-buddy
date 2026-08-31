@@ -29,6 +29,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 TEST_SH = REPO_ROOT / "test.sh"
 REQUIREMENTS_DEV = REPO_ROOT / "requirements-dev.txt"
 CI_WF = REPO_ROOT / ".github/workflows/ci.yml"
+PRE_COMMIT = REPO_ROOT / ".pre-commit-config.yaml"
 
 _NOT_IN_IMAGE = "not present in the shipped image — .dockerignore excludes it"
 
@@ -37,6 +38,10 @@ _REQ_PIN = re.compile(r"^ruff==(?P<version>\S+)\s*$", re.M)
 # The `version:` input of the ruff action, which is the only pinned version in
 # ci.yml's lint job.
 _ACTION_PIN = re.compile(r"astral-sh/ruff-action@v\d+\s*\n\s*with:\s*\n(?:\s*#.*\n)*\s*version:\s*(?P<version>\S+)")
+# The `rev:` of the ruff-pre-commit repo. Tagged `vX.Y.Z` against the bare
+# `X.Y.Z` the other two use, so the leading `v` is stripped before comparing.
+_PRE_COMMIT_PIN = re.compile(
+    r"repo:\s*https://github\.com/astral-sh/ruff-pre-commit\s*\n(?:\s*#.*\n)*\s*rev:\s*v?(?P<version>\S+)")
 
 
 def _requirements_pin():
@@ -51,6 +56,12 @@ def _action_pin():
     return m.group("version")
 
 
+def _pre_commit_pin():
+    m = _PRE_COMMIT_PIN.search(PRE_COMMIT.read_text())
+    assert m, ".pre-commit-config.yaml no longer pins ruff-pre-commit with a `rev:`"
+    return m.group("version")
+
+
 # --- The version pins ------------------------------------------------------
 
 @pytest.mark.skipif(not REQUIREMENTS_DEV.exists(), reason=_NOT_IN_IMAGE)
@@ -60,20 +71,39 @@ def test_ruff_is_pinned_for_the_dev_container():
     assert _requirements_pin()
 
 
-@pytest.mark.skipif(not (REQUIREMENTS_DEV.exists() and CI_WF.exists()), reason=_NOT_IN_IMAGE)
-def test_the_two_ruff_pins_agree():
+@pytest.mark.skipif(
+    not (REQUIREMENTS_DEV.exists() and CI_WF.exists() and PRE_COMMIT.exists()),
+    reason=_NOT_IN_IMAGE,
+)
+def test_all_three_ruff_pins_agree():
     """⚠️ The load-bearing one.
 
     `astral-sh/ruff-action` installs the LATEST ruff when given no `version:`.
     Left that way, a ruff release that adds or tightens a rule turns CI red
     against code the local run just passed — which is the failure #264 exists to
     remove, reintroduced through the half nobody was looking at. Stated as an
-    equality between the two files rather than as a literal version, so bumping
-    ruff means changing both and the test does not need editing.
+    equality between the files rather than as a literal version, so bumping ruff
+    means changing all of them and this test does not need editing.
+
+    ⚠️ THIS COMPARED TWO OF THREE until #309 tranche 10, and was named for it.
+    `.pre-commit-config.yaml` pins ruff a THIRD time, as the `rev:` of
+    ruff-pre-commit — and it had drifted to v0.14.5 against the other two on
+    0.16.4. That copy is the one that runs `--fix`, so the oldest ruff in the
+    project was the one EDITING code while the newest judged it.
+
+    Same shape as `seed_dev.WIPE_ORDER` (tranche 7) and `AI_SURFACES` (tranche
+    5): a guard over a hand-maintained set can only ever fail for the members
+    somebody remembered to add, so it goes quiet as the project grows rather
+    than red. Enumerated here so a fourth copy is a visible edit to this list.
     """
-    assert _requirements_pin() == _action_pin(), (
-        "requirements-dev.txt and .github/workflows/ci.yml pin different ruff "
-        "versions — a local run no longer predicts CI"
+    pins = {
+        "requirements-dev.txt": _requirements_pin(),
+        ".github/workflows/ci.yml": _action_pin(),
+        ".pre-commit-config.yaml": _pre_commit_pin(),
+    }
+    assert len(set(pins.values())) == 1, (
+        "these pin different ruff versions, so a local run no longer predicts "
+        f"CI: {pins}"
     )
 
 

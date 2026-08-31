@@ -9,12 +9,32 @@
 #   pip install pre-commit && pre-commit install
 #   pre-commit run --all-files      # run over the whole repo once
 
-# Vendored third-party assets are not ours to reformat.
-exclude: '^app/static/(htmx\.min\.js|chart\.umd\.min\.js)$'
+# Vendored third-party assets are not ours to reformat, and two of the hooks
+# below (end-of-file-fixer, trailing-whitespace) would happily rewrite them.
+#
+# ⚠️ This named `chart.umd.min.js` until #309 tranche 10 — a file #234 deleted
+# when ApexCharts replaced Chart.js, and which `test_dashboard_merge.py` now
+# asserts is absent. So the list excluded a file that does not exist while the
+# 563 KB bundle that DOES was covered by nothing. Nothing had been corrupted
+# (apexcharts.min.js already ends in a newline, so end-of-file-fixer was a
+# no-op), but it was one upstream re-vendor away from mattering — and
+# `check-added-large-files` below caps at 500 KB, which that bundle exceeds.
+exclude: '^app/static/(htmx\.min\.js|apexcharts\.min\.js|apexcharts\.css)$'
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.5
+    # ⚠️ THIS IS THE THIRD RUFF PIN, and it must match the other two:
+    # `ruff==` in requirements-dev.txt and the `version:` input of
+    # astral-sh/ruff-action in .github/workflows/ci.yml.
+    #
+    # It read v0.14.5 against their 0.16.4 until #309 tranche 10 — two minors
+    # behind, and pointing the wrong way. This hook runs `--fix` on commit, so
+    # the OLDEST ruff in the project was the one editing code, while `./test.sh`
+    # and CI judged it with a newer one. That is precisely the gap #264 exists to
+    # close, reopened through the copy its test did not know about:
+    # `test_lint_local.py` was named `test_the_two_ruff_pins_agree` and compared
+    # two of three. It now compares all three.
+    rev: v0.16.4
     hooks:
       # Lint only. `ruff format` is deliberately not enabled — adopting it
       # would rewrite roughly 6,400 lines across 64 of 74 files. See the note
