@@ -8,6 +8,34 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Fixed
+
+- **The deploy workflows ran parts of their own comments on the build machine,
+  and the rollback path leaked the server key into the command it sent.** Both
+  workflows hand their remote script to `ssh` as a single double-quoted
+  argument. Inside double quotes the shell still performs command substitution,
+  and it does not care that the text is a comment — a `#` there is a comment to
+  the *remote* shell and ordinary text to the local one. So backticks anywhere
+  in that block, including inside an explanatory comment, ran on the runner
+  before the command was ever sent.
+  The release workflow had one such comment, and it was visible in the `0.9.0`
+  deploy log as a stray "No such file or directory" for a path that is not a
+  command — noise, and harmless only by luck. The rollback workflow had sixteen
+  unescaped backticks, one of them around `printenv`, which meant a rollback
+  substituted the build machine's entire environment — the Droplet's private
+  key among it — into the string sent over the wire. Being several lines long,
+  that also broke out of the comment it sat in and would have been run as
+  commands at the far end, so the rollback would very likely have failed
+  outright.
+  Nothing had gone wrong, because the rollback workflow has not run since the
+  version stamp added that comment block, and the version stamp shipped in
+  `0.9.0`. The escaping convention that prevents all of this was already in use
+  three times in the same file; it was simply applied unevenly, which is the
+  kind of rule that wants a test rather than a comment. There is now a test that
+  reads both workflows, finds each remote command, and fails on an unescaped
+  backtick — or on the same defect written as `$(…)`, which is clean today and
+  is asserted so it stays that way.
+
 ## [0.9.0] - 2026-09-02
 
 ### Added
