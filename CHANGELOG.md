@@ -8,6 +8,26 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Changed
+
+- **The Ask box now declines a very long question instead of sending it.**
+  There was no limit on how much text the box would accept, anywhere on the
+  path, so pasting a bank statement or a long document into it sent the whole
+  thing to the model — and, because answering a question can take several
+  exchanges, sent it again with each one. What comes back was already bounded;
+  what goes in was not, and the only sign it had happened would have been the
+  bill.
+  This is an accident waiting to happen rather than anything hostile: the box
+  is behind a login, on a personal app, and already limited to ten questions a
+  minute. It is simply the one place where a slip is expensive and nothing said
+  so.
+  Questions are now capped at a thousand characters, which is far more than a
+  question to a finance assistant needs, and the box itself stops accepting
+  more so the limit is visible before submitting rather than after. It
+  **declines** rather than quietly shortening: a question cut in half would be
+  answered as though it were the whole question, and neither you nor the model
+  would know the difference.
+
 ### Fixed
 
 - **Typing an amount too big for the app to store said the system had broken,
