@@ -579,3 +579,38 @@ def test_expense_and_income_views_are_coloured_independently(client_a, users):
     for var in ("spendingData", "incomeByCategoryData"):
         slots = list(_slot_map(body, var).values())
         assert len(set(slots)) == len(slots), f"{var} repeats a colour: {slots}"
+
+
+# --- the budget chart payload (#315) -----------------------------------------
+
+def test_budget_chart_payload_carries_each_category_separately(client_a, users):
+    """#315 changed how this payload is BUILT — from positional `r[0]` reads to
+    attribute reads, because the helper behind it gained a category_id at the
+    front. Nothing exercised it: the dashboard tests seed no budget, so the
+    list comprehension that builds `budgetData` never ran in the suite, and a
+    wrong index there is an AttributeError on a page a user opens first.
+
+    Two categories share a name and a budget amount here, which is the case
+    that used to collapse into a single bar carrying both categories' spend.
+    """
+    a = users["a"]
+    from tests.conftest import create_budget
+
+    first = create_category(a["id"], "ChartDup")
+    second = create_category(a["id"], "ChartDup")
+    create_budget(a["id"], first, 100.0)
+    create_budget(a["id"], second, 100.0)
+    today = date.today()
+    create_transaction(a["id"], a["account_id"], 40.0,
+                       today.strftime("%Y-%m-%d"), category_id=first)
+    create_transaction(a["id"], a["account_id"], 70.0,
+                       today.strftime("%Y-%m-%d"), category_id=second)
+
+    body = client_a.get("/").get_data(as_text=True)
+    rows = [r for r in _chart_rows(body, "budgetData") if r["category"] == "ChartDup"]
+
+    assert len(rows) == 2, "the two categories were drawn as one bar"
+    # The figures are the point: budget read from the budget column, actual from
+    # the actual column. A positional slip would put the name or the id here.
+    assert all(r["budget"] == 100.0 for r in rows)
+    assert sorted(r["actual"] for r in rows) == [40.0, 70.0]

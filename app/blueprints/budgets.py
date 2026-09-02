@@ -150,7 +150,19 @@ def compute_budget_vs_actual(user_id, year=None, month=None):
     non-transfer expense transactions in that category during the given month.
     When `year`/`month` are omitted, the current calendar month is used (the
     monthly budget is constant, so an "all time" actual would be meaningless).
-    Returns rows of (category, budget, actual, remaining).
+    Returns rows of (category_id, category, budget, actual, remaining).
+
+    ⚠️ Grouped by `c.id`, NOT `c.name` (#315). `categories` has no uniqueness
+    constraint on (user_id, name), so two categories can share one. Grouping by
+    name collapsed two of them into a single row carrying ONE budget and BOTH
+    categories' spending whenever their budget amounts were equal — reporting a
+    user who was 90.00 under as 10.00 over. That figure is not merely rendered:
+    `insights.compute_month_facts()` turns a negative `remaining` into an entry
+    in the month read's `overruns`, which the prompt tells the model to treat as
+    ground truth, so a fabricated overrun was narrated with confidence.
+    Read consumers by ATTRIBUTE (`row.budget`), never by position — the id was
+    added at the front, and `budgets.py`'s two report queries already group this
+    way (`GROUP BY t.category_id, c.name, …`).
     """
     if year and month:
         filter_year, filter_month = int(year), int(month)
@@ -160,6 +172,7 @@ def compute_budget_vs_actual(user_id, year=None, month=None):
     with db_cursor() as cursor:
         cursor.execute("""
             SELECT
+                c.id AS category_id,
                 c.name AS category,
                 b.amount AS budget,
                 COALESCE(SUM(t.amount), 0) AS actual,
@@ -174,8 +187,8 @@ def compute_budget_vs_actual(user_id, year=None, month=None):
                 AND EXTRACT(MONTH FROM t.transaction_date) = %s
                 AND t.user_id = b.user_id
             WHERE b.user_id = %s
-            GROUP BY c.name, b.amount
-            ORDER BY c.name
+            GROUP BY c.id, c.name, b.amount
+            ORDER BY c.name, c.id
         """, (filter_year, filter_month, user_id))
         rows = cursor.fetchall()
     return rows

@@ -189,9 +189,15 @@ def compute_forecast(user_id, year, month):
     # that to the budget total. Comparing all-category projected spend to a
     # partial budget (only some categories have one) would read as an overrun
     # almost every time — a misleading figure the narration would then repeat.
+    # ⚠️ By attribute, not by positional unpack (#315). These two lines were the
+    # most brittle readers of this helper in the repo, and #315 hit them twice
+    # over: two same-named categories collapsed into one row, so `total_budget`
+    # counted ONE of the two budgets while `budgeted_actual` carried BOTH
+    # categories' spend — making projected_over_budget wrong in both directions
+    # at once.
     budget_rows = compute_budget_vs_actual(user_id, year, month)
-    total_budget = round(sum(float(b) for _, b, _, _ in budget_rows), 2)
-    budgeted_actual = sum(float(a) for _, _, a, _ in budget_rows)
+    total_budget = round(sum(float(r.budget) for r in budget_rows), 2)
+    budgeted_actual = sum(float(r.actual) for r in budget_rows)
     factor = (projected_expenses / expenses_td) if expenses_td > 0 else 0.0
     projected_budgeted_spend = round(budgeted_actual * factor, 2)
     projected_over_budget = (round(projected_budgeted_spend - total_budget, 2)

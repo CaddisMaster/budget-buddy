@@ -10,6 +10,31 @@ this project uses the `0.x` versioning scheme described in
 
 ### Fixed
 
+- **Two categories with the same name were merged into one budget row, which
+  invented an overrun the AI then reported as fact.** Nothing stops you having
+  two categories called "Food" — there is no rule against it, and the app never
+  checked. The budget cockpit grouped its figures by category *name*, so
+  whenever two same-named categories happened to carry the same budget amount
+  they collapsed into a single row holding **one** of the budgets and **both**
+  categories' spending.
+  With two categories budgeted 100 each and 40 and 70 spent, that reported 100
+  budgeted against 110 spent — 10 over. The truth was 200 budgeted against 110
+  spent, comfortably under. The figures are now grouped by the category itself,
+  so each budget is compared against its own spending.
+  What makes this worse than a wrong number on a page is where the number goes
+  next. The month summary on the home page builds its list of over-budget
+  categories from exactly these rows, and the model that writes that summary is
+  instructed to treat the figures as ground truth and only describe them — the
+  whole reason the app never lets it do arithmetic. So an overrun that never
+  happened was not merely displayed, it was narrated with confidence. The
+  month-ahead projection read the same rows and was wrong in both directions at
+  once, counting one budget against two categories' spend.
+  The two places that still group by name do so deliberately and now say so: a
+  "what did I spend on X" rollup *should* add up everything under that label,
+  and matching a category the AI names by its name is ambiguous but never
+  unsafe, since it can only ever match a category you own. Forbidding duplicate
+  names outright is the better answer to both and is filed separately.
+
 - **The deploy workflows ran parts of their own comments on the build machine,
   and the rollback path leaked the server key into the command it sent.** Both
   workflows hand their remote script to `ssh` as a single double-quoted

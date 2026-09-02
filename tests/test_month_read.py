@@ -347,3 +347,32 @@ def test_the_home_ai_panel_is_not_a_details_element(client_a, monkeypatch):
     # appears in base.html's initAiCollapse selector, on every page — matching
     # that would make this assertion pass for the wrong reason.)
     assert 'data-ai-key="' not in html
+
+
+def test_two_categories_sharing_a_name_do_not_invent_an_overrun(users):
+    """#315 — the overruns list is what makes this more than a display quirk.
+
+    It goes into build_read_facts() and becomes part of the month read's
+    prompt, which instructs the model to treat the figures as ground truth and
+    only describe them. So a merged row did not merely render wrong, it was
+    narrated with confidence — in the one place the app deliberately never lets
+    the model do arithmetic, precisely so the numbers can be trusted.
+
+    Both categories are UNDER budget here, so a correct overruns list is empty.
+    """
+    a = users["a"]["id"]
+    acct = create_account(a, "dup-acct")
+    first = create_category(a, "dup-food")
+    second = create_category(a, "dup-food")
+    create_budget(a, first, 200)
+    create_budget(a, second, 200)   # equal amounts — the case that collapsed
+    create_transaction(a, acct, 80, "2026-05-04", "expense", category_id=first)
+    create_transaction(a, acct, 150, "2026-05-06", "expense", category_id=second)
+
+    facts = compute_month_facts(a, 2026, 5)
+
+    assert facts["overruns"] == [], (
+        "an overrun was invented: 400.00 budgeted across the two categories "
+        "and 230.00 spent, but the merged row compared one 200.00 budget "
+        "against both categories' 230.00"
+    )
