@@ -275,21 +275,28 @@ server itself — **read it before touching anything on the Droplet.**
 
 ## Current status
 
-▶️ **NEXT UP: weigh cutting `0.9.0` — #345.** Prod is on `0.8.0` (2026-08-20); `main` is 34
-commits ahead with no new env vars and no new migrations. #345 carries the measured pre-release
-state and the three things this release exercises for the first time. Decide it before starting
-new work; if you defer, record why.
+▶️ **`0.9.0` IS CUT AND PREPPED ON `main` — NOT YET DEPLOYED (#345).** The changelog is rolled
+under `## [0.9.0] - 2026-09-02` and the What's-new strip carries it. **Prod still runs `0.8.0`
+until the GitHub Release is published and the `production` gate approved** — do not describe
+`0.9.0` as live anywhere until a green `release.yml` run says so.
 
 
 ⚠️ **[`docs/status.md`](docs/status.md) is the detail, and it lags `main` by construction** — it
 describes the last session rather than the current tree, and it asserts rather than going quiet.
 **Reconcile against `git log` and `gh issue list` at the start of every session.**
 
-- **Prod runs `0.8.0`, shipped and verified 2026-08-20.** `main` is AHEAD of it: `## [Unreleased]`
-  carries the CI Postgres fix (#282), the migration phasing (#277), the `anthropic` bump (#286)
-  and the version stamp (#305). ⚠️ **#305 is the first of the four with a user-facing surface**,
-  so "nothing in it is user-facing" is no longer on its own an argument against cutting — and
-  `0.9.0` would be the first release the new deploy handle can verify. It briefly also held
+- **Prod runs `0.8.0`, shipped and verified 2026-08-20; `0.9.0` is prepped on `main` and
+  awaiting its Release.** The bundle is 35 commits with **no new env vars and no new
+  migrations**, so both migration phases are empty passes and the one deploy failure with no
+  signal is clear. ⚠️ **It carries no user-facing feature at all** — the single `### Added` is
+  the version stamp (#305), which is admin-only, so the What's-new strip holds exactly one
+  block and it names a `/settings` card. Every `### Fixed` entry is a patch fix; three say
+  "no user-facing change" outright. ⚠️ **Three things deploy for the first time here and can
+  be verified nowhere else**: the two-phase migration runner (#277, expect
+  `Nothing to apply for phase … — up to date.` **twice**, both exit 0), the version-stamp
+  assertion (#305, expect `running version 0.9.0 (matches 0.9.0)` before the after-pull step),
+  and `anthropic` 1.0.0 making a **live** call from the shipped image (#286 — CI sets no key,
+  so the month read and the Ask box in prod are the first real round trip). It briefly also held
   the ai-atlas landing card (#280); **#288 removed that card again on 2026-08-24** after the
   project was abandoned and its repo deleted, and since it never shipped in a release its
   changelog entry was deleted outright rather than answered with a `### Removed` line. The
