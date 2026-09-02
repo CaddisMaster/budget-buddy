@@ -92,9 +92,14 @@ def _clamp_limit(args, default=10):
 
 def _resolve_category(cursor, user_id, name):
     """Match `name` (case-insensitive) against the user's OWN categories →
-    (id, name, kind). Raises _ToolError listing the valid names so the model can
-    retry — this is the per-user guard that the model can only name a category
-    the user owns."""
+    (id, name, kind).
+
+    Raises _ToolError listing the valid names so the model can retry — this is
+    the per-user guard that the model can only name a category the user owns.
+
+    ⚠️ First match wins, and names are not unique (#315). Same reasoning as
+    ai._match_id: ambiguous, never unsafe, and the real fix is a constraint.
+    """
     cursor.execute("SELECT id, name, kind FROM categories WHERE user_id = %s", (user_id,))
     rows = cursor.fetchall()
     target = str(name or '').strip().lower()
@@ -139,13 +144,14 @@ def _t_income_expense_summary(user_id, args):
 def _t_budget_status(user_id, args):
     year, month = _parse_month(args)
     rows = compute_budget_vs_actual(user_id, year, month)
+    # By attribute, not by positional unpack (#315 added a category_id).
     budgets = [{
-        "category": cat,
-        "budget": _money(budget),
-        "actual": _money(actual),
-        "remaining": _money(remaining),
-        "over_budget": float(remaining) < 0,
-    } for cat, budget, actual, remaining in rows]
+        "category": r.category,
+        "budget": _money(r.budget),
+        "actual": _money(r.actual),
+        "remaining": _money(r.remaining),
+        "over_budget": float(r.remaining) < 0,
+    } for r in rows]
     return {"month": f"{year}-{month:02d}", "budgets": budgets}
 
 

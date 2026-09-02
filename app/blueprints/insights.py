@@ -52,7 +52,14 @@ def category_spending(cursor, user_id, year, month, limit=None):
     """Expense spending grouped by category for one month (non-adjustment,
     non-transfer), highest first → [(name, total_float), ...]. The single source
     for the per-category rollup, reused by the dashboard digest and the Ask tool
-    so they can never disagree on what counts."""
+    so they can never disagree on what counts.
+
+    ⚠️ Grouped by NAME on purpose, unlike compute_budget_vs_actual (#315).
+    This is a "what did I spend on X" rollup, so two categories that share a
+    label should be summed under it — that is the answer the reader wants, not
+    the bug. The budget helper is different in kind: there, merging compares one
+    category's budget against two categories' spending, which invents a figure.
+    """
     sql = """
         SELECT c.name, SUM(t.amount) AS total
         FROM transactions t
@@ -113,15 +120,20 @@ def compute_month_facts(user_id, year, month):
                           category_spending(cursor, user_id, year, month, limit=5)]
 
     # Budget overruns reuse the shared month-based helper (its own connection).
+    # ⚠️ Read by attribute, not by unpacking (#315): the helper now returns a
+    # category_id as well, and a positional unpack here is what would break
+    # first — loudly, but only after the shape had already been changed.
+    # The dicts deliberately keep their four keys and stay name-labelled: the
+    # arithmetic was what was wrong, not the label, and these go into the
+    # model's prompt, so widening them changes what the read is told for no gain.
     overruns = []
-    for category, budget, actual, remaining in \
-            compute_budget_vs_actual(user_id, year, month):
-        if float(remaining) < 0:
+    for row in compute_budget_vs_actual(user_id, year, month):
+        if float(row.remaining) < 0:
             overruns.append({
-                'category': category,
-                'budget': float(budget),
-                'actual': float(actual),
-                'over': round(float(actual) - float(budget), 2),
+                'category': row.category,
+                'budget': float(row.budget),
+                'actual': float(row.actual),
+                'over': round(float(row.actual) - float(row.budget), 2),
             })
 
     net = round(income - expenses, 2)

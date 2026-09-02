@@ -519,7 +519,8 @@ def index():
             last_year_expenses = float(cursor.fetchone()[0] or 0)
 
         # Monthly budget vs this-month (or selected-month) actual.
-        # Returns (category, budget, actual, remaining).
+        # Returns (category_id, category, budget, actual, remaining) — read by
+        # attribute below, since #315 added the id at the front.
         budget_data = compute_budget_vs_actual(current_user.id, filter_year, filter_month)
 
         goals_view = build_goals_view(cursor, current_user.id)
@@ -573,7 +574,7 @@ def index():
     cash_flow_data = [{'month': r[0], 'income': float(r[1]), 'expenses': float(r[2])} for r in cash_flow]
     net_balance_data = [{'month': r[0], 'balance': float(r[1])} for r in net_balance_trend]
     account_data = [{'account': r[0], 'balance': float(r[1])} for r in account_balances]
-    budget_chart_data = [{'category': r[0], 'budget': float(r[1]), 'actual': float(r[2])} for r in budget_data]
+    budget_chart_data = [{'category': r.category, 'budget': float(r.budget), 'actual': float(r.actual)} for r in budget_data]
     day_of_week_data = [{'day': r[1].strip(), 'total': float(r[2])} for r in spending_by_day]
     # Each drawn row carries its OWN palette slot (#111), assigned per view so
     # the two are guaranteed internally distinct. This replaced a shared
