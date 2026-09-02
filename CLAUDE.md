@@ -275,32 +275,35 @@ server itself — **read it before touching anything on the Droplet.**
 
 ## Current status
 
-▶️ **`0.9.0` IS CUT AND PREPPED ON `main` — NOT YET DEPLOYED (#345).** The changelog is rolled
-under `## [0.9.0] - 2026-09-02` and the What's-new strip carries it. **Prod still runs `0.8.0`
-until the GitHub Release is published and the `production` gate approved** — do not describe
-`0.9.0` as live anywhere until a green `release.yml` run says so.
+▶️ **NEXT UP: #348 — the ROLLBACK path is broken, and `0.9.0` is what it would be rolling back.**
+`rollback.yml` builds its remote command as a double-quoted `ssh` argument and leaves **16
+backticks unescaped** in it, so the runner executes `printenv` locally and interpolates its own
+environment — **including `DROPLET_SSH_KEY`** — into the string sent to the Droplet. It last ran
+successfully 2026-07-27; the block that broke it arrived with #305, which shipped today. **The
+recovery path has therefore never run since the change that broke it.** Fix it before anything
+else needs rolling back.
 
 
 ⚠️ **[`docs/status.md`](docs/status.md) is the detail, and it lags `main` by construction** — it
 describes the last session rather than the current tree, and it asserts rather than going quiet.
 **Reconcile against `git log` and `gh issue list` at the start of every session.**
 
-- **Prod runs `0.8.0`, shipped and verified 2026-08-20; `0.9.0` is prepped on `main` and
-  awaiting its Release.** The bundle is 35 commits with **no new env vars and no new
-  migrations**, so both migration phases are empty passes and the one deploy failure with no
-  signal is clear. ⚠️ **It carries no user-facing feature at all** — the single `### Added` is
-  the version stamp (#305), which is admin-only, so the What's-new strip holds exactly one
-  block and it names a `/settings` card. Every `### Fixed` entry is a patch fix; three say
-  "no user-facing change" outright. ⚠️ **Three things deploy for the first time here and can
-  be verified nowhere else**: the two-phase migration runner (#277, expect
-  `Nothing to apply for phase … — up to date.` **twice**, both exit 0), the version-stamp
-  assertion (#305, expect `running version 0.9.0 (matches 0.9.0)` before the after-pull step),
-  and `anthropic` 1.0.0 making a **live** call from the shipped image (#286 — CI sets no key,
-  so the month read and the Ask box in prod are the first real round trip). It briefly also held
-  the ai-atlas landing card (#280); **#288 removed that card again on 2026-08-24** after the
-  project was abandoned and its repo deleted, and since it never shipped in a release its
-  changelog entry was deleted outright rather than answered with a `### Removed` line. The
-  `0.8.0` milestone is closed at 47 issues
+- ✅ **Prod runs `0.9.0`, shipped and verified 2026-09-02** (35 commits, no new env vars, no
+  new migrations). **All three of its first-time mechanisms passed in the real deploy log**, in
+  this order: `Nothing to apply for phase before-pull — up to date.` → `running version 0.9.0
+  (matches 0.9.0)` → `Nothing to apply for phase after-pull — up to date.`, then `/healthz` 200
+  on the first attempt and `Announced 0.9.0 to 3 device(s).` The empty-pass migration case and
+  the version-stamp assertion are now **proven**, not just written down. ⚠️ **Still unproven:
+  `anthropic` 1.0.0 has made no live model call** — CI sets no key, so the first real round trip
+  is the month read and the Ask box being exercised in prod by hand. ⚠️ The release carried **no
+  user-facing feature at all**: the single `### Added` was the admin-only version stamp, so the
+  What's-new strip holds one block naming a `/settings` card, and every `### Fixed` was a patch
+  fix. The `0.8.0` milestone is closed at 47 issues; `0.9.0`'s stays open for its backlog.
+  Dependabot **#342 was deliberately held out** of the bundle and rides `0.10.0`. The bundle
+  briefly also held the ai-atlas landing card (#280); **#288 removed that card again on
+  2026-08-24** after the project was abandoned and its repo deleted, and since it never shipped
+  in a release its changelog entry was deleted outright rather than answered with a
+  `### Removed` line — which is why nothing in `0.9.0`'s notes mentions it
 - **The tracker is NO LONGER empty**, and its contents are now mostly **#309's output rather than
   #309 itself**. ✅ **The full-repo read is COMPLETE** (closed 2026-08-31, ten tranches): every
   tracked file — `app/`, `sql/`, `scripts/`, `tests/`, `.github/`, `.claude/` and the root build
