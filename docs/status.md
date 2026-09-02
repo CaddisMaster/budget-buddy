@@ -5,27 +5,69 @@
 
 ## Current Status
 
-▶️ **NEXT SESSION: weigh cutting `0.9.0` before starting anything new — #345.** Prod has been on
-`0.8.0` since 2026-08-20 and `main` is 34 commits ahead. #345 carries the measured pre-release
-state so it does not have to be re-derived: **no new env vars, no new migrations**, a
-`### Added` in the changelog (so **MINOR → `0.9.0`** per `VERSIONING.md`), and a stale What's-new
-strip still reading `data-version="v0.8.0"`.
+▶️ **NEXT SESSION: fix `rollback.yml` — #348.** The recovery path is broken, and `0.9.0` is
+what it would be asked to roll back. Both deploy workflows send their remote command as a
+**double-quoted `ssh` argument**, where bash performs command substitution regardless of `#` —
+a `#` in that string is a comment to the *remote* shell and plain text to the local one.
+`release.yml` escapes its backticks three times and misses once (line 269, harmless: `/healthz`
+does not exist). `rollback.yml` escapes **none of 16**, and one pair is `` `printenv` ``, so the
+runner substitutes its **entire step environment — including `DROPLET_SSH_KEY` — into the string
+sent to the Droplet**. Measured, not inferred; #348 carries the probes. It last ran successfully
+**2026-07-27**, and the block that broke it arrived with **#305**, which shipped in `0.9.0`, so
+the recovery path has never run since the change that broke it.
 
-⚠️ **Three changes on `main` execute for the FIRST time at this release** and cannot be verified
-anywhere else — the two-phase migration deploy (#277, here in its *empty-pass* form, which must
-exit 0 twice), the version-stamp assertion (#305, watch for `running version 0.9.0 (matches
-0.9.0)`), and `anthropic` 1.0.0 making its first live call from the shipped image (#286). #345
-says what to watch in the log for each.
+⚠️ **Also still unproven: `anthropic` 1.0.0 has never made a live model call.** CI sets no key
+and every seam is stubbed, so the shipped image's first real round trip is the month read and
+the Ask box being exercised **by hand in production**. Do that before assuming the AI surfaces
+survived the major bump.
 
 ✅ **`release-prep` is trustworthy again as of #340.** Before that it would have told you a DROP
 needs a manual out-of-band step (wrong since #277) and to verify the deploy with `css_v` (retired
 by #305). If you are reading a session transcript older than 2026-08-31, distrust both.
 
 
+### ✅ `0.9.0` SHIPPED AND LIVE (2026-09-02)
+
+**Prod runs `0.9.0`, deployed and verified 2026-09-02.** 35 commits since `v0.8.0`, **no new env
+vars and no new migrations**. The `0.9.0` milestone stays **open** for the #309 backlog.
+
+**The three first-time mechanisms all passed in the real deploy log**, and the ordering is the
+part that mattered:
+
+```
+Nothing to apply for phase before-pull — up to date.     ← #277, empty pass, exit 0
+running version 0.9.0 (matches 0.9.0)                    ← #305, BEFORE the destructive phase
+Nothing to apply for phase after-pull — up to date.      ← #277, empty pass, exit 0
+/healthz -> 200 on the first attempt
+Announced 0.9.0 to 3 device(s).
+```
+
+✅ **This is the first release verified by the pipeline itself rather than by an improvised
+handle.** No `css_v` hash, no second witness on `/login`, nothing chosen before cutting — the
+container was asked what it was and answered. That is the whole of #305 working as designed.
+
+⚠️ **The release carried no user-facing feature at all**, which made the What's-new strip the
+one real judgement call at prep. The single `### Added` was the admin-only version stamp and
+every `### Fixed` was a patch fix — so by the letter of the rule the strip had **nothing** to
+hold. Left at `v0.8.0` it stays dismissed on every device that has seen it, while
+`release.yml`'s success notification ("Check out what's new in the app!") taps through to `/`
+and would land on nothing. Sean's call: **one block, on the Deployment card**, rather than
+padding it with fixes the rule excludes. Worth remembering as the shape, not the instance —
+an infrastructure release still fires a notification that promises the user something.
+
+**Deliberately held out:** Dependabot **#342** (minor-and-patch group, 6 updates). The release
+was already exercising three mechanisms for the first time; six dependency bumps on top would
+have added a variable to the run with the most first-time machinery in it. It rides `0.10.0`.
+
+**Two PRs on release day:** #347 (roll the changelog, repoint the strip — closes #345) and the
+one recording this. `scripts/release_prep.py --version 0.9.0` did the mechanical half and its
+env-var report independently agreed with `git diff v0.8.0..HEAD -- .env.example`.
+
 ### ✅ `0.8.0` SHIPPED AND LIVE (2026-08-20)
 
 **Prod runs `0.8.0`, deployed and verified 2026-08-20.** The `0.8.0` milestone is **closed at
-47 issues**. ⚠️ **No milestone is open — the next cycle needs one created.**
+47 issues**. *(That line used to read "no milestone is open"; `0.9.0`'s was opened during
+#309 and is still open for its backlog.)*
 
 **Verified from OUTSIDE, not from the workflow's own report** — the first release where that was
 possible:
