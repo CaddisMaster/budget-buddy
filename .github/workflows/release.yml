@@ -266,7 +266,7 @@ jobs:
                #    SELECTs is the exact outage #277 exists to prevent — so this
                #    runs while the only thing that has happened is a swap.
                #
-               #    `/healthz` cannot answer this: it returns 200 from any
+               #    \`/healthz\` cannot answer this: it returns 200 from any
                #    version, which is how production once sat three releases
                #    stale with every indicator green (#190).
                RUNNING=\"\$(docker compose exec -T web printenv APP_VERSION | tr -d '\r')\"
