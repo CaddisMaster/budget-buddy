@@ -53,6 +53,26 @@ def ai_enabled():
     return bool(os.getenv('ANTHROPIC_API_KEY'))
 
 
+# The money ceiling. Every amount column in the schema is `numeric(10,2)`, which
+# tops out at 99,999,999.99, and Postgres answers anything larger with `numeric
+# field overflow` (#312). Without this the validators guarded the FLOOR only, so
+# a well-formed larger number passed, reached the INSERT, and the write handler
+# did exactly the right thing for an unexpected failure: flashed GENERIC_ERROR
+# and logged a traceback. The user was told the system broke — with nothing to
+# try again, since resubmitting fails identically — for ordinary bad input, and
+# the log filled with tracebacks that bury the real unexpected failures.
+#
+# Same shape as MAX_PAGE below: a range guarded at one end because nothing had
+# yet come through the other. Behaviour-neutral for real money — this is a
+# hundred million — and it REJECTS rather than clamps, which is the difference
+# from MAX_PAGE: a clamped page number is a page that was already empty, but a
+# clamped amount would be a wrong figure written to the ledger.
+#
+# ⚠️ `account.apr` is `numeric(5,2)`, not (10,2). It is capped far tighter by
+# APR_MAX in accounts.py, applied after this, so this bound is a no-op there.
+MAX_AMOUNT = 99_999_999.99
+
+
 def parse_signed_amount(raw, label='Amount'):
     """Validate a signed money form field (a bank balance can be negative —
     credit cards — or exactly zero). Returns (amount, error) — exactly one is
@@ -62,6 +82,11 @@ def parse_signed_amount(raw, label='Amount'):
     check (NaN compares False to everything) — but Postgres stores NaN in a
     numeric column, and one NaN row poisons every SUM() the dashboards
     aggregate. So reject non-finite values along with non-numbers.
+
+    Bounded at BOTH ends by MAX_AMOUNT (#312). The ceiling lives here rather
+    than in parse_positive_amount so the signed path is covered too: an account
+    check-in posts a balance straight into `transactions.amount`, and
+    -100,000,000 overflows numeric(10,2) exactly as the positive end does.
     """
     raw = (raw or '').strip()
     if not raw:
@@ -72,14 +97,17 @@ def parse_signed_amount(raw, label='Amount'):
         return None, f'{label} must be a valid number'
     if not math.isfinite(amount):
         return None, f'{label} must be a valid number'
+    if abs(amount) > MAX_AMOUNT:
+        return None, f'{label} must be {MAX_AMOUNT:,.2f} or less'
     return amount, None
 
 
 def parse_positive_amount(raw, label='Amount'):
     """Validate a money form field. Returns (amount, error) — exactly one is
     None. Shared by every amount-taking form (transactions, schedules,
-    transfers, budgets, goals) so they can't drift. The finite/NaN guard lives
-    in parse_signed_amount; this adds the strictly-positive check.
+    transfers, budgets, goals) so they can't drift. The finite/NaN guard and the
+    MAX_AMOUNT ceiling both live in parse_signed_amount; this adds only the
+    strictly-positive check.
     """
     amount, error = parse_signed_amount(raw, label)
     if error:
