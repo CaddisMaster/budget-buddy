@@ -10,6 +10,27 @@ this project uses the `0.x` versioning scheme described in
 
 ### Fixed
 
+- **Typing an amount too big for the app to store said the system had broken,
+  rather than that the number was too big.** Every money field is stored with
+  room for up to 99,999,999.99. Anything larger was accepted by the form,
+  handed to the database, and rejected there — which the app correctly treats
+  as an unexpected failure, so it showed "Something went wrong — please try
+  again" and wrote a fault report to the log.
+  Both halves of that were wrong for what is simply a number that is too large.
+  There was nothing to try again — resubmitting the same value failed the same
+  way, forever — and the form came back empty, so whatever else had been typed
+  was lost too. Meanwhile the log collected a fault report every time, which
+  makes it noisier without making it more useful and buries the genuine
+  unexpected failures among them.
+  Amounts are now checked against that limit where every form already shares
+  its other checks, so all of them — transactions, budgets, schedules,
+  transfers, goals, credit limits and bank balances — answer the same way: a
+  plain "must be 99,999,999.99 or less" beside the field, nothing written, and
+  nothing in the log. Negative balances are bounded the same way, since a bank
+  balance can be negative and overflows identically at that end.
+  This is the same shape as the pagination fix in the last release: a range
+  guarded at one end because nothing had yet come through the other.
+
 - **Two categories with the same name were merged into one budget row, which
   invented an overrun the AI then reported as fact.** Nothing stops you having
   two categories called "Food" — there is no rule against it, and the app never
