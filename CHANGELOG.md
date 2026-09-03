@@ -8,6 +8,102 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Changed
+
+- **The Ask box now declines a very long question instead of sending it.**
+  There was no limit on how much text the box would accept, anywhere on the
+  path, so pasting a bank statement or a long document into it sent the whole
+  thing to the model — and, because answering a question can take several
+  exchanges, sent it again with each one. What comes back was already bounded;
+  what goes in was not, and the only sign it had happened would have been the
+  bill.
+  This is an accident waiting to happen rather than anything hostile: the box
+  is behind a login, on a personal app, and already limited to ten questions a
+  minute. It is simply the one place where a slip is expensive and nothing said
+  so.
+  Questions are now capped at a thousand characters, which is far more than a
+  question to a finance assistant needs, and the box itself stops accepting
+  more so the limit is visible before submitting rather than after. It
+  **declines** rather than quietly shortening: a question cut in half would be
+  answered as though it were the whole question, and neither you nor the model
+  would know the difference.
+
+### Fixed
+
+- **Typing an amount too big for the app to store said the system had broken,
+  rather than that the number was too big.** Every money field is stored with
+  room for up to 99,999,999.99. Anything larger was accepted by the form,
+  handed to the database, and rejected there — which the app correctly treats
+  as an unexpected failure, so it showed "Something went wrong — please try
+  again" and wrote a fault report to the log.
+  Both halves of that were wrong for what is simply a number that is too large.
+  There was nothing to try again — resubmitting the same value failed the same
+  way, forever — and the form came back empty, so whatever else had been typed
+  was lost too. Meanwhile the log collected a fault report every time, which
+  makes it noisier without making it more useful and buries the genuine
+  unexpected failures among them.
+  Amounts are now checked against that limit where every form already shares
+  its other checks, so all of them — transactions, budgets, schedules,
+  transfers, goals, credit limits and bank balances — answer the same way: a
+  plain "must be 99,999,999.99 or less" beside the field, nothing written, and
+  nothing in the log. Negative balances are bounded the same way, since a bank
+  balance can be negative and overflows identically at that end.
+  This is the same shape as the pagination fix in the last release: a range
+  guarded at one end because nothing had yet come through the other.
+
+- **Two categories with the same name were merged into one budget row, which
+  invented an overrun the AI then reported as fact.** Nothing stops you having
+  two categories called "Food" — there is no rule against it, and the app never
+  checked. The budget cockpit grouped its figures by category *name*, so
+  whenever two same-named categories happened to carry the same budget amount
+  they collapsed into a single row holding **one** of the budgets and **both**
+  categories' spending.
+  With two categories budgeted 100 each and 40 and 70 spent, that reported 100
+  budgeted against 110 spent — 10 over. The truth was 200 budgeted against 110
+  spent, comfortably under. The figures are now grouped by the category itself,
+  so each budget is compared against its own spending.
+  What makes this worse than a wrong number on a page is where the number goes
+  next. The month summary on the home page builds its list of over-budget
+  categories from exactly these rows, and the model that writes that summary is
+  instructed to treat the figures as ground truth and only describe them — the
+  whole reason the app never lets it do arithmetic. So an overrun that never
+  happened was not merely displayed, it was narrated with confidence. The
+  month-ahead projection read the same rows and was wrong in both directions at
+  once, counting one budget against two categories' spend.
+  The two places that still group by name do so deliberately and now say so: a
+  "what did I spend on X" rollup *should* add up everything under that label,
+  and matching a category the AI names by its name is ambiguous but never
+  unsafe, since it can only ever match a category you own. Forbidding duplicate
+  names outright is the better answer to both and is filed separately.
+
+- **The deploy workflows ran parts of their own comments on the build machine,
+  and the rollback path leaked the server key into the command it sent.** Both
+  workflows hand their remote script to `ssh` as a single double-quoted
+  argument. Inside double quotes the shell still performs command substitution,
+  and it does not care that the text is a comment — a `#` there is a comment to
+  the *remote* shell and ordinary text to the local one. So backticks anywhere
+  in that block, including inside an explanatory comment, ran on the runner
+  before the command was ever sent.
+  The release workflow had one such comment, and it was visible in the `0.9.0`
+  deploy log as a stray "No such file or directory" for a path that is not a
+  command — noise, and harmless only by luck. The rollback workflow had sixteen
+  unescaped backticks, one of them around `printenv`, which meant a rollback
+  substituted the build machine's entire environment — the Droplet's private
+  key among it — into the string sent over the wire. Being several lines long,
+  that also broke out of the comment it sat in and would have been run as
+  commands at the far end, so the rollback would very likely have failed
+  outright.
+  Nothing had gone wrong, because the rollback workflow has not run since the
+  version stamp added that comment block, and the version stamp shipped in
+  `0.9.0`. The escaping convention that prevents all of this was already in use
+  three times in the same file; it was simply applied unevenly, which is the
+  kind of rule that wants a test rather than a comment. There is now a test that
+  reads both workflows, finds each remote command, and fails on an unescaped
+  backtick — or on the same defect written as `$(…)`, which is clean today and
+  is asserted so it stays that way.
+
+## [0.9.0] - 2026-09-02
+
 ### Added
 
 - **The app now says which version it is running, and the deploy checks it.**
@@ -1250,7 +1346,8 @@ lineage, most recent first:
 - **v9.0** — conversational transaction entry (first AI feature)
 - **v1–v8** — core CRUD and deployment, UI overhaul, multi-user authentication, blueprints and pytest, ownership guards, transfers and goals, smart budgets, HTMX inline CRUD and CI
 
-[Unreleased]: https://github.com/CaddisMaster/budget-buddy/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/CaddisMaster/budget-buddy/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.5.0...v0.6.0

@@ -341,3 +341,83 @@ def test_every_tool_spec_has_a_handler():
     one would be advertised to the model and then fail every call."""
     assert set(ask._HANDLERS) == {spec["name"] for spec in ask.TOOL_SPECS}
     assert {"month_summary", "month_projection"} <= set(ask._HANDLERS)
+
+
+# --- the question is bounded before the billed call (#316) -------------------
+# /ask had no length bound anywhere on the path — not in the route, not in
+# ai.answer_question (which only rejects an EMPTY question), and not app-wide
+# (MAX_CONTENT_LENGTH is unset). So the whole POST body became the first user
+# message of a BILLED call, multiplied by up to ASK_MAX_TURNS re-sends of the
+# conversation. feedback.py, which posts to GitHub for free, bounds its text and
+# says why; /ask, which costs money, was the one with no cap.
+#
+# Refuse rather than truncate: silently truncating a QUESTION means the model
+# answers something the user did not finish asking, and neither of them knows.
+
+def _counting_seam(calls):
+    def seam(messages, tool_specs, today, api_key):
+        calls["n"] += 1
+        return _resp([_text_block("should never be reached")], "end_turn")
+    return seam
+
+
+def test_an_over_long_question_never_reaches_the_model(client_a, users, monkeypatch):
+    """⚠️ The load-bearing assertion is calls["n"] == 0, NOT the toast.
+
+    The whole point is the call not being paid for, and a test that only
+    asserted the toast would still pass if the model were called first and the
+    error raised afterwards. The key is set deliberately so this is a statement
+    about the bound rather than about CI having no credentials — which is what
+    the neighbouring empty-question test quietly relies on.
+    """
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    calls = {"n": 0}
+    monkeypatch.setattr(ai, "_call_ask_model", _counting_seam(calls))
+
+    resp = client_a.post("/ask", headers=HX,
+                         data={"question": "a" * (ask.MAX_QUESTION + 1)})
+
+    assert calls["n"] == 0, "the model was called with an over-long question"
+    assert resp.status_code == 200
+    assert "showToast" in resp.headers.get("HX-Trigger", "")
+    assert "too long" in resp.headers.get("HX-Trigger", "")
+
+
+def test_a_question_at_the_limit_is_accepted(client_a, users, monkeypatch):
+    """The other side of the boundary — a bound set anywhere would satisfy the
+    test above on its own."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    calls = {"n": 0}
+
+    def seam(messages, tool_specs, today, api_key):
+        calls["n"] += 1
+        return _resp([_text_block("An answer.")], "end_turn")
+
+    monkeypatch.setattr(ai, "_call_ask_model", seam)
+
+    resp = client_a.post("/ask", headers=HX,
+                         data={"question": "a" * ask.MAX_QUESTION})
+
+    assert calls["n"] == 1
+    assert resp.status_code == 200
+    assert "An answer." in resp.get_data(as_text=True)
+
+
+def test_the_over_long_question_does_not_swap_away_a_previous_answer():
+    """Refusals here go through _toast_only, which sets HX-Reswap: none so an
+    answer already on screen survives — the same treatment the empty-question
+    refusal gets, which is why the check belongs beside it."""
+    import inspect
+    src = inspect.getsource(ask.ask)
+    assert "_toast_only" in src
+    # The bound is checked before answer_question is ever named in the body.
+    assert src.index("MAX_QUESTION") < src.index("answer_question(")
+
+
+def test_the_input_mirrors_the_server_bound():
+    """profile.html mirrors feedback.py's constants as maxlength; the Ask box
+    should not be the one that makes the user find out by submitting."""
+    from pathlib import Path
+    panel = (Path(__file__).resolve().parents[1] / "app" / "templates"
+             / "partials" / "_ask_panel.html").read_text()
+    assert f'maxlength="{ask.MAX_QUESTION}"' in panel

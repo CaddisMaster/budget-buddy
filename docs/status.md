@@ -5,10 +5,69 @@
 
 ## Current Status
 
+▶️ **NEXT SESSION: fix `rollback.yml` — #348.** The recovery path is broken, and `0.9.0` is
+what it would be asked to roll back. Both deploy workflows send their remote command as a
+**double-quoted `ssh` argument**, where bash performs command substitution regardless of `#` —
+a `#` in that string is a comment to the *remote* shell and plain text to the local one.
+`release.yml` escapes its backticks three times and misses once (line 269, harmless: `/healthz`
+does not exist). `rollback.yml` escapes **none of 16**, and one pair is `` `printenv` ``, so the
+runner substitutes its **entire step environment — including `DROPLET_SSH_KEY` — into the string
+sent to the Droplet**. Measured, not inferred; #348 carries the probes. It last ran successfully
+**2026-07-27**, and the block that broke it arrived with **#305**, which shipped in `0.9.0`, so
+the recovery path has never run since the change that broke it.
+
+⚠️ **Also still unproven: `anthropic` 1.0.0 has never made a live model call.** CI sets no key
+and every seam is stubbed, so the shipped image's first real round trip is the month read and
+the Ask box being exercised **by hand in production**. Do that before assuming the AI surfaces
+survived the major bump.
+
+✅ **`release-prep` is trustworthy again as of #340.** Before that it would have told you a DROP
+needs a manual out-of-band step (wrong since #277) and to verify the deploy with `css_v` (retired
+by #305). If you are reading a session transcript older than 2026-08-31, distrust both.
+
+
+### ✅ `0.9.0` SHIPPED AND LIVE (2026-09-02)
+
+**Prod runs `0.9.0`, deployed and verified 2026-09-02.** 35 commits since `v0.8.0`, **no new env
+vars and no new migrations**. The `0.9.0` milestone stays **open** for the #309 backlog.
+
+**The three first-time mechanisms all passed in the real deploy log**, and the ordering is the
+part that mattered:
+
+```
+Nothing to apply for phase before-pull — up to date.     ← #277, empty pass, exit 0
+running version 0.9.0 (matches 0.9.0)                    ← #305, BEFORE the destructive phase
+Nothing to apply for phase after-pull — up to date.      ← #277, empty pass, exit 0
+/healthz -> 200 on the first attempt
+Announced 0.9.0 to 3 device(s).
+```
+
+✅ **This is the first release verified by the pipeline itself rather than by an improvised
+handle.** No `css_v` hash, no second witness on `/login`, nothing chosen before cutting — the
+container was asked what it was and answered. That is the whole of #305 working as designed.
+
+⚠️ **The release carried no user-facing feature at all**, which made the What's-new strip the
+one real judgement call at prep. The single `### Added` was the admin-only version stamp and
+every `### Fixed` was a patch fix — so by the letter of the rule the strip had **nothing** to
+hold. Left at `v0.8.0` it stays dismissed on every device that has seen it, while
+`release.yml`'s success notification ("Check out what's new in the app!") taps through to `/`
+and would land on nothing. Sean's call: **one block, on the Deployment card**, rather than
+padding it with fixes the rule excludes. Worth remembering as the shape, not the instance —
+an infrastructure release still fires a notification that promises the user something.
+
+**Deliberately held out:** Dependabot **#342** (minor-and-patch group, 6 updates). The release
+was already exercising three mechanisms for the first time; six dependency bumps on top would
+have added a variable to the run with the most first-time machinery in it. It rides `0.10.0`.
+
+**Two PRs on release day:** #347 (roll the changelog, repoint the strip — closes #345) and the
+one recording this. `scripts/release_prep.py --version 0.9.0` did the mechanical half and its
+env-var report independently agreed with `git diff v0.8.0..HEAD -- .env.example`.
+
 ### ✅ `0.8.0` SHIPPED AND LIVE (2026-08-20)
 
 **Prod runs `0.8.0`, deployed and verified 2026-08-20.** The `0.8.0` milestone is **closed at
-47 issues**. ⚠️ **No milestone is open — the next cycle needs one created.**
+47 issues**. *(That line used to read "no milestone is open"; `0.9.0`'s was opened during
+#309 and is still open for its backlog.)*
 
 **Verified from OUTSIDE, not from the workflow's own report** — the first release where that was
 possible:
@@ -56,29 +115,21 @@ that is RUNNING. Corrected in #276.
 The runbook was right; the `CLAUDE.md` bullet was stale and cost a session's planning before
 anyone read it. Corrected in #276.
 
-### On `main`, not yet deployed (2026-08-31) — the full-repo review, tranches 1–8
+### On `main`, not yet deployed (2026-08-31) — the full-repo review, COMPLETE
 
-▶️ **RESUME HERE: the next tranche is 9, `.github/` + `.claude/` (21 files, 1785+ lines).** #309
-runs the review in tranches and a tranche is a PR; **nine have merged and two remain** — tranche 9
-and then tranche 10 (root config: `Dockerfile`, both compose files, `test.sh`, `pyproject.toml`,
-`pytest.ini`, `requirements*.txt`, `.dockerignore`, `.gitignore`, `.pre-commit-config.yaml`,
-`run.py`, `.env.example`). The table in #309 has the full split.
+✅ **#309 IS DONE. There is no resume point, and its absence means finished rather than
+forgotten.** All ten tranches have merged and every tracked file the issue owned — `app/`, `sql/`,
+`scripts/`, `tests/`, `.github/`, `.claude/` and the root build config — has been read once, on
+purpose. The review filed **twelve issues** on the way; those, not a next tranche, are what it
+leaves behind (listed below).
 
-⚠️ **`app/`, `sql/`, `scripts/` and `tests/` have all been read in full.** What is left is the
-harness and the build — the two areas where a defect does not show up in the application at all,
-which is exactly why they were left until the code they serve was understood.
-
-⚠️ **THIS RESUME POINT HAS NOW GONE STALE TWICE IN A ROW, and that is a property of the file
-rather than an accident.** #331 was filed because it named tranche 5 three tranches on; #332
-corrected it; tranche 8a then merged (#334) without touching it, so by the time 8b started it was
-wrong again. #337 is the correction you are reading. **The file goes stale on precisely the step
-that makes it stale — merging a tranche — and nothing connects the two.** Treat the resume point
-as a claim to check against `git log --oneline | grep "#309"` rather than as a fact, until that is
-either given a mechanism or accepted as a standing cost.
-
-⚠️ Read `docs/testing.md` before tranche 9 touches anything that runs the suite — `.github/` owns
-the CI invocations and `.claude/` owns the agents and the `verify` skill, and both make claims
-about how tests run.
+⚠️ **The resume point in this file went stale THREE TIMES while the review ran** — #331 named
+tranche 5 three tranches on, #337 named tranche 8 two tranches on, and #343 is this one. #337
+recorded the cause and could not fix it: **the file goes stale on precisely the step that makes it
+stale — merging a tranche — and nothing connects the two.** The loop has ended here because the
+work finished, **not because that problem was solved.** The next long-running, tranche-shaped
+piece of work will reproduce it exactly unless something mechanical links the two steps. Worth
+knowing before starting one.
 
 | Tranche | PR | What it covered |
 |---|---|---|
@@ -91,6 +142,8 @@ about how tests run.
 | 7 | #330 | `scripts/` — all 10 files, 2207 lines |
 | 8a | #334 | `tests/` — `conftest.py` + the 19 files that read a repo file, ~4,900 lines |
 | 8b | #336 | `tests/` — the remaining 54 files, ~12,700 lines |
+| 9 | #340 | `.github/` + `.claude/` — 21 files, 2,588 lines |
+| 10 | #341 | root config — `Dockerfile`, compose x2, `test.sh`, `pyproject.toml`, `.dockerignore`, `.pre-commit-config.yaml`, `.env.example`, … 13 files |
 
 **Recount rather than trusting any number here** (`git ls-files | wc -l`) — the commits this
 review produces change it.
@@ -185,6 +238,43 @@ total — five tests had moved from passing to *skipping*, because the date was 
 non-calendar reason. ⚠️ **Recount rather than trusting that** —
 `./test.sh --collect-only -q -n0 | tail -1`.
 
+#### What tranches 9 and 10 found
+
+**Tranche 9 (`.github/` + `.claude/`).** One cause, four victims: the 2026-08-17 CLAUDE.md split
+updated the docs and never reached the things that read CLAUDE.md **with no human in the loop**.
+
+- ⚠️ **`gotcha-auditor`, `test-first` and BOTH triage prompts were sent to sections that no longer
+  exist** — "Key Gotchas" and "Project Structure", plus a "Roadmap" that never existed. The agents
+  were written 2026-08-04, thirteen days before the split. `gotcha-auditor` exists to audit a diff
+  against the Key Gotchas; pointed at the core file it finds **four** grouped Non-negotiables
+  instead of the ~20 in `docs/gotchas.md`, and reports **clear** — indistinguishable from having
+  checked. `tests/test_doc_claims.py` now derives the guard from `docs/*.md`'s own H1 titles.
+- ⚠️ **`release.yml` contradicted itself, and the wrong half recommended the incident.** Its step-0
+  comment records that `${TAG}` has had no default since #190; seventy lines later another said
+  compose reads `${TAG:-latest}` "so a hand-run `docker compose up -d` still works". That is the
+  command that reverted production three releases with every indicator green.
+- ⚠️ **`release-prep` would have misdirected `0.9.0` twice** — it still said a DROP "needs a manual
+  step out of band" (the third home of the sentence tranche 6 corrected in fourteen `sql/` headers),
+  and its whole deploy-verification check was `css_v`, retired by #305.
+- The `verify` skill named `/insights/generate`, removed by #232 and pinned at 404 by a test.
+  `rollback.yml`'s `| tr -d '\r'` turns out to be load-bearing under `set -e` — without it, rolling
+  back to any pre-#305 image aborts instead of warning, during an incident. `/wrap` omitted checking
+  the run on `main` after a merge.
+
+**Tranche 10 (root config).** Three findings, all the hand-maintained-set shape.
+
+- ⚠️ **There are THREE ruff pins and the guard compared two.** `.pre-commit-config.yaml` had drifted
+  to `v0.14.5` against `0.16.4` in `requirements-dev.txt` and `ci.yml` — and it is the copy that runs
+  `--fix` **on commit**, so the oldest ruff in the project was the one EDITING code while the newest
+  judged it. Exactly the property #264 exists to establish, reopened through the copy its test could
+  not see. Same shape as `seed_dev.WIPE_ORDER` and `AI_SURFACES`.
+- The pre-commit exclude protected `chart.umd.min.js`, deleted by #234, while the 563 KB
+  `apexcharts.min.js` was covered by nothing — and the config's own large-file hook caps at 500 KB.
+- ⚠️ **`test.sh`'s parallelism tuning was measured on a 15-core Mac; the suite runs on an 8-core VM.**
+  So `-n auto` is now FEWER workers than the default and marginally faster, and the header's advice
+  to "pass `-n auto` for the 21s back" is backwards. Re-measured, both tables kept and labelled with
+  their machine. **Do not trust either without checking `nproc`.**
+
 #### Issues the review has filed, all on `0.9.0`
 
 **#315 is still the one to read first**, and **#328 is still the loudest**. Those from tranches 1–4
@@ -199,6 +289,7 @@ by the next tranche that files one, which is how the line above it went wrong:
 | #329 | A 500 from `/healthz` is classified `UNREACHABLE`, which files no issue — so a certificate not covering its hostname pages you and the app being hard down does not |
 | #323 | History's Auto-Categorize banner is the third AI surface and never got the shared material; `AI_SURFACES` omits it, so the guard passes vacuously |
 | #324 | `.page-greeting`/`.page-sub` match no rule, so Home's subtitle is the only page lede in the app rendering at full body weight |
+| **#339** | **`changelog-guard.sh` blocks on a reshaped Stop payload**, which its own comment and `.claude/README.md` both say it must not. Two of the three named fail-open cases work; a dict with the key RENAMED reads as false and blocks, because `.get()` returns None without raising. The fix is a fork — the obvious one breaks the README's documented test and may silently disable the hook — and the script is a declared twin of one in `material-list-import-tool` |
 | **#333** | **`.dockerignore`'s `*.md` matches only the TOP LEVEL, so `docs/` and all of `.claude/` ship in the production image** — fifteen files. Found by tranche 8a running the suite inside the real artifact. `CLAUDE.md` is listed separately and *is* correctly absent, which is what made it invisible: the one file anyone would check for is gone. Not a disclosure (public repo), but two places state the wrong premise that `*.md` is stripped. Changes the shipped artifact, so it wants its own PR |
 
 ⚠️ **Nothing here is deployed.** Prod is still `0.8.0`, and this work sits in `## [Unreleased]`

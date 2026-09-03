@@ -45,6 +45,27 @@ log = logging.getLogger(__name__)
 # answer scope sane; the model never sees more than this).
 MAX_LIMIT = 25
 
+# Bound the question itself (#316). Nothing on this path capped it — not the
+# route, not ai.answer_question (which only rejects an EMPTY question), and not
+# app-wide, since MAX_CONTENT_LENGTH is unset — so the whole POST body became the
+# first user message of a BILLED call, re-sent on every one of ASK_MAX_TURNS
+# round-trips. Output was already bounded (max_tokens, the turn cap, MAX_LIMIT
+# above); the input was the one side with nothing on it.
+#
+# The realistic trigger is an accident — pasting a statement or a document into
+# the box — not an attack: the route is @login_required and rate-limited, and
+# this is a single-maintainer app. The only signal when it happens is the bill.
+#
+# A question to a finance assistant is a sentence or two, so this is generous.
+# feedback.py's 5000 is the precedent for the SHAPE, not the number: a bug report
+# is genuinely long-form, and it can afford to truncate silently because the tail
+# of a report is expendable.
+#
+# ⚠️ REFUSE, never truncate. A truncated question gets answered as though it were
+# the whole question, and neither the user nor the model knows the difference —
+# strictly worse than being told to shorten it.
+MAX_QUESTION = 1000
+
 
 class _ToolError(Exception):
     """A bad argument or unresolved name. dispatch turns it into an is_error
@@ -92,9 +113,14 @@ def _clamp_limit(args, default=10):
 
 def _resolve_category(cursor, user_id, name):
     """Match `name` (case-insensitive) against the user's OWN categories →
-    (id, name, kind). Raises _ToolError listing the valid names so the model can
-    retry — this is the per-user guard that the model can only name a category
-    the user owns."""
+    (id, name, kind).
+
+    Raises _ToolError listing the valid names so the model can retry — this is
+    the per-user guard that the model can only name a category the user owns.
+
+    ⚠️ First match wins, and names are not unique (#315). Same reasoning as
+    ai._match_id: ambiguous, never unsafe, and the real fix is a constraint.
+    """
     cursor.execute("SELECT id, name, kind FROM categories WHERE user_id = %s", (user_id,))
     rows = cursor.fetchall()
     target = str(name or '').strip().lower()
@@ -139,13 +165,14 @@ def _t_income_expense_summary(user_id, args):
 def _t_budget_status(user_id, args):
     year, month = _parse_month(args)
     rows = compute_budget_vs_actual(user_id, year, month)
+    # By attribute, not by positional unpack (#315 added a category_id).
     budgets = [{
-        "category": cat,
-        "budget": _money(budget),
-        "actual": _money(actual),
-        "remaining": _money(remaining),
-        "over_budget": float(remaining) < 0,
-    } for cat, budget, actual, remaining in rows]
+        "category": r.category,
+        "budget": _money(r.budget),
+        "actual": _money(r.actual),
+        "remaining": _money(r.remaining),
+        "over_budget": float(r.remaining) < 0,
+    } for r in rows]
     return {"month": f"{year}-{month:02d}", "budgets": budgets}
 
 
@@ -535,6 +562,13 @@ def ask():
 
     if not question:
         return _toast_only('Type a question first')
+    # Beside the empty check on purpose (#316), so both ways of asking nothing
+    # useful read the same way — and BEFORE answer_question, because the whole
+    # point is that the billed call is never made.
+    if len(question) > MAX_QUESTION:
+        return _toast_only(
+            f'That question is too long — keep it under {MAX_QUESTION:,} '
+            f'characters')
 
     # Bind the user id into the dispatch callback — ai.py never sees it.
     def _dispatch(tool_name, raw_input):

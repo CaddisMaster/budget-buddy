@@ -275,34 +275,49 @@ server itself — **read it before touching anything on the Droplet.**
 
 ## Current status
 
+▶️ **NEXT UP: #348 — the ROLLBACK path is broken, and `0.9.0` is what it would be rolling back.**
+`rollback.yml` builds its remote command as a double-quoted `ssh` argument and leaves **16
+backticks unescaped** in it, so the runner executes `printenv` locally and interpolates its own
+environment — **including `DROPLET_SSH_KEY`** — into the string sent to the Droplet. It last ran
+successfully 2026-07-27; the block that broke it arrived with #305, which shipped today. **The
+recovery path has therefore never run since the change that broke it.** Fix it before anything
+else needs rolling back.
+
+
 ⚠️ **[`docs/status.md`](docs/status.md) is the detail, and it lags `main` by construction** — it
 describes the last session rather than the current tree, and it asserts rather than going quiet.
 **Reconcile against `git log` and `gh issue list` at the start of every session.**
 
-- **Prod runs `0.8.0`, shipped and verified 2026-08-20.** `main` is AHEAD of it: `## [Unreleased]`
-  carries the CI Postgres fix (#282), the migration phasing (#277), the `anthropic` bump (#286)
-  and the version stamp (#305). ⚠️ **#305 is the first of the four with a user-facing surface**,
-  so "nothing in it is user-facing" is no longer on its own an argument against cutting — and
-  `0.9.0` would be the first release the new deploy handle can verify. It briefly also held
-  the ai-atlas landing card (#280); **#288 removed that card again on 2026-08-24** after the
-  project was abandoned and its repo deleted, and since it never shipped in a release its
-  changelog entry was deleted outright rather than answered with a `### Removed` line. The
-  `0.8.0` milestone is closed at 47 issues
-- **The tracker is NO LONGER empty** (changed 2026-08-28 — this bullet said the opposite for
-  three days and the line "expect to have to find work rather than pick it up" is now wrong).
-  **#309**, the full-repo read, is the open thread and the thing to resume. **`app/`, `sql/`,
-  `scripts/` and `tests/` have all been read in full**; what remains is **tranche 9** (`.github/`
-  + `.claude/`) and **tranche 10** (root config). It has also *filed* issues in every tranche —
-  **#312**, **#314**, **#315**, **#316**, **#319** from tranches 1–4, **#323**, **#324**,
-  **#326**, **#328**, **#329** from tranches 5–7, and **#333** from tranche 8. **#315** is still
-  the one to read first (two categories sharing a name merge into one budget row and invent an
-  overrun, which the AI month read then narrates as ground truth); **#328** is the loudest (the
-  `scripts/` ingest pipeline cannot insert a row and has not been able to since the app gained
-  users). **#36** stays date-parked to ~Dec 2026 with no milestone.
-  ⚠️ **`docs/status.md` is where the review's resume point lives** — which tranche is next and
-  what its scope is. ⚠️ **That resume point has gone stale twice running** (#331, then #337),
-  each time because a tranche merged without touching it, so **check it against
-  `git log --oneline | grep "#309"` rather than trusting it**. A **`0.9.0` milestone is open**
+- ✅ **Prod runs `0.9.0`, shipped and verified 2026-09-02** (35 commits, no new env vars, no
+  new migrations). **All three of its first-time mechanisms passed in the real deploy log**, in
+  this order: `Nothing to apply for phase before-pull — up to date.` → `running version 0.9.0
+  (matches 0.9.0)` → `Nothing to apply for phase after-pull — up to date.`, then `/healthz` 200
+  on the first attempt and `Announced 0.9.0 to 3 device(s).` The empty-pass migration case and
+  the version-stamp assertion are now **proven**, not just written down. ⚠️ **Still unproven:
+  `anthropic` 1.0.0 has made no live model call** — CI sets no key, so the first real round trip
+  is the month read and the Ask box being exercised in prod by hand. ⚠️ The release carried **no
+  user-facing feature at all**: the single `### Added` was the admin-only version stamp, so the
+  What's-new strip holds one block naming a `/settings` card, and every `### Fixed` was a patch
+  fix. The `0.8.0` milestone is closed at 47 issues; `0.9.0`'s stays open for its backlog.
+  Dependabot **#342 was deliberately held out** of the bundle and rides `0.10.0`. The bundle
+  briefly also held the ai-atlas landing card (#280); **#288 removed that card again on
+  2026-08-24** after the project was abandoned and its repo deleted, and since it never shipped
+  in a release its changelog entry was deleted outright rather than answered with a
+  `### Removed` line — which is why nothing in `0.9.0`'s notes mentions it
+- **The tracker is NO LONGER empty**, and its contents are now mostly **#309's output rather than
+  #309 itself**. ✅ **The full-repo read is COMPLETE** (closed 2026-08-31, ten tranches): every
+  tracked file — `app/`, `sql/`, `scripts/`, `tests/`, `.github/`, `.claude/` and the root build
+  config — has been read once, on purpose. It filed **twelve issues**: **#312**, **#314**,
+  **#315**, **#316**, **#319** (tranches 1–4), **#323**, **#324**, **#326**, **#328**, **#329**
+  (5–7), **#333** (8) and **#339** (9). **#315** is still the one to read first (two categories
+  sharing a name merge into one budget row and invent an overrun, which the AI month read then
+  narrates as ground truth); **#328** is the loudest (the `scripts/` ingest pipeline cannot insert
+  a row and has not been able to since the app gained users). **#36** stays date-parked to
+  ~Dec 2026 with no milestone. A **`0.9.0` milestone is open**.
+  ⚠️ **`docs/status.md` carried the review's resume point, and it went stale THREE times** (#331,
+  #337, #343) — every time because a tranche merged without touching it. **The loop ended because
+  the work finished, not because the problem was solved**; the next tranche-shaped piece of work
+  will reproduce it unless something mechanical links merging to updating
 - ⚠️ **`anthropic` is on `1.0.0`** (#286, merged 2026-08-25) alongside the minor/patch group
   (#285). The major bump was read rather than rubber-stamped, because the mocked `_call_*_model()`
   seams mean a green suite says nothing about an SDK change. **`tests/test_sdk_call_shape.py`

@@ -47,7 +47,11 @@
   <div class="ask-foot">
     <label for="ask-question" class="ask-label">Ask about your money</label>
     <div class="ask-row">
-      <input type="text" id="ask-question" name="question"
+      {# maxlength mirrors ask.MAX_QUESTION (#316) — the server refuses anything
+         longer, and this stops the user finding that out by submitting. Written
+         out rather than interpolated, matching profile.html's mirroring of
+         feedback.py's caps; test_ask.py fails if the two drift apart. #}
+      <input type="text" id="ask-question" name="question" maxlength="1000"
              placeholder="how much did I spend on groceries last month?"
              hx-post="{{ url_for('ask.ask') }}" hx-target="#ask-answer" hx-swap="innerHTML"
              hx-trigger="keyup[key=='Enter']" hx-indicator="#ask-spinner">

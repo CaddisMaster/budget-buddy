@@ -37,7 +37,15 @@ def _match_id(name, rows):
     id, else None. This is the server-side guard that the model can only select
     a row the current user actually owns. Account feeders alias their columns
     (account_id AS id, account_name AS name) so one attribute contract serves
-    both row shapes."""
+    both row shapes.
+
+    ⚠️ FIRST match wins, and two categories may share a name (#315 — there is
+    no uniqueness constraint on (user_id, name)). That is ambiguous but never
+    unsafe: `rows` is always the current user's own, so the wrong-but-owned row
+    is the worst case. Left as-is deliberately — disambiguating needs a way for
+    the model to name WHICH one, which is a design; forbidding duplicates
+    outright (#315's option B, a UNIQUE constraint) removes the question
+    instead, and is the better answer."""
     if not name:
         return None
     target = str(name).strip().lower()
