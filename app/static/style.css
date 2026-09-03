@@ -376,6 +376,14 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
    height (a credit card carries two extra lines) still align their buttons. */
 .account-actions { margin-top: auto; padding-top: 0.35rem; display: flex; flex-wrap: wrap; gap: 0.35rem; }
 .page-lede { margin: 0 0 var(--sp-4); color: var(--text-muted); font-size: 14px; }
+/* ⚠️ Home is the ONLY page that puts a lede inside .page-heading — in the
+   header ROW, beside the month picker — rather than at the top of the content
+   block, which is where the margin above is right. `.page-header` is
+   `align-items: center`, so an unreset bottom margin here makes the heading
+   block taller and shifts the greeting against the picker. The 2px is the gap
+   the greeting used to open with an inline `margin-bottom`, moved into the
+   sheet with the rest of the app's spacing (#324). */
+.page-heading .page-lede { margin-top: 2px; margin-bottom: 0; }
 /* The kind heading above each group on /categories (#243). */
 .group-head { margin-top: var(--sp-5); }
 .group-head:first-child { margin-top: 0; }
@@ -1082,8 +1090,11 @@ body.bulk-mode td.bulk-col { cursor: pointer; } /* whole cell toggles the box */
    The five surfaces the original comment named are down to Home's panel, the
    budget review and the cleanup banner. */
 /* ⚠️ .ai-card is now only a left rule for anything NOT carrying .ai-surface.
-   The material above replaced it on TWO of the three real AI surfaces — the
-   cleanup banner is still on this left rule alone (#323). */
+   The material above replaced it on ALL THREE real AI surfaces as of #323 —
+   Home's Ask panel, the budget review and History's Auto-Categorize banner.
+   Nothing carries .ai-card without .ai-surface today; the rule is kept as the
+   fallback for a surface added without the material, which the AI_SURFACES
+   test in tests/test_design_system.py is what actually catches. */
 .ai-card { border-left: 3px solid var(--accent-2); }
 .ai-card.ai-surface { border-left: none; }
 /* The one-row AI entry points — the Budgets review and History's

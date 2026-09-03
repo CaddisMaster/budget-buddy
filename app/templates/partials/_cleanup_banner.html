@@ -3,7 +3,7 @@
    review list. `oob` marks it for the out-of-band swap on apply. #}
 <div id="cleanup-banner"{% if oob %} hx-swap-oob="true"{% endif %}>
   {% if uncategorized_count > 0 %}
-  <div class="card ai-card ai-banner">
+  <div class="card ai-card ai-surface ai-banner">
     {% include 'partials/_ai_spark.html' %}
     <span><strong>{{ uncategorized_count }}</strong> uncategorized transaction{{ 's' if uncategorized_count != 1 else '' }}</span>
     <span class="ai-badge">AI</span>
@@ -11,7 +11,12 @@
             hx-post="{{ url_for('transactions.cleanup_scan') }}"
             hx-target="#cleanup-panel" hx-swap="innerHTML"
             hx-indicator="#cleanup-spinner">Review →</button>
-    <span id="cleanup-spinner" class="htmx-indicator" style="color:var(--text-muted)">Scanning your transactions…</span>
+    {# ⚠️ No inline colour here. This carried
+       style="color:var(--text-muted)", which outranks the .ai-surface ink
+       rules and would go near-invisible now the banner is a dark surface —
+       the same declaration budgets.html had to delete for the same reason
+       (#323). The class inherits the read ink instead. #}
+    <span id="cleanup-spinner" class="htmx-indicator">Scanning your transactions…</span>
   </div>
   {% endif %}
   <div id="cleanup-panel"></div>
