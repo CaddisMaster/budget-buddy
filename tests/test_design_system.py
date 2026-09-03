@@ -346,6 +346,11 @@ def test_history_headers_are_aligned_by_class_not_by_column_index(css_no_comment
 AI_SURFACES = (
     ("partials/_ask_panel.html", 'id="ask-panel"'),
     ("budgets.html", "ai-banner"),
+    # ⚠️ History's Auto-Categorize banner (#323). It predated this tuple, so
+    # "listed rather than discovered" protected every surface added AFTER the
+    # list and was vacuous for the one that came before it — the test passed
+    # green for two years without ever looking at the surface that failed.
+    ("partials/_cleanup_banner.html", "ai-banner"),
 )
 
 
@@ -412,3 +417,246 @@ def test_the_ai_badge_keeps_its_accent_on_the_dark_material(css_no_comments,
     restore = re.search(r"\.ai-surface \.ai-badge\s*\{([^}]*)\}", css_no_comments)
     assert restore and "--accent-2" in restore.group(1), \
         "the badge does not keep the AI accent on the dark material"
+
+
+def _ai_surface_subtree(template, marker):
+    """The AI surface element and its descendants, as text.
+
+    ⚠️ Bounded to the element deliberately, NOT scanned over the whole file.
+    budgets.html carries `color:var(--text-muted)` inline on two ordinary
+    paragraphs OUTSIDE the banner, where it is exactly right — a whole-file
+    scan would fail on correct markup and the rule would be deleted as noise.
+    """
+    body = re.sub(r"\{#.*?#\}", "", (TEMPLATES / template).read_text(),
+                  flags=re.S)
+    lines = body.splitlines()
+    first = next((i for i, ln in enumerate(lines)
+                  if marker in ln and "class=" in ln), None)
+    assert first is not None, f"{template}: no element matching {marker}"
+    assert "<div" in lines[first], \
+        f"{template}: the AI surface is not a <div>; this helper assumes one"
+
+    depth, block = 0, []
+    for line in lines[first:]:
+        block.append(line)
+        depth += line.count("<div") - line.count("</div>")
+        if depth == 0:
+            break
+    return "\n".join(block)
+
+
+@pytest.mark.parametrize("template,marker", AI_SURFACES,
+                         ids=[t for t, _ in AI_SURFACES])
+def test_no_ai_surface_re_inks_a_descendant_inline(template, marker):
+    """⚠️ An inline `style="color:…"` outranks every `.ai-surface` ink rule — a
+    style attribute beats any selector — so a descendant carrying one renders
+    near-invisible on the dark material.
+
+    This is not hypothetical. `budgets.html` shipped exactly
+    `style="color:var(--text-muted)"` on its spinner, and the ⚠️ comment
+    recording its removal is still in that file. #323 then found the same
+    declaration on History's banner, which is what a comment in one template
+    can never prevent in another. So the rule is asserted here instead of
+    written down a third time.
+    """
+    block = _ai_surface_subtree(template, marker)
+    offenders = re.findall(r'style="[^"]*color:[^"]*"', block)
+    assert not offenders, (
+        f"{template}: an AI surface re-inks a descendant inline ({offenders}) "
+        "— a style attribute outranks .ai-surface's ink rules, so it renders "
+        "near-invisible on the dark material"
+    )
+
+
+# --- a class in a template means something (#324) ------------------------------
+
+# Classes that deliberately style nothing. Each is a BEHAVIOUR hook, and each
+# has to name what reads it — an allowlist that anyone may append to without
+# saying why is just a slower version of having no test.
+BEHAVIOUR_ONLY_CLASSES = {
+    # history.html: document.querySelectorAll('.row-select') drives the
+    # bulk-select checkboxes. Never meant to carry a rule.
+    "row-select",
+    # The five empty chart containers. ApexCharts targets them by id and sizes
+    # them itself, so the class is a label on the div rather than a selector.
+    "chart-plot",
+}
+
+
+def test_every_class_a_template_uses_resolves_to_a_rule():
+    """A class that matches no rule is the CSS analogue of the Jinja attribute
+    typo in docs/gotchas.md: it renders, it just renders WRONG, and nothing
+    anywhere says so. CSS drops a selector that matches nothing without a word.
+
+    #324 was exactly this — Home's `.page-sub` and `.page-greeting` were
+    defined nowhere, so the front page's subtitle was the only page lede in the
+    app rendering at full body weight, and had been for as long as anyone could
+    tell. The cross-reference is cheap and mechanical, which is why it is a
+    test rather than a note.
+
+    ⚠️ Classes built by interpolation (`s{{ slot + 1 }}`, `trend-{{ dir }}`)
+    are skipped, not resolved: the literal fragment left behind after stripping
+    the expression is not a class anyone wrote. Their rules are asserted
+    elsewhere — see test_dashboard_merge.py's series-palette assertions.
+    """
+    stylesheets = (STATIC / "style.css").read_text() + \
+        (STATIC / "apexcharts.css").read_text()
+    sheets = re.sub(r"/\*.*?\*/", "", stylesheets, flags=re.S)
+    defined = set(re.findall(r"\.(-?[_a-zA-Z][\w-]*)", sheets))
+
+    JINJA = "\x00"  # marks where an expression was, so partials are skipped
+    undefined = {}
+    for path in sorted(TEMPLATES.rglob("*.html")):
+        body = re.sub(r"\{#.*?#\}", "", path.read_text(), flags=re.S)
+        for attr in re.finditer(r'class\s*=\s*"([^"]*)"', body):
+            value = re.sub(r"\{\{.*?\}\}|\{%.*?%\}", JINJA,
+                           attr.group(1), flags=re.S)
+            for cls in value.split():
+                if JINJA in cls or cls in defined:
+                    continue
+                if cls in BEHAVIOUR_ONLY_CLASSES:
+                    continue
+                undefined.setdefault(cls, set()).add(
+                    str(path.relative_to(TEMPLATES)))
+
+    assert not undefined, (
+        "classes used in a template that no stylesheet rule defines: "
+        + ", ".join(f".{c} ({', '.join(sorted(t))})"
+                    for c, t in sorted(undefined.items()))
+        + " — add a rule, point it at an existing one, or add it to "
+          "BEHAVIOUR_ONLY_CLASSES with a comment naming what reads it"
+    )
+
+
+def test_home_introduces_itself_the_way_every_other_page_does():
+    """The specific half of #324. Home is the app's front page and the one
+    whose subtitle drifted, so the general test above is held from this side
+    too: a future rename that reintroduces a bespoke class would satisfy the
+    cross-reference (by adding a rule) while losing the shared lede again.
+    """
+    src = (TEMPLATES / "dashboard.html").read_text()
+    heading = re.search(r"\{%\s*block page_heading\s*%\}(.*?)\{%\s*endblock",
+                        src, re.S)
+    assert heading, "dashboard.html no longer fills page_heading"
+    block = re.sub(r"\{#.*?#\}", "", heading.group(1), flags=re.S)
+
+    assert "page-lede" in block, \
+        "Home's subtitle does not use the shared .page-lede"
+    assert "style=" not in block, (
+        "Home's heading carries an inline style — the spacing this page needs "
+        "belongs in style.css beside the rest of the app's"
+    )
+
+
+def test_a_lede_in_the_header_row_does_not_push_the_heading_off_centre():
+    """⚠️ `.page-lede` carries `margin: 0 0 var(--sp-4)`, which is right where
+    every other page puts it — at the top of the CONTENT block, separating the
+    lede from what follows. Home is the only page that puts one inside
+    `.page-heading`, in the header ROW, and `.page-header` is
+    `align-items: center`: an unreset bottom margin there makes the heading
+    block taller and shifts it against the month picker beside it.
+
+    A rule that is correct at one position and wrong at another is exactly the
+    shape docs/gotchas.md keeps recording, so the reset is asserted rather than
+    left to the eye.
+    """
+    css = re.sub(r"/\*.*?\*/", "", CSS_PATH.read_text(), flags=re.S)
+    reset = re.search(r"\.page-heading\s+\.page-lede\s*\{([^}]*)\}", css)
+    assert reset, (
+        ".page-lede is used inside .page-heading but nothing resets its "
+        "bottom margin for the header row"
+    )
+    assert re.search(r"margin-bottom:\s*0", reset.group(1)), \
+        ".page-heading .page-lede does not clear the lede's bottom margin"
+
+
+# --- the digest email is the same product as the app (#319) -------------------
+
+DIGEST = TEMPLATES / "emails" / "weekly_digest.html"
+
+# What each brand colour in the digest is, and the stylesheet declaration it is
+# flattened from. The digest was indigo (#4f46e5) while the app is blue, so
+# tapping "Open Budget Buddy" changed hue mid-journey (#319).
+#
+# ⚠️ Hardcoding is CORRECT here and only here: email clients do not support CSS
+# custom properties, so this is the one surface in the app that cannot
+# reference a token. That is exactly why it drifted, and why the two files are
+# held to each other below instead.
+DIGEST_BRAND = (
+    # role, the email's literal, the token it flattens, which stop of it
+    ("the header bar", "#1E3A8A", "--grad-hero", 1),
+    ("the CTA button and body links", "#1B5FBF", "--accent-deep", 0),
+)
+
+# Email-only, and deliberately not in the stylesheet: a tint of the header bar
+# at the lightness the retired indigo tint had. The app has no surface that
+# needs it, so there is no token to borrow.
+DIGEST_TINT = "#CFE3F7"
+
+
+def _digest_body():
+    return re.sub(r"\{#.*?#\}", "", DIGEST.read_text(), flags=re.S)
+
+
+def _token_hexes(css_no_comments, token):
+    """The literal colours of one token's declaration, in order.
+
+    ⚠️ The FIRST declaration wins, which is the light `:root` one — the dark
+    block re-steps --grad-hero, and the digest is a light surface. Deliberate,
+    not incidental: an email has no prefers-color-scheme to follow.
+    """
+    decl = re.search(rf"{token}:\s*([^;]*);", css_no_comments)
+    assert decl, f"style.css no longer declares {token}"
+    return re.findall(r"#[0-9a-fA-F]{6}", decl.group(1))
+
+
+@pytest.mark.parametrize("role,value,token,stop", DIGEST_BRAND,
+                         ids=[r for r, _, _, _ in DIGEST_BRAND])
+def test_the_digest_brand_colours_are_the_stylesheets(role, value, token, stop):
+    """⚠️ Asserted as an EQUALITY BETWEEN THE TWO FILES, the same shape as
+    test_lint_local.py's ruff pins: the email's literal must equal what
+    style.css declares for the token it was flattened from. Moving the token
+    then breaks this test rather than silently leaving the email behind, which
+    is the whole failure #319 recorded.
+
+    ⚠️ Compared against the DECLARATION, not against the file. "This hex
+    appears somewhere in style.css" is the weak version and it passes vacuously
+    — #1B5FBF also sits inside --grad-accent, so re-stepping --accent-deep left
+    a substring check green while the email and the token had genuinely
+    diverged. Caught by mutating the token, not by reading the test.
+    """
+    css = re.sub(r"/\*.*?\*/", "", CSS_PATH.read_text(), flags=re.S)
+    hexes = _token_hexes(css, token)
+    assert len(hexes) > stop, \
+        f"{token} no longer has a stop {stop} to flatten for {role}"
+    assert hexes[stop].lower() == value.lower(), (
+        f"{token} stop {stop} is now {hexes[stop]}, but the digest email still "
+        f"paints {role} {value} — the email and the app have diverged"
+    )
+    assert value.lower() in _digest_body().lower(), \
+        f"the digest email does not use {value} for {role}"
+
+
+def test_the_digest_carries_no_trace_of_the_retired_indigo():
+    """Both halves, because fixing only the saturated one is the trap. The
+    header subtitle was `#c7d2fe` — indigo-200, a matched tint of `#4f46e5` —
+    so swapping just the three saturated occurrences the issue named would have
+    left a pale INDIGO line sitting on a BLUE bar. A test that only checked the
+    new brand colour arrived would have passed on that.
+    """
+    body = _digest_body().lower()
+    for retired, what in (("#4f46e5", "the indigo brand colour"),
+                          ("#c7d2fe", "its matched header tint")):
+        assert retired not in body, \
+            f"the digest email still carries {retired} — {what}"
+
+
+def test_the_digest_header_tint_belongs_to_the_bar_it_sits_on():
+    """The one email-only brand value. It has no token to be equal to, so what
+    is asserted instead is that it is still THERE and still the documented one
+    — a silent revert to an off-hue tint is the failure this guards.
+    """
+    assert DIGEST_TINT.lower() in _digest_body().lower(), (
+        f"the digest header subtitle is no longer {DIGEST_TINT}, the tint "
+        "chosen for the bar it sits on"
+    )
