@@ -9,14 +9,34 @@
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background:#f4f4f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2430;">
+  {# ⚠️ Every colour here is a LITERAL, and that part is correct: email clients
+     do not support CSS custom properties, so this is the one surface in the app
+     that cannot reference a token. Only WHICH literal was wrong (#319) — the
+     digest was indigo (#4f46e5) while the app is blue.
+
+     The brand values below are the stylesheet's, flattened for email:
+       #1E3A8A  the header bar   — --grad-hero's mid stop, the navy Home's hero
+                                   paints. Email cannot do gradients reliably
+                                   (Outlook drops them), so a hero-derived flat
+                                   is the faithful translation of that surface.
+       #1B5FBF  the CTA + links  — --accent-deep, --grad-accent's far end. The
+                                   app's primary button IS that gradient; its
+                                   deep end is what keeps a white label legible
+                                   on a flat fill (6.11:1 — a flat --accent
+                                   #378ADD would be 3.59:1, below AA and worse
+                                   than the indigo this replaces).
+       #CFE3F7  the bar subtitle — email-only, a blue tint of the bar at the
+                                   lightness the retired #c7d2fe had.
+     If --accent or --grad-hero ever moves, these move with it;
+     tests/test_design_system.py holds the two files to each other. #}
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f7;padding:24px 0;">
     <tr><td align="center">
       <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
 
         <!-- Header -->
-        <tr><td style="background:#4f46e5;padding:20px 28px;">
+        <tr><td style="background:#1E3A8A;padding:20px 28px;">
           <div style="color:#ffffff;font-size:18px;font-weight:700;">Budget Buddy</div>
-          <div style="color:#c7d2fe;font-size:13px;margin-top:2px;">Your weekly digest · {{ facts.month_name }} {{ facts.year }}</div>
+          <div style="color:#CFE3F7;font-size:13px;margin-top:2px;">Your weekly digest · {{ facts.month_name }} {{ facts.year }}</div>
         </td></tr>
 
         <!-- Narrative summary -->
@@ -116,14 +136,14 @@
 
         <!-- CTA -->
         <tr><td style="padding:24px 28px;">
-          <a href="https://budget.seandesmet.com" style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:11px 20px;border-radius:8px;">Open Budget Buddy</a>
+          <a href="https://budget.seandesmet.com" style="display:inline-block;background:#1B5FBF;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:11px 20px;border-radius:8px;">Open Budget Buddy</a>
         </td></tr>
 
         <!-- Footer -->
         <tr><td style="padding:16px 28px 24px 28px;border-top:1px solid #eceef2;">
           <p style="margin:0;font-size:12px;color:#a0a4b0;line-height:1.5;">
             You're receiving this because you turned on the weekly digest in Budget Buddy.
-            Manage it on your <a href="https://budget.seandesmet.com/profile" style="color:#4f46e5;">Profile</a> page.
+            Manage it on your <a href="https://budget.seandesmet.com/profile" style="color:#1B5FBF;">Profile</a> page.
           </p>
         </td></tr>
 

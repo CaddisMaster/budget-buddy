@@ -10,6 +10,33 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The Auto-Categorize banner on History now looks like the app's other AI
+  features.** Everywhere a model speaks, Budget Buddy changes *material* rather
+  than adding a badge — Home's Ask panel and the budget review on Budgets are
+  both dark panels, deliberately, in light mode and dark alike. History's
+  Auto-Categorize banner carried the same sparkle, the same "AI" pill and the
+  same kind of model call behind **Review →**, but it had never been given the
+  material: it rendered as an ordinary light card with a coloured edge.
+  So one feature looked like two different things depending on which page you
+  were standing on, which is exactly what that decision existed to end. The
+  banner is now the same panel as the other two, and the "Scanning your
+  transactions…" line that appears while it works was re-inked to suit it —
+  it was set to a muted grey that would have been near-invisible against the
+  darker panel.
+
+- **The weekly digest email is now branded in the app's own colours.** The
+  email was indigo while the app is blue, so tapping **Open Budget Buddy**
+  changed hue on the way in — the email did not look like it came from the
+  thing it opened.
+  Email is the one surface here that cannot use the app's colour tokens, since
+  mail clients do not support them, so the values have to be written out by
+  hand — which is how they drifted in the first place. They now come from the
+  app's own palette: the header takes the deep navy Home's banner is painted
+  in, and the button and links take the app's blue. The header's smaller line
+  moved with it, so the bar is one colour family rather than two.
+  Legibility improved rather than held: the heading and its subtitle both read
+  more clearly against the new header than they did against the old one.
+
 - **The Ask box now declines a very long question instead of sending it.**
   There was no limit on how much text the box would accept, anywhere on the
   path, so pasting a bank statement or a long document into it sent the whole
@@ -29,6 +56,18 @@ this project uses the `0.x` versioning scheme described in
   would know the difference.
 
 ### Fixed
+
+- **Home's "days left in the month" line was the only page introduction in the
+  app rendering at full weight.** Every other page — Accounts, Categories,
+  Budgets, Goals, Scheduled, Transfers — introduces itself in a smaller, muted
+  line under its heading. Home's was set in ordinary body text: larger, darker
+  and heavier than the same kind of line everywhere else, on the first page you
+  see after logging in.
+  Nothing was broken in a way anything could report. The line asked for two
+  styles that had never been written, and a style sheet simply ignores a name
+  it does not recognise — so it fell back to plain paragraph text and looked
+  slightly wrong forever, with nothing to notice. It now uses the same
+  introduction style as every other page.
 
 - **Typing an amount too big for the app to store said the system had broken,
   rather than that the number was too big.** Every money field is stored with
