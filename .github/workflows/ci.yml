@@ -142,7 +142,7 @@ jobs:
       - name: Ruff
         uses: astral-sh/ruff-action@v3
         with:
-          version: 0.16.4
+          version: 0.16.5
           args: check --output-format github
 
   test:

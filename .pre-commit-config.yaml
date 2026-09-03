@@ -34,7 +34,7 @@ repos:
     # close, reopened through the copy its test did not know about:
     # `test_lint_local.py` was named `test_the_two_ruff_pins_agree` and compared
     # two of three. It now compares all three.
-    rev: v0.16.4
+    rev: v0.16.5
     hooks:
       # Lint only. `ruff format` is deliberately not enabled — adopting it
       # would rewrite roughly 6,400 lines across 64 of 74 files. See the note
