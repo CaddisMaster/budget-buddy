@@ -5,18 +5,80 @@
 
 ## Current Status
 
-▶️ **NEXT SESSION: nothing is broken and waiting.** #348's rollback fix shipped 2026-09-02
-(#350), and its `printenv` interpolation is gone from both deploy workflows. The `0.10.0` backlog
-is six issues, none of them urgent, plus the BDD thread below.
+▶️ **NEXT SESSION: nothing is broken and waiting.** The `0.10.0` backlog is **nine open**
+(21 closed), of which four are the BDD thread and one is a bookkeeping close — see the block below.
+
+🛑 **READ THE ISSUE COMMENTS BEFORE PROPOSING ANY OF THE FOUR REMAINING #309 BUGS AS WORK.** Every
+one of #314, #326, #328 and #333 already carries a recorded decision, and **an issue's OPEN state
+is not evidence that it is open work.** This cost a wrong recommendation on 2026-09-04: "#326 and
+#314, the two migrations" was proposed as the next session, and #326 is not work at all.
+
+| issue | recorded decision | what is actually left |
+|---|---|---|
+| **#326** | **Close as premise-wrong, no migration** (Sean, 2026-09-02) | ⚠️ **Nothing but the close.** The real production dump shows every PK sequence already `OWNED BY` its column and no orphaned sequence. It has been sitting open since the decision. Closing it is `NOT_PLANNED`, which per the rule below **takes no milestone** |
+| **#314** | Unblocked — the 2026-08-31 dump holds **zero NaN** anywhere, so the `CHECK` constraints validate cleanly | The only genuine migration left. Stands alone in its own PR; additive, so `before-pull`. Re-check the dump before cutting — it is a point in time |
+| **#328** | **Option 1: delete the five dead files** (Sean, 2026-09-02) | Execution, not a fork: `ingest.py`, `clean.py`, `insert.py`, `test_connection.py`, `scripts/requirements.txt`, plus the `docs/architecture.md` sentence |
+| **#333** | Preference for option 1, and its comments carry a **second finding** — `.ruff_cache/` also ships and belongs in the same PR | Changes the shipped artifact, so it wants a deliberate look at the release after it. ⚠️ It will also turn `tests/test_changelog_guard.py`'s 14 tests into **skips** in the in-image run, since they are guarded on `.claude/` being present. That belongs in #333's PR, not discovered later as a count drop |
 
 **The largest open thread is #355 — adopt BDD**, and its pilot #356 is scoped and unstarted.
 Read #355 before touching it: the tool is **`behave`** (Sean's call, 2026-09-03), and the
 reasoning, the corrected cost estimate and the parallelism trade are all recorded there rather
 than here.
 
-Of the remaining bugs, **#328** is still the loudest (the `scripts/` ingest pipeline cannot insert
-a row and has not since the app gained users) and **#333** changes the shipped artifact, so it
-wants a deliberate look at the release after it.
+### The 2026-09-04 session: three signal bugs, and one that got away
+
+Three PRs merged, all green on `main` after the squash, plus one in the twin repo. **Nothing under
+`app/` changed at all**, so nothing here is user-facing and nothing is deployable on its own.
+
+They were grouped on purpose: **#329, #339 and #361 are one defect wearing three coats — a
+mechanism that exists to speak up misclassifies a state and goes quiet.** None needed a migration
+or touched the shipped artifact, and all three are the machinery every other issue's green run is
+judged by, so they were cleared before anything that depends on that signal.
+
+| PR | Issue | |
+|---|---|---|
+| #362 | **#329** closed | A 500 from `/healthz` is now `DRIFT`, not `UNREACHABLE` |
+| #363 | **#339** closed | The Stop hook fails open on a payload it cannot read |
+| #364 | **#361 still OPEN** | The feedback leak test explains its own failures and checks the right region |
+| twin #84 | twin #83 closed | The same hook fix in `material-list-import-tool` |
+
+**#329 — the cause was a missing test, not a wrong line.** `urlopen` raises `HTTPError` on any
+4xx/5xx and `HTTPError` subclasses `URLError`, so an app answering 500 was filed under
+`UNREACHABLE` — the bucket that deliberately files **no issue**. Production hard down was quieter
+than a certificate three weeks from expiry. It was invisible because `check_health` had **no test
+at all**: the file asserted a network fault is *not* drift and nothing asserted an HTTP error *is*.
+⚠️ **A guard tested in one direction only goes quiet in the other, and the passing test makes it
+look covered.** The enabling defect was that `with_retries` returned a formatted *string*, so the
+exception type was gone by the time the caller saw it — you cannot ask a string what kind of
+failure it was. Verified against the live site before merging; production still reports
+`[ok  ] app health`.
+
+**#339 — the fork was settled by grepping the installed Claude Code binary.** The risk in the fix
+was that if Claude Code *omits* `stop_hook_active` when false, "absent = unknown = fail open"
+would permanently disable the hook. The docs do not say; the binary does —
+`{...,hook_event_name:"Stop",stop_hook_active:o,...}`, an unconditional property, with a schema
+declaring it required. ⚠️ **The artifact is more authoritative than the page describing it, and it
+is the copy actually running.** The same read found the fact that resizes the issue: **a Stop hook
+is overridden after eight consecutive blocks** (`CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`), so the
+"unbounded trap" was always bounded. Also: fixing the code invalidated the documented *command*
+for checking it — `.claude/README.md`'s `echo '{}'` smoke test can no longer ever show a block.
+
+⚠️ **The dev image has `bash` but no `git`**, and the hook's first act is
+`command -v git || exit_open` — so a container-side test of the whole script would have exited 0
+for every payload and the entire 14-test table would have passed **vacuously**.
+`tests/test_changelog_guard.py` therefore *extracts and runs the script's real embedded parser*
+(never a copy — a fixed copy passes while the shipped script stays broken), and the exit codes were
+driven by hand on the host and recorded in #363's body.
+
+**#361 — not solved, and deliberately left open.** 15 full runs, no reproduction. The PR says
+`Refs`, not `Closes`. ⚠️ **15 greens is not absence:** the "1 in 9" rests on a single observation,
+so if the rate were really 11% then 15 clean runs happen ~17% of the time; combining both samples
+puts the estimate nearer 4%. What shipped is the ability to catch it next time — every assertion
+prints the status code, the flash region and the context around every `403` hit, and dumps the
+body. Ruled out by reading and recorded on the issue so nobody re-tests them: page entropy, the
+rate limiter (`limiter.enabled = False`, and no test re-enables it), CSRF (Flask-WTF caches the
+token per request, so a page carries **one**), and cross-test state (`users`/`client_a` are
+function-scoped).
 
 ### ⚠️ `0.9.0`'s milestone was closed LATE, and the reason generalises
 

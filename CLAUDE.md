@@ -275,11 +275,19 @@ server itself — **read it before touching anything on the Droplet.**
 
 ## Current status
 
-▶️ **NEXT UP: nothing is broken and waiting.** #348's rollback fix shipped 2026-09-02; the
-`0.10.0` backlog is six issues, none urgent. The largest open thread is **#355 — adopt BDD**, whose
-pilot (#356) is scoped and unstarted. **#328** is still the loudest bug (the `scripts/` ingest
-pipeline cannot insert a row), and **#333** changes the shipped artifact so it wants its own
-release to look at.
+▶️ **NEXT UP: nothing is broken and waiting.** The `0.10.0` backlog is **nine open, 21 closed**
+— four of those are the BDD thread (**#355**, whose pilot #356 is scoped and unstarted), four are
+what remains of #309, and one (#361) is a flake left open on purpose.
+
+🛑 **AN ISSUE BEING OPEN IS NOT EVIDENCE THAT IT IS OPEN WORK.** All four remaining #309 bugs —
+#314, #326, #328, #333 — **already carry a recorded decision in their comments**, and a decision
+recorded in a comment leaves no trace in `gh issue list`. On 2026-09-04 that produced a wrong
+recommendation: "#326 and #314, the two migrations" was proposed as the next session's work, and
+**#326 is not work at all — Sean decided on 2026-09-02 to close it as premise-wrong**, and it is
+still sitting open. **Read the comments, not just the body, before proposing any issue as work.**
+`docs/status.md` has the per-issue table; the short version is that #314 is the only real migration
+left, #328 is a decided deletion, and #333 changes the shipped artifact so it wants its own release
+to look at.
 
 ⚠️ **The open milestone is `0.10.0`.** `0.9.0` was closed 2026-09-03, late: it shipped on
 2026-09-02 but was left open to hold a backlog, so **seven commits landed after the `v0.9.0` tag
