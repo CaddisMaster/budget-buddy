@@ -84,6 +84,21 @@ this project uses the `0.x` versioning scheme described in
   what it always claimed to do. Nothing about when it legitimately speaks up
   has changed.
 
+- **A test guarding the feedback form failed roughly one run in nine, for a
+  reason nobody could see.** The test checks that when filing a report fails,
+  the raw text the GitHub API sent back — which names the repository and the
+  status code — never reaches the browser. It looked for those three digits
+  anywhere in the entire rendered page, which is both wider than the thing it
+  was guarding and impossible to explain when it fired: the failure showed a
+  single summary line and then would not happen again.
+  The check is now aimed at the place a leaked message would actually appear,
+  and the complete API text is still checked against the whole page, which is
+  the form that cannot be tripped by an unrelated coincidence. The test also
+  now confirms the other half of what it always claimed — that the text reaches
+  the log — and every one of its checks explains itself if it ever fails again,
+  rather than costing another hunt. Both halves were verified by breaking them
+  one at a time.
+
 - **Home's "days left in the month" line was the only page introduction in the
   app rendering at full weight.** Every other page — Accounts, Categories,
   Budgets, Goals, Scheduled, Transfers — introduces itself in a smaller, muted
