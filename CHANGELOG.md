@@ -72,6 +72,18 @@ this project uses the `0.x` versioning scheme described in
   problem. It is still only judged after every retry has given the same answer,
   so a blip while a new version is starting up does not raise anything.
 
+- **The local changelog reminder could have trapped a session instead of
+  nudging it.** The Stop hook that says "this branch changes `app/` but not
+  `CHANGELOG.md`" is built to speak once and then get out of the way, and to
+  stay silent whenever it cannot understand what it was handed. It did that for
+  an empty message, for something that was not JSON at all, and for a missing
+  interpreter — but not for a message that *was* readable and simply did not
+  carry the field it looks for. That case read as "I have not spoken yet", so
+  the hook would have said its piece on every stop rather than once. It now
+  treats a message it does not recognise as unknown and stays quiet, which is
+  what it always claimed to do. Nothing about when it legitimately speaks up
+  has changed.
+
 - **Home's "days left in the month" line was the only page introduction in the
   app rendering at full weight.** Every other page — Accounts, Categories,
   Budgets, Goals, Scheduled, Transfers — introduces itself in a smaller, muted

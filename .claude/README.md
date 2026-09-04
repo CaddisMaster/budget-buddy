@@ -45,14 +45,36 @@ missing `python3`. In particular, if `stop_hook_active` cannot be read it stays 
 blocking, because a hook that cannot tell whether it has already spoken would block on every stop
 with no way out — the failure mode that turns a nudge into a trap.
 
+⚠️ **That last sentence was not true for a renamed key until #339.** The parser used
+`.get("stop_hook_active")`, which answers `None` without raising, so a valid JSON object with the
+field renamed or dropped read as an explicit `false` and the hook blocked. It now subscripts, so an
+absent key raises and joins the unknown path. The behaviour a payload gets:
+
+| stdin | `stop_hook_active` | result |
+|---|---|---|
+| `{"stop_hook_active": false}` | explicitly not yet blocked | **blocks** (exit 2) |
+| `{"stop_hook_active": true}` | it already spoke | quiet |
+| `{"stopHookActive": false}`, `{}` | absent — shape we do not understand | quiet |
+| `garbage`, `[]`, empty | not a JSON object | quiet |
+
+Two things bound the damage even if all of that fails: Claude Code overrides a Stop hook after
+**eight** consecutive blocks (`CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`), and the escape hatch below always
+works.
+
 The escape hatch is **not** the `skip-changelog` label; a local working tree cannot see PR labels.
 It is `SKIP_CHANGELOG_GUARD=1`.
 
-Test it without ending a session:
+Test it without ending a session — send the **real** payload shape, which is what Claude Code
+actually writes on a Stop:
 
 ```bash
-echo '{}' | .claude/hooks/changelog-guard.sh ; echo "exit=$?"   # 0 clean, 2 blocking
+echo '{"stop_hook_active": false}' | .claude/hooks/changelog-guard.sh ; echo "exit=$?"  # 0 clean, 2 blocking
+echo '{}'                          | .claude/hooks/changelog-guard.sh ; echo "exit=$?"  # always 0 — fails open
 ```
+
+⚠️ The first line is the one that can ever show a block. `echo '{}'` used to be the documented test
+and stopped being a useful one in #339 — under the fix it exercises the fail-open path, which is
+worth keeping as the second line but proves nothing about whether the guard works.
 
 This script is a **twin** of the one in `material-list-import-tool`. A fix to the fail-open logic
 in one is a fix in the other.
