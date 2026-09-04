@@ -5,16 +5,67 @@
 
 ## Current Status
 
-▶️ **NEXT SESSION: fix `rollback.yml` — #348.** The recovery path is broken, and `0.9.0` is
-what it would be asked to roll back. Both deploy workflows send their remote command as a
-**double-quoted `ssh` argument**, where bash performs command substitution regardless of `#` —
-a `#` in that string is a comment to the *remote* shell and plain text to the local one.
-`release.yml` escapes its backticks three times and misses once (line 269, harmless: `/healthz`
-does not exist). `rollback.yml` escapes **none of 16**, and one pair is `` `printenv` ``, so the
-runner substitutes its **entire step environment — including `DROPLET_SSH_KEY` — into the string
-sent to the Droplet**. Measured, not inferred; #348 carries the probes. It last ran successfully
-**2026-07-27**, and the block that broke it arrived with **#305**, which shipped in `0.9.0`, so
-the recovery path has never run since the change that broke it.
+▶️ **NEXT SESSION: nothing is broken and waiting.** #348's rollback fix shipped 2026-09-02
+(#350), and its `printenv` interpolation is gone from both deploy workflows. The `0.10.0` backlog
+is six issues, none of them urgent, plus the BDD thread below.
+
+**The largest open thread is #355 — adopt BDD**, and its pilot #356 is scoped and unstarted.
+Read #355 before touching it: the tool is **`behave`** (Sean's call, 2026-09-03), and the
+reasoning, the corrected cost estimate and the parallelism trade are all recorded there rather
+than here.
+
+Of the remaining bugs, **#328** is still the loudest (the `scripts/` ingest pipeline cannot insert
+a row and has not since the app gained users) and **#333** changes the shipped artifact, so it
+wants a deliberate look at the release after it.
+
+### ⚠️ `0.9.0`'s milestone was closed LATE, and the reason generalises
+
+`0.9.0` shipped 2026-09-02. Its milestone was left **open** to hold the #309 backlog, so seven
+commits landed after the `v0.9.0` tag (`e07831c`) carrying a milestone for a version that had
+already shipped. That contradicts the rule this file states further down — *exactly one milestone
+is open at a time, closed when that version ships* — and `0.9.0` is the only milestone in the
+project's history that was ever open with work in it.
+
+Corrected 2026-09-03 in #359: `0.10.0` created, 20 post-tag items moved, `0.9.0` closed at 23 with
+`open=0`, which is how every other milestone here closed.
+
+⚠️ **The two traps in drawing that boundary, because the next release will hit both:**
+
+1. **`git log` prints the tag time in `-0400`; the GitHub API reports UTC.** The real cut is
+   `2026-09-02T13:42:54Z`, not `09:42`. Comparing the two as written puts an afternoon of work on
+   the wrong side of the release.
+2. **The release-cutting issue closes AFTER its own tag.** #345 ("Cut 0.9.0") closed at
+   `13:42:56Z` — two seconds after the tag commit — because the close event lands just after the
+   merge. A naive "closed after the tag → next release" rule moves the issue that cut the release
+   out of the release it cut. Check whether the issue's PR **is** the tagged commit (#347 is
+   `e07831c`) rather than trusting the timestamp.
+
+### On `main`, not yet deployed (2026-09-03)
+
+Two PRs merged, both green on `main` after the squash:
+
+| PR | Closed |
+|---|---|
+| #354 | #319, #323, #324 — one design story: Home's lede, History's AI banner, the digest email |
+| #342 | Dependabot minor/patch group, plus the two ruff pins Dependabot cannot see |
+
+**#354** was three #309 findings batched by file and test surface. Worth knowing for later: the
+issue's preferred fix for **#319** (make the email header `--accent`) was **measurably worse** than
+the indigo it replaced — a flat `#378ADD` bar puts the white wordmark at 3.59:1 and its subtitle
+at 2.74:1, both below AA. The shipped answer takes `--grad-hero`'s mid stop for the bar and
+`--accent-deep` for the button, which *improves* both (10.36:1 and 7.88:1). ⚠️ **An issue's
+preferred option is a proposal, not a measurement** — this one had never had the numbers run.
+
+**#342** carried the ruff pin split for the second time (#285 was the first, when there were two
+copies rather than three). ⚠️ **It also needed the dev container REBUILT before the suite meant
+anything**: the running container still had `anthropic` 1.0.0, `click` 8.4.2 and `pydantic` 2.13.4
+from the pre-bump requirements, so `./test.sh` on its own would have reported green for a bump it
+never exercised. `docker compose up -d --build web` first, then test — this applies to every
+dependency PR, not just this one.
+
+⚠️ **`anthropic` is now `1.2.0`.** `tests/test_sdk_call_shape.py` passes against it, so the call
+shape `ai.py` relies on still holds. **The live round trip is still unproven** — that gap has been
+open since #286 and none of this closes it.
 
 ⚠️ **Also still unproven: `anthropic` 1.0.0 has never made a live model call.** CI sets no key
 and every seam is stubbed, so the shipped image's first real round trip is the month read and
@@ -29,7 +80,9 @@ by #305). If you are reading a session transcript older than 2026-08-31, distrus
 ### ✅ `0.9.0` SHIPPED AND LIVE (2026-09-02)
 
 **Prod runs `0.9.0`, deployed and verified 2026-09-02.** 35 commits since `v0.8.0`, **no new env
-vars and no new migrations**. The `0.9.0` milestone stays **open** for the #309 backlog.
+vars and no new migrations**. ⚠️ Its milestone was left **open** for the #309 backlog, which
+was the wrong call and was corrected on 2026-09-03 — see the milestone note at the top of this
+file. `0.9.0` is closed at 23; `0.10.0` is the open one.
 
 **The three first-time mechanisms all passed in the real deploy log**, and the ordering is the
 part that mattered:
