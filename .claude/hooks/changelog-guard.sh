@@ -49,6 +49,26 @@ command -v git >/dev/null 2>&1 || exit_open
 # stdin, a reshaped payload or a missing python3 would otherwise mean blocking
 # on every stop with no way to notice it had already spoken, which is the one
 # failure mode that turns a nudge into a trap. Unknown state = stay quiet.
+#
+# ⚠️ THIS CLAIM WAS FALSE FOR A DICT WITH A RENAMED KEY UNTIL #339, and it was
+# false in the one place this file argues hardest. `.get("stop_hook_active")`
+# returns None without raising, so `{"stopHookActive": false}` — valid JSON,
+# field renamed — was indistinguishable from an explicit `false` and the hook
+# went on to block. The subscript below is the fix: an absent key raises and
+# joins the unknown path, which is what the paragraph above always promised.
+#
+# Two things bound the blast radius even when everything here fails, recorded
+# so the next person can size the risk rather than re-deriving it:
+# Claude Code overrides a Stop hook after EIGHT consecutive blocks
+# (`CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`), and `SKIP_CHANGELOG_GUARD=1` always works.
+#
+# ⚠️ `stop_hook_active` is sent UNCONDITIONALLY on Stop — measured against the
+# installed Claude Code (2.1.260), whose payload is built as an object literal
+# with the field always present and whose schema declares it required. That is
+# why "absent = unknown" cannot silently disable this hook: absent means the
+# shape genuinely changed. Re-measure before trusting this on a much later
+# version, and note the embedded program must contain NO single quote — it is
+# delimited by one.
 input="$(cat 2>/dev/null || true)"
 [ -n "$input" ] || exit_open
 command -v python3 >/dev/null 2>&1 || exit_open
@@ -57,12 +77,16 @@ already_blocked="$(
   printf '%s' "$input" | python3 -c '
 import json, sys
 try:
-    print("1" if json.load(sys.stdin).get("stop_hook_active") else "0")
+    # Subscript, NOT .get(): a dict that does not carry the field is a payload
+    # this hook does not understand, and unknown must never read as false.
+    print("1" if json.load(sys.stdin)["stop_hook_active"] else "0")
 except Exception:
-    # Field renamed, payload reshaped, not JSON at all.
+    # Field renamed or dropped, payload reshaped, not a JSON object at all.
     print("unknown")
 ' 2>/dev/null || echo unknown
 )"
+# Only a payload that explicitly said "not already blocked" gets past here.
+# "1" (already spoke) and "unknown" (cannot tell) both fall through to open.
 [ "$already_blocked" = "0" ] || exit_open
 
 [ "${SKIP_CHANGELOG_GUARD:-}" = "1" ] && exit_open
