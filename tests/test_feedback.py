@@ -12,6 +12,8 @@ account names, no balances. That decision is invisible in the code's shape: a
 future change adding "helpful" triage context would look like an improvement and
 break nothing else. That test is the net.
 """
+import logging
+
 import pytest
 
 import app.github as github
@@ -202,19 +204,91 @@ def test_long_input_is_capped_before_the_api_sees_it(client_a, enabled, seam):
 
 # --- failure handling -------------------------------------------------------
 
-def test_github_failure_shows_a_friendly_message(client_a, enabled, monkeypatch):
-    """Acceptance criterion: a friendly failure, never an exception — and the
-    raw API text reaches the log, never the browser."""
-    monkeypatch.setattr(github, '_call_github', _GitHubSeam(fail=True))
-    response = client_a.post('/feedback', data={
-        'kind': 'bug', 'title': 't', 'description': 'd'}, follow_redirects=True)
+# The whole of the seam's error text. "the raw API text must not reach the
+# browser" means THIS string, and asserting it whole is the form that cannot
+# false-positive on a page that innocently contains one of its fragments.
+_SEAM_ERROR = 'GitHub API returned 403 for CaddisMaster/budget-buddy'
 
-    assert response.status_code == 200
+_FLASH_OPEN = '<div class="flash">'
+
+
+def _flash_region(body):
+    """The one place base.html renders a flashed message into.
+
+    Returns '' when the page rendered no flash at all — which is itself a
+    finding, and one the caller should report rather than silently pass.
+    """
+    start = body.find(_FLASH_OPEN)
+    if start == -1:
+        return ''
+    return body[start:body.find('</div>', start) + len('</div>')]
+
+
+def _diagnose(response, tmp_path, label):
+    """Everything needed to state the cause, written before the assert fires.
+
+    ⚠️ This exists because #361 failed once under `-n 10`, showed only the
+    `short test summary info` line, and then would not reproduce in eight
+    consecutive runs — so there was nothing to reason from and every hypothesis
+    was a guess. The next occurrence explains itself instead of costing another
+    hunt. Do not simplify this back to a bare assert.
+    """
     body = response.get_data(as_text=True)
-    assert 'Something went wrong' in body
+    dump = tmp_path / 'feedback-failure.html'
+    dump.write_text(body, encoding='utf-8')
+
+    hits = []
+    index = body.find('403')
+    while index != -1:
+        hits.append(f'  @{index}: ...{body[max(0, index - 120):index + 123]!r}...')
+        index = body.find('403', index + 1)
+
+    return '\n'.join([
+        f'{label}',
+        f'  status={response.status_code}',
+        f'  flash={_flash_region(body)!r}',
+        f'  raw seam text present={_SEAM_ERROR in body}',
+        f'  body written to {dump}',
+        f'  {len(hits)} occurrence(s) of "403":',
+        *hits,
+    ])
+
+
+def test_github_failure_shows_a_friendly_message(client_a, enabled, monkeypatch,
+                                                 tmp_path, caplog):
+    """Acceptance criterion: a friendly failure, never an exception — and the
+    raw API text reaches the log, never the browser.
+
+    ⚠️ The leak check is scoped to the FLASH REGION, not to the whole document
+    (#361). `'403' not in body` was an unanchored substring search over an
+    entire rendered page, so any future page furniture that happened to contain
+    those three digits would fail a test about a GitHub error — and the page is
+    where a leak would have to appear as a flashed message anyway. The whole
+    raw string is still asserted against the entire body, which is the form that
+    actually states "no API text anywhere" and cannot false-positive.
+    """
+    monkeypatch.setattr(github, '_call_github', _GitHubSeam(fail=True))
+    with caplog.at_level(logging.ERROR):
+        response = client_a.post('/feedback', data={
+            'kind': 'bug', 'title': 't', 'description': 'd'}, follow_redirects=True)
+
+    assert response.status_code == 200, _diagnose(response, tmp_path, 'not a 200')
+    body = response.get_data(as_text=True)
+    flash = _flash_region(body)
+    assert 'Something went wrong' in flash, _diagnose(response, tmp_path, 'no friendly message')
+
     # The seam's error text names the repo and the status code. Neither leaks.
-    assert '403' not in body
-    assert 'CaddisMaster/budget-buddy' not in body
+    assert '403' not in flash, _diagnose(response, tmp_path, 'status code leaked')
+    assert 'CaddisMaster/budget-buddy' not in body, _diagnose(response, tmp_path, 'repo leaked')
+    assert _SEAM_ERROR not in body, _diagnose(response, tmp_path, 'raw API text leaked')
+
+    # The other half of the docstring, which nothing asserted until #361: the
+    # text has to go SOMEWHERE, and an operator error that reaches neither the
+    # browser nor the log is a failure nobody can diagnose.
+    logged = '\n'.join(record.getMessage() + str(record.exc_info or '')
+                        for record in caplog.records)
+    assert 'feedback issue creation failed' in logged, (
+        'the failure was hidden from the browser and never written to the log')
 
 
 def test_a_response_without_an_issue_number_is_a_failure(monkeypatch, enabled):
