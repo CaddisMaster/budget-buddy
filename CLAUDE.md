@@ -275,14 +275,19 @@ server itself — **read it before touching anything on the Droplet.**
 
 ## Current status
 
-▶️ **NEXT UP: #348 — the ROLLBACK path is broken, and `0.9.0` is what it would be rolling back.**
-`rollback.yml` builds its remote command as a double-quoted `ssh` argument and leaves **16
-backticks unescaped** in it, so the runner executes `printenv` locally and interpolates its own
-environment — **including `DROPLET_SSH_KEY`** — into the string sent to the Droplet. It last ran
-successfully 2026-07-27; the block that broke it arrived with #305, which shipped today. **The
-recovery path has therefore never run since the change that broke it.** Fix it before anything
-else needs rolling back.
+▶️ **NEXT UP: nothing is broken and waiting.** #348's rollback fix shipped 2026-09-02; the
+`0.10.0` backlog is six issues, none urgent. The largest open thread is **#355 — adopt BDD**, whose
+pilot (#356) is scoped and unstarted. **#328** is still the loudest bug (the `scripts/` ingest
+pipeline cannot insert a row), and **#333** changes the shipped artifact so it wants its own
+release to look at.
 
+⚠️ **The open milestone is `0.10.0`.** `0.9.0` was closed 2026-09-03, late: it shipped on
+2026-09-02 but was left open to hold a backlog, so **seven commits landed after the `v0.9.0` tag
+carrying a milestone for a version that had already shipped**. That contradicts the rule two
+sections above — *exactly one is open at a time, closed when that version ships* — and it is the
+only milestone in the project's history that has ever been open with work in it. Corrected in
+#359; `docs/status.md` records how the boundary was drawn, including the two traps that make it
+easy to get wrong.
 
 ⚠️ **[`docs/status.md`](docs/status.md) is the detail, and it lags `main` by construction** — it
 describes the last session rather than the current tree, and it asserts rather than going quiet.
@@ -313,7 +318,7 @@ describes the last session rather than the current tree, and it asserts rather t
   sharing a name merge into one budget row and invent an overrun, which the AI month read then
   narrates as ground truth); **#328** is the loudest (the `scripts/` ingest pipeline cannot insert
   a row and has not been able to since the app gained users). **#36** stays date-parked to
-  ~Dec 2026 with no milestone. A **`0.9.0` milestone is open**.
+  ~Dec 2026 with no milestone. The open milestone is **`0.10.0`** (see the block above).
   ⚠️ **`docs/status.md` carried the review's resume point, and it went stale THREE times** (#331,
   #337, #343) — every time because a tranche merged without touching it. **The loop ended because
   the work finished, not because the problem was solved**; the next tranche-shaped piece of work
