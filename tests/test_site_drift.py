@@ -16,6 +16,11 @@ makes the whole check untrustworthy rather than merely broken:
 2. **Unreachable is not drift.** A flaky runner must never report "production is
    stale". These are separate statuses with separate exit codes, and the tests
    pin that separation rather than trusting it.
+3. **An HTTP status is not unreachability either** (#329). `check_health` had no
+   test at all, which is how a 500 came to be classified the same as a refused
+   connection — and the workflow files an issue for one and nothing for the
+   other. The tests below cover BOTH sides of that line, because asserting only
+   that a network fault is not drift is what left the gap.
 """
 
 import datetime as dt
@@ -162,7 +167,8 @@ def test_retries_are_exhausted_before_anything_is_reported():
 
     assert value is None
     assert len(calls) == 3, "gave up before exhausting its retries"
-    assert "boom" in failure
+    # with_retries hands back the exception itself (#329), not a rendered string.
+    assert "boom" in str(failure)
 
 
 def test_a_transient_failure_that_then_succeeds_is_not_reported():
@@ -178,6 +184,136 @@ def test_a_transient_failure_that_then_succeeds_is_not_reported():
 
     assert value == b"fine"
     assert failure is None
+
+
+# ---------------------------------------------------------------------------
+# check_health — the app checking itself (#329)
+#
+# ⚠️ This whole section is what was missing. The file proved a network fault is
+# not drift and never asserted the other half, so nothing noticed that an HTTP
+# status was taking the same path. Both directions are pinned here on purpose:
+# a test that only guards the permissive direction is how this happened.
+# ---------------------------------------------------------------------------
+
+
+def _http_error(code, url=None):
+    """The exception `urlopen` raises for a status — the server ANSWERED."""
+    return urllib.error.HTTPError(url or drift.HEALTH_URL, code, "nope", {}, None)
+
+
+def test_a_healthy_healthz_is_ok():
+    status, detail = drift.check_health(fetch=lambda _url: b"ok", sleep=lambda _: None)
+
+    assert status == drift.OK
+    assert drift.HEALTH_URL in detail
+
+
+@pytest.mark.parametrize("code", [500, 502, 503])
+def test_a_server_error_from_healthz_is_drift_not_unreachable(code):
+    """The single most actionable thing this script can learn.
+
+    UNREACHABLE files no issue (see the workflow tests at the bottom of this
+    file), so classifying a 500 there means production being hard down is
+    quieter than a certificate three weeks from expiry.
+    """
+    def answers_badly(_url):
+        raise _http_error(code)
+
+    status, detail = drift.check_health(fetch=answers_badly, sleep=lambda _: None)
+
+    assert status == drift.DRIFT, "the app answered — that is not 'we could not tell'"
+    assert status != drift.UNREACHABLE
+    assert str(code) in detail, "the report does not say which status came back"
+
+
+@pytest.mark.parametrize("code", [404, 403])
+def test_a_client_error_from_healthz_is_drift_too(code):
+    """/healthz should never 404 or challenge for auth.
+
+    Restricting this to 5xx would leave a route that has been renamed, or put
+    behind something, reading as a transient network fault forever.
+    """
+    def answers_badly(_url):
+        raise _http_error(code)
+
+    status, _ = drift.check_health(fetch=answers_badly, sleep=lambda _: None)
+
+    assert status == drift.DRIFT
+
+
+def test_a_transport_failure_from_healthz_is_still_unreachable():
+    """The direction that was already right, now actually asserted.
+
+    A refused connection from a GitHub runner must never file an issue saying
+    production is broken — that is the reasoning UNREACHABLE exists for, and
+    #329 must not take it away while fixing the other side.
+    """
+    def refuse(_url):
+        raise urllib.error.URLError("connection refused")
+
+    status, detail = drift.check_health(fetch=refuse, sleep=lambda _: None)
+
+    assert status == drift.UNREACHABLE
+    assert status != drift.DRIFT
+    assert "connection refused" in detail
+
+
+def test_a_status_is_judged_only_after_the_retries_are_exhausted():
+    """A blip during a container swap must not file an issue.
+
+    The classification changed in #329; the retry-before-you-judge rule the
+    module docstring argues for did not.
+    """
+    attempts = []
+
+    def answers_badly(_url):
+        attempts.append(1)
+        raise _http_error(503)
+
+    status, _ = drift.check_health(fetch=answers_badly, sleep=lambda _: None)
+
+    assert len(attempts) == 3, "judged the app on one answer"
+    assert status == drift.DRIFT
+
+
+def test_a_status_that_recovers_within_the_retries_is_not_drift():
+    attempts = []
+
+    def flaky(_url):
+        attempts.append(1)
+        if len(attempts) < 3:
+            raise _http_error(502)
+        return b"ok"
+
+    status, _ = drift.check_health(fetch=flaky, sleep=lambda _: None)
+
+    assert status == drift.OK
+
+
+def test_an_unhealthy_app_exits_the_way_a_stale_certificate_does(monkeypatch):
+    """The end of the chain, not just the classification.
+
+    DRIFT is only louder than UNREACHABLE because of what main() returns and
+    what the workflow does with it. Asserting the status alone would pass even
+    if the exit code did not follow.
+    """
+    def answers_badly(_url):
+        raise _http_error(500)
+
+    # ⚠️ Patching drift._fetch_page would do nothing: it is check_health's
+    # DEFAULT ARGUMENT, bound once when the function was defined. run_all()
+    # looks check_health up as a module global, so that is the seam.
+    real_check_health = drift.check_health
+    monkeypatch.setattr(
+        drift, "check_health",
+        lambda: real_check_health(fetch=answers_badly, sleep=lambda _: None),
+    )
+    monkeypatch.setattr(drift, "check_certificate", lambda *a, **kw: (drift.OK, "fine"))
+
+    assert drift.main([]) == 1, "an unhealthy app must exit the way drift does"
+    assert drift.main(["--allow-unreachable"]) == 1, (
+        "--allow-unreachable exists for flaky networks and must not swallow this"
+    )
 
 
 def test_an_unreachable_host_is_unreachable_not_drift():

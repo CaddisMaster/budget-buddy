@@ -57,6 +57,21 @@ this project uses the `0.x` versioning scheme described in
 
 ### Fixed
 
+- **The daily site check treated a broken app as an app it could not reach, and
+  said nothing.** The check that watches production has two ways to report a
+  problem: *drift*, which opens an issue, and *unreachable*, which deliberately
+  opens nothing so a flaky network cannot fill the tracker with noise. A server
+  answering "I am broken" was being filed under the second one — so the app
+  being hard down was quieter than a certificate merely getting close to
+  expiry, and the only trace was a red scheduled run, which is the sort of red
+  people stop seeing.
+  The line now falls where it should: if the server could not be reached at
+  all, nothing is filed, exactly as before. If it was reached and answered with
+  an error, that is the app reporting on itself — the one thing the health
+  endpoint exists to do — and it is now reported as loudly as a certificate
+  problem. It is still only judged after every retry has given the same answer,
+  so a blip while a new version is starting up does not raise anything.
+
 - **Home's "days left in the month" line was the only page introduction in the
   app rendering at full weight.** Every other page — Accounts, Categories,
   Budgets, Goals, Scheduled, Transfers — introduces itself in a smaller, muted

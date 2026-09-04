@@ -40,6 +40,16 @@ is what makes drift logic testable without a network or a live site.
 "production is stale" — that would file issues on every flaky runner. Fetches
 retry, and an exhausted retry is reported as its own distinct status.
 
+⚠️ **BUT AN HTTP STATUS IS NOT UNREACHABILITY** (#329). The line falls between
+*we could not tell* and *it told us*: a refused connection, a DNS failure or a
+TLS timeout is ``UNREACHABLE``; a server that answers ``500`` has been reached
+and is reporting on itself, which is ``DRIFT``. Getting this wrong is not
+symmetric — the workflow files an issue for drift and deliberately files
+nothing for unreachability, so the permissive direction makes a hard-down
+production the quietest thing this script can see. ``check_health`` therefore
+inspects the failure's TYPE, which is why ``with_retries`` hands back the
+exception rather than a formatted string.
+
 ⚠️ **Nothing here reads a file from the working tree any more** (#299), so the
 result no longer depends on which branch you run it from. Every check queries
 the live host and judges it against a rule stated in this file.
@@ -99,20 +109,31 @@ def _fetch_cert(hostname: str, port: int = 443, timeout: float = 20.0) -> dict:
 
 
 def with_retries(call, attempts: int = 3, delay: float = 2.0, sleep=time.sleep):
-    """Return ``(value, None)`` or, once retries are exhausted, ``(None, reason)``.
+    """Return ``(value, None)`` or, once retries are exhausted, ``(None, exc)``.
 
     Retrying is what keeps a flaky runner from being reported as a stale
     deployment. ``sleep`` is injected so tests do not actually wait.
+
+    ⚠️ **The exception itself is returned, not a rendered string** (#329). A
+    caller has to be able to tell an HTTP status apart from a transport fault —
+    an ``HTTPError`` means the server was reached and answered — and a string
+    cannot be asked which it was. ``describe_failure()`` renders it for the
+    report line; nothing else should need to.
     """
-    last = ""
+    last = None
     for attempt in range(attempts):
         try:
             return call(), None
         except (urllib.error.URLError, ssl.SSLError, OSError) as exc:
-            last = f"{type(exc).__name__}: {exc}"
+            last = exc
             if attempt < attempts - 1:
                 sleep(delay)
     return None, last
+
+
+def describe_failure(exc: BaseException) -> str:
+    """How an exhausted retry reads in the report."""
+    return f"{type(exc).__name__}: {exc}"
 
 
 # ---------------------------------------------------------------------------
@@ -175,8 +196,8 @@ def check_certificate(
     sleep=time.sleep,
 ) -> tuple[str, str]:
     cert, failure = with_retries(lambda: fetch(hostname), sleep=sleep)
-    if failure:
-        return UNREACHABLE, f"{hostname}: {failure}"
+    if failure is not None:
+        return UNREACHABLE, f"{hostname}: {describe_failure(failure)}"
 
     names = san_hostnames(cert)
     if not san_covers(names, hostname):
@@ -198,9 +219,32 @@ def check_certificate(
 
 
 def check_health(fetch=_fetch_page, sleep=time.sleep) -> tuple[str, str]:
+    """The one check here that watches the APPLICATION rather than its TLS.
+
+    ⚠️ **An HTTP status is DRIFT, not UNREACHABLE** (#329). ``urlopen`` raises
+    ``HTTPError`` on any 4xx/5xx, and ``HTTPError`` subclasses ``URLError`` — so
+    until #329 a production returning 500 landed in the same bucket as a refused
+    connection, and the workflow files no issue for that bucket. An app that is
+    hard down was therefore quieter than a certificate merely nearing expiry.
+
+    The distinction is the one this endpoint exists to provide: the server was
+    reached, and its answer says it is broken. That is not "we could not tell".
+
+    Retries still come first — a status is judged only after every attempt has
+    given the same answer, so a single blip during a container swap does not
+    file an issue.
+    """
     _, failure = with_retries(lambda: fetch(HEALTH_URL), sleep=sleep)
-    if failure:
-        return UNREACHABLE, f"{HEALTH_URL}: {failure}"
+    if isinstance(failure, urllib.error.HTTPError):
+        # Any status, not only 5xx: /healthz should never 404 either, and a
+        # redirect or an auth challenge here would be just as wrong.
+        return DRIFT, (
+            f"{HEALTH_URL}: HTTP {failure.code} on every attempt. The app "
+            "answered and says it is unhealthy — check the container and the "
+            "database, see RUNBOOK.md."
+        )
+    if failure is not None:
+        return UNREACHABLE, f"{HEALTH_URL}: {describe_failure(failure)}"
     return OK, f"{HEALTH_URL} answers"
 
 
