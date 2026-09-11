@@ -122,10 +122,10 @@
    recurs: this strip renders on '/' whether or not AI is configured, so any
    copy naming an AI-gated element can make an absence assertion elsewhere fail
    from the one place on the page that ignores the gate. #}
-<div class="card whatsnew" id="whatsnew" data-version="v0.9.0" hidden>
+<div class="card whatsnew" id="whatsnew" data-version="v0.10.0" hidden>
   <div class="whatsnew-head">
-    <strong>What's new in v0.9.0</strong>
-    <span class="recurring-badge">2026-09-02</span>
+    <strong>What's new in v0.10.0</strong>
+    <span class="recurring-badge">2026-09-11</span>
     <span class="whatsnew-actions">
       <button type="button" class="btn btn-sm" id="whatsnew-toggle">Details</button>
       <button type="button" class="btn btn-sm" id="whatsnew-dismiss" aria-label="Dismiss">&#10005;</button>
@@ -133,17 +133,45 @@
   </div>
   <div class="whatsnew-body" hidden>
     <div class="whatsnew-block">
-      <strong>The app now tells you which build it is running</strong>
+      <strong>Two categories with the same name no longer share one budget row</strong>
       <ul class="whatsnew-list">
-        <li><strong>Settings carries a Deployment card</strong> naming the exact version and
-            commit this app is serving. Nothing it served said so before, so &ldquo;did the
-            update actually land?&rdquo; had no answer you could read off the screen.</li>
-        <li><strong>The deploy checks it too, and stops if the answer is wrong.</strong> It
-            asks the running app what it is and refuses to finish unless that matches the
-            release just published &mdash; and it asks before any database change runs.</li>
-        <li><strong>That gap was not hypothetical.</strong> This app once sat three releases
-            out of date with every indicator green, because the only thing being checked was
-            whether the deploy command succeeded, not what came back up afterwards.</li>
+        <li><strong>Budgets could show a number that was never real.</strong> If two of your
+            categories had the same name, their spending was added together into a single row
+            and compared against one of the two budgets &mdash; so a category you were well
+            inside could be reported as over.</li>
+        <li><strong>The monthly read repeated it as fact.</strong> That row fed the AI summary
+            on Home, which had no way to know the figure was wrong, so the overrun was
+            explained back to you rather than questioned.</li>
+        <li><strong>Rows are now matched on the category itself, not its name.</strong> Two
+            categories that happen to share a name stay two rows with two budgets.</li>
+      </ul>
+    </div>
+    <div class="whatsnew-block">
+      <strong>The question box on Home turns down an over-long question</strong>
+      <ul class="whatsnew-list">
+        <li><strong>There was no limit on what it would send.</strong> Pasting something long
+            &mdash; a statement, a document &mdash; sent all of it away to be answered, and
+            again with every follow-up. The only sign it had happened would have been the
+            bill.</li>
+        <li><strong>Questions now stop at a thousand characters,</strong> far more than a
+            question about your money needs, and the box stops accepting more as you type
+            &mdash; so you see the limit before you send rather than after.</li>
+        <li><strong>It declines rather than quietly shortening.</strong> Half a question
+            answered as though it were the whole one is worse than being told to trim it.</li>
+      </ul>
+    </div>
+    <div class="whatsnew-block">
+      <strong>Home, History and the weekly email now look like one app</strong>
+      <ul class="whatsnew-list">
+        <li><strong>Where the app speaks, it now looks the same everywhere.</strong> The
+            suggestion banner on History was an ordinary light card while the same kind of
+            feature on Home and Budgets was a dark panel, so one thing looked like two
+            depending on which page you were standing on.</li>
+        <li><strong>The weekly email is in the app's own colours.</strong> It was a different
+            shade from the app it opens, so tapping through changed colour on the way in. It
+            now reads more clearly than it did before, not just differently.</li>
+        <li><strong>Home opens with the month itself</strong> rather than a line counting the
+            days left in it.</li>
       </ul>
     </div>
   </div>
