@@ -5,8 +5,17 @@
 
 ## Current Status
 
-▶️ **NEXT SESSION: nothing is broken and waiting.** The `0.10.0` backlog is **nine open**
-(21 closed), of which four are the BDD thread and one is a bookkeeping close — see the block below.
+▶️ **NEXT SESSION: nothing is broken and waiting.** `0.10.0` shipped 2026-09-11. The open
+milestone is **`0.11.0`**, carrying **nine open** items — four are the BDD thread, four are the
+#309 remnants, and one (#361) is a flake left open on purpose. ⚠️ **One of the nine is not work:**
+#326 carries a recorded decision to close it premise-wrong, and it was carried into `0.11.0` only
+because the milestone roll moved everything open. It should be closed `NOT_PLANNED` with no
+milestone, which would make the true count eight.
+
+✅ **`0.10.0`'s milestone was closed ON SHIP DAY**, at `open=0, closed=25` — the corrective to
+#359, and the shape every milestone but `0.9.0`'s has closed at. The nine carried-over items were
+moved to a newly created `0.11.0` *before* closing, which is the step that makes the close possible
+at all.
 
 🛑 **READ THE ISSUE COMMENTS BEFORE PROPOSING ANY OF THE FOUR REMAINING #309 BUGS AS WORK.** Every
 one of #314, #326, #328 and #333 already carries a recorded decision, and **an issue's OPEN state
@@ -19,6 +28,8 @@ is not evidence that it is open work.** This cost a wrong recommendation on 2026
 | **#314** | Unblocked — the 2026-08-31 dump holds **zero NaN** anywhere, so the `CHECK` constraints validate cleanly | The only genuine migration left. Stands alone in its own PR; additive, so `before-pull`. Re-check the dump before cutting — it is a point in time |
 | **#328** | **Option 1: delete the five dead files** (Sean, 2026-09-02) | Execution, not a fork: `ingest.py`, `clean.py`, `insert.py`, `test_connection.py`, `scripts/requirements.txt`, plus the `docs/architecture.md` sentence |
 | **#333** | Preference for option 1, and its comments carry a **second finding** — `.ruff_cache/` also ships and belongs in the same PR | Changes the shipped artifact, so it wants a deliberate look at the release after it. ⚠️ It will also turn `tests/test_changelog_guard.py`'s 14 tests into **skips** in the in-image run, since they are guarded on `.claude/` being present. That belongs in #333's PR, not discovered later as a count drop |
+
+All four of those, and the BDD thread below, now sit on **`0.11.0`** rather than `0.10.0`.
 
 **The largest open thread is #355 — adopt BDD**, and its pilot #356 is scoped and unstarted.
 Read #355 before touching it: the tool is **`behave`** (Sean's call, 2026-09-03), and the
@@ -80,6 +91,45 @@ rate limiter (`limiter.enabled = False`, and no test re-enables it), CSRF (Flask
 token per request, so a page carries **one**), and cross-test state (`users`/`client_a` are
 function-scoped).
 
+### The 2026-09-11 session: `0.10.0` shipped
+
+Three PRs merged and **a release cut and deployed**. Prod moved `0.9.0` → `0.10.0`.
+
+| PR | Issue | |
+|---|---|---|
+| #366 | — | Dependabot minor/patch group, plus the two ruff pins Dependabot cannot see |
+| #368 | **#367** closed | Cut `0.10.0`: changelog rolled, What's-new strip rewritten to three blocks |
+| #370 | **#369** closed | This record, and the release ordering written into `docs/deployment.md` |
+
+**#366 — the ruff pin split caught a Dependabot group for the THIRD time** (#285, #342, #366).
+Dependabot bumps `ruff==` in `requirements-dev.txt` and cannot see the `version:` input of
+`astral-sh/ruff-action` in `ci.yml` or the `rev:` of `ruff-pre-commit`, so all three disagreed and
+`test_all_three_ruff_pins_agree` failed — taking the Tests **and** the image job red. Two one-line
+edits. ⚠️ **The guard is working exactly as designed and the recurrence is not a defect in it** —
+but three times in three bumps is the signal that the mechanism could move: Dependabot has no way
+to learn about the other two pins, so the fix will keep being manual until something derives them
+from one source.
+
+⚠️ **The local container was seven days old**, so the first suite run would have tested the
+*pre-bump* versions and reported green. Rebuilt with `docker compose up -d --build web` and
+confirmed `anthropic 1.3.0`, `pywebpush 2.5.0`, `ruff 0.16.6` inside it **before** trusting the run.
+
+**`0.10.0` — what it proved and what it did not.**
+
+- No new env vars, no new migrations. Both migration phases were empty passes, as at `0.9.0`.
+- `/healthz` returned **200 on the first attempt** — the retry loop only prints on a non-200 and
+  printed nothing. `Announced 0.10.0 to 3 device(s).`
+- ⚠️ **`anthropic` STILL has not made a live model call.** It is now on `1.3.0` after two bumps
+  (#342, #366) and CI sets no key. This has been carried as unproven since `0.9.0`.
+
+**The What's-new strip trap is live, and it nearly bit.** The comment above the strip warns that
+copy naming an AI-gated element can break an absence assertion elsewhere, because the strip renders
+on `/` **whether or not AI is configured**. Two tests assert the literal string `Ask your finances`
+is absent from an AI-less dashboard (`test_dashboard_layout.py::test_no_read_panel_without_a_key`,
+`test_dashboard_merge.py::test_ask_box_hidden_without_key`), and one of the three agreed blocks is
+about exactly that feature. It is worded around the phrase. ⚠️ **The trap is not the feature being
+AI-gated — it is that the strip is the one element on the page that ignores the gate.**
+
 ### ⚠️ `0.9.0`'s milestone was closed LATE, and the reason generalises
 
 `0.9.0` shipped 2026-09-02. Its milestone was left **open** to hold the #309 backlog, so seven
@@ -102,7 +152,12 @@ Corrected 2026-09-03 in #359: `0.10.0` created, 20 post-tag items moved, `0.9.0`
    out of the release it cut. Check whether the issue's PR **is** the tagged commit (#347 is
    `e07831c`) rather than trusting the timestamp.
 
-### On `main`, not yet deployed (2026-09-03)
+### ✅ SHIPPED in `0.10.0` — was "on `main`, not yet deployed" (2026-09-03)
+
+⚠️ **Header corrected 2026-09-11.** Both PRs below shipped in `0.10.0` on 2026-09-11. The
+block sat claiming "not yet deployed" for eight days after it was written, which is the
+failure this file is most prone to: a section written mid-session asserts a state and nothing
+revisits it. **When you write one of these, the deploy that ships it is what closes it.**
 
 Two PRs merged, both green on `main` after the squash:
 

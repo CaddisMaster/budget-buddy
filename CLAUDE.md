@@ -275,9 +275,11 @@ server itself — **read it before touching anything on the Droplet.**
 
 ## Current status
 
-▶️ **NEXT UP: nothing is broken and waiting.** The `0.10.0` backlog is **nine open, 21 closed**
-— four of those are the BDD thread (**#355**, whose pilot #356 is scoped and unstarted), four are
-what remains of #309, and one (#361) is a flake left open on purpose.
+▶️ **NEXT UP: nothing is broken and waiting.** `0.10.0` shipped 2026-09-11; the open milestone
+is **`0.11.0`**, carrying **nine open** — four are the BDD thread (**#355**, whose pilot #356 is
+scoped and unstarted), four are what remains of #309, and one (#361) is a flake left open on
+purpose. ⚠️ **One of the nine is not work**: #326 rode the milestone roll despite a recorded
+decision to close it premise-wrong, so the true count is eight.
 
 🛑 **AN ISSUE BEING OPEN IS NOT EVIDENCE THAT IT IS OPEN WORK.** All four remaining #309 bugs —
 #314, #326, #328, #333 — **already carry a recorded decision in their comments**, and a decision
@@ -289,9 +291,11 @@ still sitting open. **Read the comments, not just the body, before proposing any
 left, #328 is a decided deletion, and #333 changes the shipped artifact so it wants its own release
 to look at.
 
-⚠️ **The open milestone is `0.10.0`.** `0.9.0` was closed 2026-09-03, late: it shipped on
-2026-09-02 but was left open to hold a backlog, so **seven commits landed after the `v0.9.0` tag
-carrying a milestone for a version that had already shipped**. That contradicts the rule two
+⚠️ **The open milestone is `0.11.0`.** ✅ **`0.10.0` was closed ON SHIP DAY** (2026-09-11) at
+`open=0, closed=25`, with its nine open items moved to `0.11.0` first — the corrective landing, and
+the shape every milestone but `0.9.0`'s has closed at. `0.9.0` was closed 2026-09-03, late: it
+shipped on 2026-09-02 but was left open to hold a backlog, so **seven commits landed after the
+`v0.9.0` tag carrying a milestone for a version that had already shipped**. That contradicts the rule two
 sections above — *exactly one is open at a time, closed when that version ships* — and it is the
 only milestone in the project's history that has ever been open with work in it. Corrected in
 #359; `docs/status.md` records how the boundary was drawn, including the two traps that make it
@@ -301,7 +305,15 @@ easy to get wrong.
 describes the last session rather than the current tree, and it asserts rather than going quiet.
 **Reconcile against `git log` and `gh issue list` at the start of every session.**
 
-- ✅ **Prod runs `0.9.0`, shipped and verified 2026-09-02** (35 commits, no new env vars, no
+- ✅ **Prod runs `0.10.0`, shipped and verified 2026-09-11** (13 PRs, no new env vars, no new
+  migrations). `/healthz` 200 on the first attempt; `Announced 0.10.0 to 3 device(s).` Unlike
+  `0.9.0` it carries **user-facing change** — the What's-new strip holds three blocks rather than
+  one admin-only note. ⚠️ **`anthropic` STILL has not made a live model call**, now on `1.3.0`
+  after two bumps (#342, #366); CI sets no key, so the first round trip remains a manual check in
+  prod. ⚠️ **The release-prep PR must merge BEFORE the Release is published** — `release.yml`
+  builds the release's *target commit*, so publishing first ships an image stamped with the new
+  version whose What's-new strip names the old one, and **every check still passes**.
+- ✅ **`0.9.0`, shipped and verified 2026-09-02** (35 commits, no new env vars, no
   new migrations). **All three of its first-time mechanisms passed in the real deploy log**, in
   this order: `Nothing to apply for phase before-pull — up to date.` → `running version 0.9.0
   (matches 0.9.0)` → `Nothing to apply for phase after-pull — up to date.`, then `/healthz` 200

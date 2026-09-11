@@ -14,6 +14,16 @@
   `/healthz` verification. To ship: cut the Release, click approve. **Rollback** = the
   `rollback.yml` workflow dispatched with a version (it confirms the manifest exists in ghcr
   before touching the box).
+  - ⚠️ **THE RELEASE-PREP PR MERGES FIRST. Publishing is the LAST step** (2026-09-11, `0.10.0`).
+    `release.yml` triggers on `release: published` and `actions/checkout@v7` takes the release's
+    **target commit** — so publishing before the prep PR lands builds the *pre-prep* commit. The
+    result is not a failed deploy, which is what makes it dangerous: the image is stamped from the
+    **tag**, so `running version 0.10.0 (matches 0.10.0)` is true of an image whose What's-new
+    strip and `CHANGELOG.md` still say the *previous* version. Every check passes and the app
+    greets you with the last release's notes. **A green deploy is not evidence the notes match the
+    build** — the only thing that is, is tagging a commit whose changelog carries that version's
+    heading. Order: prep PR green → squash-merge → confirm the `main` run → publish the Release
+    targeting `main` → approve the gate.
   - **A pre-release deliberately does NOT move `:latest`** — that is what makes throwaway test
     releases safe. Images are tagged `:<version>`, `:sha-<short>`, and `:latest`.
   - **`docker compose pull web`, never a bare `pull`.** A bare pull also fetches `postgres:16`,
