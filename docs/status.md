@@ -6,11 +6,12 @@
 ## Current Status
 
 ▶️ **NEXT SESSION: nothing is broken and waiting.** `0.10.0` shipped 2026-09-11. The open
-milestone is **`0.11.0`**, carrying **nine open** items — four are the BDD thread, four are the
-#309 remnants, and one (#361) is a flake left open on purpose. ⚠️ **One of the nine is not work:**
-#326 carries a recorded decision to close it premise-wrong, and it was carried into `0.11.0` only
-because the milestone roll moved everything open. It should be closed `NOT_PLANNED` with no
-milestone, which would make the true count eight.
+milestone is **`0.11.0`**, carrying **eight open** items — four are the BDD thread, three are the
+#309 remnants, and one (#361) is a flake left open on purpose. ✅ **#326 was closed `NOT_PLANNED`
+with no milestone on 2026-09-11**, nine days after the decision was recorded. It had been carried
+into `0.11.0` by the milestone roll, which moves everything still open — ⚠️ **a mechanical roll
+cannot read comments**, so it will always overstate the work by however many decided-but-unclosed
+issues exist. Check the roll's output against the decisions, not just the count.
 
 ✅ **`0.10.0`'s milestone was closed ON SHIP DAY**, at `open=0, closed=25` — the corrective to
 #359, and the shape every milestone but `0.9.0`'s has closed at. The nine carried-over items were
@@ -24,7 +25,7 @@ is not evidence that it is open work.** This cost a wrong recommendation on 2026
 
 | issue | recorded decision | what is actually left |
 |---|---|---|
-| **#326** | **Close as premise-wrong, no migration** (Sean, 2026-09-02) | ⚠️ **Nothing but the close.** The real production dump shows every PK sequence already `OWNED BY` its column and no orphaned sequence. It has been sitting open since the decision. Closing it is `NOT_PLANNED`, which per the rule below **takes no milestone** |
+| **#326** | **Closed `NOT_PLANNED`, no milestone (2026-09-11)** — decision recorded 2026-09-02 | ✅ **Done.** The real production dump shows every PK sequence already `OWNED BY` its column and no orphaned sequence, so the migration would have been a no-op against the only database that matters. Kept in this table as the **worked example** for the rule above, not as outstanding work |
 | **#314** | Unblocked — the 2026-08-31 dump holds **zero NaN** anywhere, so the `CHECK` constraints validate cleanly | The only genuine migration left. Stands alone in its own PR; additive, so `before-pull`. Re-check the dump before cutting — it is a point in time |
 | **#328** | **Option 1: delete the five dead files** (Sean, 2026-09-02) | Execution, not a fork: `ingest.py`, `clean.py`, `insert.py`, `test_connection.py`, `scripts/requirements.txt`, plus the `docs/architecture.md` sentence |
 | **#333** | Preference for option 1, and its comments carry a **second finding** — `.ruff_cache/` also ships and belongs in the same PR | Changes the shipped artifact, so it wants a deliberate look at the release after it. ⚠️ It will also turn `tests/test_changelog_guard.py`'s 14 tests into **skips** in the in-image run, since they are guarded on `.claude/` being present. That belongs in #333's PR, not discovered later as a count drop |

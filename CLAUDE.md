@@ -276,17 +276,18 @@ server itself — **read it before touching anything on the Droplet.**
 ## Current status
 
 ▶️ **NEXT UP: nothing is broken and waiting.** `0.10.0` shipped 2026-09-11; the open milestone
-is **`0.11.0`**, carrying **nine open** — four are the BDD thread (**#355**, whose pilot #356 is
+is **`0.11.0`**, carrying **eight open** — four are the BDD thread (**#355**, whose pilot #356 is
 scoped and unstarted), four are what remains of #309, and one (#361) is a flake left open on
-purpose. ⚠️ **One of the nine is not work**: #326 rode the milestone roll despite a recorded
-decision to close it premise-wrong, so the true count is eight.
+purpose. ✅ **#326 was closed `NOT_PLANNED` on 2026-09-11**, executing a decision recorded
+2026-09-02; it briefly rode the milestone roll because **a mechanical roll cannot read comments**.
 
-🛑 **AN ISSUE BEING OPEN IS NOT EVIDENCE THAT IT IS OPEN WORK.** All four remaining #309 bugs —
-#314, #326, #328, #333 — **already carry a recorded decision in their comments**, and a decision
-recorded in a comment leaves no trace in `gh issue list`. On 2026-09-04 that produced a wrong
-recommendation: "#326 and #314, the two migrations" was proposed as the next session's work, and
-**#326 is not work at all — Sean decided on 2026-09-02 to close it as premise-wrong**, and it is
-still sitting open. **Read the comments, not just the body, before proposing any issue as work.**
+🛑 **AN ISSUE BEING OPEN IS NOT EVIDENCE THAT IT IS OPEN WORK.** The three remaining #309 bugs —
+#314, #328, #333 — **already carry a recorded decision in their comments**, and a decision recorded
+in a comment leaves no trace in `gh issue list`. On 2026-09-04 that produced a wrong recommendation:
+"#326 and #314, the two migrations" was proposed as the next session's work when **#326 was not work
+at all** — Sean had decided on 2026-09-02 to close it as premise-wrong, and it then sat open until
+2026-09-11. ✅ **#326 is now closed, and stands as the worked example rather than an outstanding
+item.** **Read the comments, not just the body, before proposing any issue as work.**
 `docs/status.md` has the per-issue table; the short version is that #314 is the only real migration
 left, #328 is a decided deletion, and #333 changes the shipped artifact so it wants its own release
 to look at.
