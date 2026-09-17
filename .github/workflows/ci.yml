@@ -106,7 +106,15 @@ jobs:
           # itself. Without it, the pull request that edits this line cannot
           # exercise the step it is editing, and reports SUCCESS having checked
           # nothing.
-          if matches '^(Dockerfile$|requirements.*\.txt$|tests/|\.github/workflows/ci\.yml$)'; then
+          # ⚠️ `.dockerignore` is in here because it decides WHAT SHIPS, and a
+          # change to it is invisible to every other check: the dev bind mount
+          # serves the files it strips, so a local run and the PR both stay
+          # green. Omitting it meant a `.dockerignore`-only pull request
+          # classified as image=false and skipped the in-image suite — the one
+          # run that could see the difference. Found while fixing #333, whose
+          # own defect (`*.md` matching only top-level) had shipped docs/ and
+          # .claude/ for months. Same shape as #176 and #218, one file along.
+          if matches '^(Dockerfile$|\.dockerignore$|requirements.*\.txt$|tests/|\.github/workflows/ci\.yml$)'; then
             image=true
           else
             image=false
@@ -508,6 +516,33 @@ jobs:
             exit 1
           fi
           echo "no pytest in the shipped image, as expected"
+
+      # ⚠️ This asserts against the BUILT IMAGE, never against .dockerignore's
+      # text. Reading the pattern is precisely how `*.md` was believed to strip
+      # docs/ for months (#333): Docker's `*.md` matches only top-level, and the
+      # one file anyone would have checked for — CLAUDE.md — is listed
+      # separately and so really was absent. A check that grepped the ignore
+      # file would have agreed with the mistake and reported clean.
+      - name: Excluded paths are absent from the shipped image
+        run: |
+          # Positive control FIRST. If /app is the wrong path or `find` is not
+          # doing what it looks like, every absence assertion below passes
+          # vacuously and reports a spotless image.
+          control=$(docker run --rm budget-buddy:ci sh -c 'find /app -name "*.py" | head -1')
+          if [ -z "$control" ]; then
+            echo "::error::Found no .py file under /app, so this step is looking in the wrong place and its absence checks prove nothing."
+            exit 1
+          fi
+          echo "positive control: find reaches real files under /app ($control)"
+
+          leaked=$(docker run --rm budget-buddy:ci sh -c 'find /app \( -name "*.md" -o -name ".ruff_cache" -o -name "docs" -o -name ".claude" \) | sort')
+          if [ -n "$leaked" ]; then
+            echo "::error::.dockerignore claims to exclude these, but they are in the image:"
+            echo "$leaked"
+            echo "A nested pattern has most likely stopped matching — see the comment block in .dockerignore."
+            exit 1
+          fi
+          echo "no markdown, docs/, .claude/ or .ruff_cache/ in the shipped image, as expected"
 
       # Its own step because two things need it now: the boot check below and,
       # when the shipped runtime changes, the in-image suite after that.
