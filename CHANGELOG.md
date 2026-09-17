@@ -8,6 +8,24 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Fixed
+
+- **The database now refuses to store a NaN in any money column.** PostgreSQL's
+  `numeric` accepts `NaN`, so every amount column in the schema could hold one.
+  Nothing in the app writes one — `helpers.parse_signed_amount()` rejects
+  non-finite input — but that validator is younger than the columns it guards,
+  and a stored NaN would have been genuinely nasty: `goals` raises
+  `ValueError: cannot convert float NaN to integer` when projecting one, which
+  is a 500 on a page you can reach, and a NaN credit limit used to render `nan%`
+  on Accounts *and* turn the whole "Total available credit" figure into `nan`,
+  because that line sums across cards.
+
+  `sql/38` adds a `CHECK` to all nine `numeric` columns, so the database refuses
+  what the application already refuses. Applied to every column rather than only
+  the ones doing arithmetic today, because a rule applied selectively is a rule
+  someone has to remember at the next column. Verified against the current
+  production dump first — no existing row violates it. (#314)
+
 ### Removed
 
 - **The `scripts/` ingest pipeline is gone** — `ingest.py`, `clean.py`,

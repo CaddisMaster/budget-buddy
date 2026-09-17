@@ -95,8 +95,8 @@ CREATE TABLE public.account (
     created_at timestamp without time zone DEFAULT now(),
     user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     last_checked_in date,  -- v10.9 balance check-in; NULL = never reconciled
-    credit_limit numeric(10,2),  -- v10.10 credit limit; NULL = not set; meaningful for Credit Card accounts
-    apr numeric(5,2)  -- v10.15 APR percent; NULL = not set; meaningful for Credit Card accounts
+    credit_limit numeric(10,2) CONSTRAINT account_credit_limit_is_finite CHECK (credit_limit <> 'NaN'::numeric),  -- v10.10 credit limit; NULL = not set; meaningful for Credit Card accounts
+    apr numeric(5,2) CONSTRAINT account_apr_is_finite CHECK (apr <> 'NaN'::numeric)  -- v10.15 APR percent; NULL = not set; meaningful for Credit Card accounts
 );
 
 -- ------------------------------------------------------------
@@ -104,7 +104,7 @@ CREATE TABLE public.account (
 -- ------------------------------------------------------------
 CREATE TABLE public.transactions (
     id SERIAL PRIMARY KEY,
-    amount numeric(10,2) NOT NULL,
+    amount numeric(10,2) NOT NULL CONSTRAINT transactions_amount_is_finite CHECK (amount <> 'NaN'::numeric),
     description text,
     category_id integer,
     account_id integer,
@@ -150,7 +150,7 @@ CREATE INDEX transactions_schedule_idx ON transactions (schedule_id);
 CREATE TABLE public.budgets (
     id SERIAL PRIMARY KEY,
     category_id integer NOT NULL,
-    amount numeric(10,2) NOT NULL,
+    amount numeric(10,2) NOT NULL CONSTRAINT budgets_amount_is_finite CHECK (amount <> 'NaN'::numeric),
     created_at timestamp without time zone DEFAULT now(),
     user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT uq_budget_user_category UNIQUE (user_id, category_id)
@@ -165,10 +165,10 @@ CREATE TABLE public.budgets (
 CREATE TABLE public.goals (
     id SERIAL PRIMARY KEY,
     name character varying(80) NOT NULL,
-    target_amount numeric(10,2) NOT NULL,
+    target_amount numeric(10,2) NOT NULL CONSTRAINT goals_target_amount_is_finite CHECK (target_amount <> 'NaN'::numeric),
     target_date date,
     account_id integer NOT NULL REFERENCES account(account_id) ON DELETE CASCADE,
-    baseline_amount numeric(10,2) NOT NULL DEFAULT 0,
+    baseline_amount numeric(10,2) NOT NULL DEFAULT 0 CONSTRAINT goals_baseline_amount_is_finite CHECK (baseline_amount <> 'NaN'::numeric),
     goal_type VARCHAR(10) NOT NULL DEFAULT 'save'
         CHECK (goal_type IN ('save', 'payoff')),
     created_at timestamp without time zone DEFAULT now(),
@@ -184,7 +184,7 @@ CREATE TABLE public.goals (
 -- next_due/recur_second_day columns above are legacy as of v10 (always default).
 CREATE TABLE public.schedules (
     id SERIAL PRIMARY KEY,
-    amount numeric(10,2) NOT NULL,
+    amount numeric(10,2) NOT NULL CONSTRAINT schedules_amount_is_finite CHECK (amount <> 'NaN'::numeric),
     description text,
     category_id integer REFERENCES categories(id) ON DELETE RESTRICT,
     account_id integer NOT NULL REFERENCES account(account_id) ON DELETE RESTRICT,
@@ -246,7 +246,7 @@ ALTER TABLE budgets
 CREATE TABLE public.budget_history (
     id SERIAL PRIMARY KEY,
     category_id integer NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
-    amount numeric(10,2),
+    amount numeric(10,2) CONSTRAINT budget_history_amount_is_finite CHECK (amount <> 'NaN'::numeric),
     changed_at timestamp without time zone NOT NULL DEFAULT now(),
     user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE
 );
@@ -288,7 +288,7 @@ CREATE TABLE public.agent_runs (
 -- ------------------------------------------------------------
 CREATE TABLE public.transfer_schedules (
     id SERIAL PRIMARY KEY,
-    amount numeric(10,2) NOT NULL,
+    amount numeric(10,2) NOT NULL CONSTRAINT transfer_schedules_amount_is_finite CHECK (amount <> 'NaN'::numeric),
     description text,
     from_account_id integer NOT NULL REFERENCES account(account_id) ON DELETE RESTRICT,
     to_account_id   integer NOT NULL REFERENCES account(account_id) ON DELETE RESTRICT,
