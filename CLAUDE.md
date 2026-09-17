@@ -275,22 +275,28 @@ server itself — **read it before touching anything on the Droplet.**
 
 ## Current status
 
-▶️ **NEXT UP: nothing is broken and waiting.** `0.10.0` shipped 2026-09-11; the open milestone
-is **`0.11.0`**, carrying **eight open** — four are the BDD thread (**#355**, whose pilot #356 is
-scoped and unstarted), four are what remains of #309, and one (#361) is a flake left open on
-purpose. ✅ **#326 was closed `NOT_PLANNED` on 2026-09-11**, executing a decision recorded
-2026-09-02; it briefly rode the milestone roll because **a mechanical roll cannot read comments**.
+▶️ **NEXT UP: the BDD thread.** `0.10.0` shipped 2026-09-11 and is still what production runs; the
+open milestone is **`0.11.0`**, carrying **six open** — four are the BDD thread (**#355**, whose
+pilot #356 is scoped and unstarted), one is #361 (a flake left open on purpose), and one is **#375**
+(filed 2026-09-16). ✅ **#309's output is FULLY DISCHARGED as of 2026-09-16**: #314, #328 and #333
+merged, after #326 was closed `NOT_PLANNED` on 2026-09-11.
 
-🛑 **AN ISSUE BEING OPEN IS NOT EVIDENCE THAT IT IS OPEN WORK.** The three remaining #309 bugs —
-#314, #328, #333 — **already carry a recorded decision in their comments**, and a decision recorded
-in a comment leaves no trace in `gh issue list`. On 2026-09-04 that produced a wrong recommendation:
-"#326 and #314, the two migrations" was proposed as the next session's work when **#326 was not work
-at all** — Sean had decided on 2026-09-02 to close it as premise-wrong, and it then sat open until
-2026-09-11. ✅ **#326 is now closed, and stands as the worked example rather than an outstanding
-item.** **Read the comments, not just the body, before proposing any issue as work.**
-`docs/status.md` has the per-issue table; the short version is that #314 is the only real migration
-left, #328 is a decided deletion, and #333 changes the shipped artifact so it wants its own release
-to look at.
+🛑 **AN ISSUE BEING OPEN IS NOT EVIDENCE THAT IT IS OPEN WORK.** Kept as a standing rule now that
+its examples are closed. On 2026-09-04 "#326 and #314, the two migrations" was proposed as the next
+session's work when **#326 was not work at all** — Sean had decided on 2026-09-02 to close it as
+premise-wrong, and a decision recorded in a comment leaves no trace in `gh issue list`. **Read the
+comments, not just the body, before proposing any issue as work.** A mechanical milestone roll
+cannot read comments either, so it always overstates the work.
+
+🛑 **AN ISSUE'S SPECIFIED FIX CAN BE WRONG AGAINST THE PLATFORM, not just against the code**
+(#314, 2026-09-16). It specified `CHECK (col = col)` to reject a NaN, on the premise that
+`NaN <> NaN`. True in IEEE 754; **false in PostgreSQL `numeric`, which defines NaN as equal to
+itself** so the type can be sorted and indexed. Verified against `postgres:16`: that constraint
+accepts a NaN and stores it, so the migration would have applied cleanly, passed CI and protected
+nothing. The working form is `<> 'NaN'::numeric`, and it is the **inverse of Python** — a guard
+ported from the app layer into SQL keeps its shape and loses its meaning. `docs/gotchas.md` carries
+the rule; `docs/status.md` carries the session.
+
 
 ⚠️ **The open milestone is `0.11.0`.** ✅ **`0.10.0` was closed ON SHIP DAY** (2026-09-11) at
 `open=0, closed=25`, with its nine open items moved to `0.11.0` first — the corrective landing, and

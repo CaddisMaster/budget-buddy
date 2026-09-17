@@ -5,32 +5,87 @@
 
 ## Current Status
 
-▶️ **NEXT SESSION: nothing is broken and waiting.** `0.10.0` shipped 2026-09-11. The open
-milestone is **`0.11.0`**, carrying **eight open** items — four are the BDD thread, three are the
-#309 remnants, and one (#361) is a flake left open on purpose. ✅ **#326 was closed `NOT_PLANNED`
-with no milestone on 2026-09-11**, nine days after the decision was recorded. It had been carried
-into `0.11.0` by the milestone roll, which moves everything still open — ⚠️ **a mechanical roll
-cannot read comments**, so it will always overstate the work by however many decided-but-unclosed
-issues exist. Check the roll's output against the decisions, not just the count.
+▶️ **NEXT SESSION: the BDD thread, and nothing else is broken and waiting.** `0.10.0` shipped
+2026-09-11 and is still what production runs. The open milestone is **`0.11.0`**, carrying **six**
+— four are the BDD thread (**#355**, whose pilot **#356** is scoped and unstarted), one is #361
+(a flake left open on purpose) and one is **#375**, filed 2026-09-16.
 
-✅ **`0.10.0`'s milestone was closed ON SHIP DAY**, at `open=0, closed=25` — the corrective to
-#359, and the shape every milestone but `0.9.0`'s has closed at. The nine carried-over items were
-moved to a newly created `0.11.0` *before* closing, which is the step that makes the close possible
-at all.
+✅ **#309'S OUTPUT IS FULLY DISCHARGED as of 2026-09-16.** All twelve issues the full-repo read
+filed are closed: #326 `NOT_PLANNED` on 2026-09-11, then **#314, #328 and #333 merged on
+2026-09-16**. The standing warning below is kept as the worked example, not as outstanding work.
 
-🛑 **READ THE ISSUE COMMENTS BEFORE PROPOSING ANY OF THE FOUR REMAINING #309 BUGS AS WORK.** Every
-one of #314, #326, #328 and #333 already carries a recorded decision, and **an issue's OPEN state
-is not evidence that it is open work.** This cost a wrong recommendation on 2026-09-04: "#326 and
-#314, the two migrations" was proposed as the next session, and #326 is not work at all.
+🛑 **AN ISSUE BEING OPEN IS NOT EVIDENCE THAT IT IS OPEN WORK.** This cost a wrong recommendation
+on 2026-09-04, when "#326 and #314, the two migrations" was proposed as the next session's work and
+#326 was not work at all — Sean had decided on 2026-09-02 to close it as premise-wrong, and the
+decision lived only in a comment, where `gh issue list` cannot see it. **Read the comments, not just
+the body, before proposing any issue as work.** ⚠️ A mechanical milestone roll cannot read comments
+either, so it will always overstate the work by however many decided-but-unclosed issues exist.
 
-| issue | recorded decision | what is actually left |
+### The 2026-09-16 session: the #309 remnants cleared
+
+Three PRs merged, **none deployed**. `main` is five commits past `v0.10.0`, carrying **one
+migration and no new env vars**.
+
+| PR | Issue | |
 |---|---|---|
-| **#326** | **Closed `NOT_PLANNED`, no milestone (2026-09-11)** — decision recorded 2026-09-02 | ✅ **Done.** The real production dump shows every PK sequence already `OWNED BY` its column and no orphaned sequence, so the migration would have been a no-op against the only database that matters. Kept in this table as the **worked example** for the rule above, not as outstanding work |
-| **#314** | Unblocked — the 2026-08-31 dump holds **zero NaN** anywhere, so the `CHECK` constraints validate cleanly | The only genuine migration left. Stands alone in its own PR; additive, so `before-pull`. Re-check the dump before cutting — it is a point in time |
-| **#328** | **Option 1: delete the five dead files** (Sean, 2026-09-02) | Execution, not a fork: `ingest.py`, `clean.py`, `insert.py`, `test_connection.py`, `scripts/requirements.txt`, plus the `docs/architecture.md` sentence |
-| **#333** | Preference for option 1, and its comments carry a **second finding** — `.ruff_cache/` also ships and belongs in the same PR | Changes the shipped artifact, so it wants a deliberate look at the release after it. ⚠️ It will also turn `tests/test_changelog_guard.py`'s 14 tests into **skips** in the in-image run, since they are guarded on `.claude/` being present. That belongs in #333's PR, not discovered later as a count drop |
+| #373 | — | Dependabot minor/patch group, plus the two ruff pins it cannot see |
+| #374 | **#328, #333** closed | Delete the dead ingest pipeline; stop shipping `docs/`, `.claude/`, `.ruff_cache/` |
+| #376 | **#314** closed | `sql/38` — refuse a NaN in all nine money columns |
 
-All four of those, and the BDD thread below, now sit on **`0.11.0`** rather than `0.10.0`.
+🛑 **#314 NEARLY SHIPPED A CONSTRAINT THAT PROTECTED NOTHING, AND IT WOULD HAVE BEEN GREEN.** The
+issue specified `CHECK (col IS NULL OR col = col)` with the comment `-- NaN <> NaN`. That is IEEE
+754. PostgreSQL `numeric` defines NaN as **equal to itself** so the type can be sorted and indexed,
+so `col = col` holds for a NaN and the row stores. Confirmed against `postgres:16` rather than
+reasoned about — a temp table carrying exactly that constraint accepted a NaN. The working form is
+`<> 'NaN'::numeric`. ⚠️ **This is the inverse of Python**, where `float('nan') != float('nan')`, so
+a guard ported from the app layer into SQL keeps its shape and loses its meaning. **An issue's
+specified approach can be wrong against the platform, not only against the code.**
+
+**What was verified by running it rather than reading it**, on both #374 and #376:
+
+- **Test-first on #314** — 10 failed / 22 passed before `sql/38`, 32 passed after.
+- **`schema.sql` vs the migration** — a fresh database and a migrated pre-change database produce
+  **byte-identical** constraint definitions across all nine columns. CI only checks `schema.sql`
+  was *touched*, never that it agrees.
+- **Against a planted NaN**, `sql/38` fails, exits non-zero, and rolls back leaving **zero**
+  constraints — a failed deploy, not a half-migrated database. ⚠️ The first attempt at this proved
+  nothing: the seed INSERT failed on a wrong column name, so it ran against empty tables and
+  "passed".
+- **Production re-checked** against the **2026-09-16** dump (the recorded clearance was against
+  2026-08-31): zero NaN, zero Infinity, with a **positive control** first, because an absence check
+  passes vacuously if the pipeline is broken.
+- **The new image-exclusion CI step was mutation-tested** — reverting `**/*.md` to `*.md` makes it
+  fail and name `/app/.github/pull_request_template.md` and `/app/app/static/fonts/README.md`.
+
+⚠️ **The in-image skip count moved by 17, not the 16 predicted.** Measured by building both images
+and diffing the skip reports rather than reasoning: `test_changelog_guard.py`'s 14, two in
+`test_verify_skill.py`, and `test_doc_claims.py::test_every_docs_file_an_agent_is_pointed_at_exists`
+— the one missed, guarded on `docs/` rather than `.claude/`. In-image went `1275/26` → `1258/43`;
+the host run is unchanged. Recorded in `docs/testing.md`. ⚠️ Two parsing traps nearly made the
+number wrong quietly: `pytest -rs` collapses identical skips into `SKIPPED [14] …` and a `sed` that
+strips the prefix discards the multiplicity; and `grep -c` **exits 1 on zero matches**, so an
+absence check chained with `&&` stops without saying so.
+
+⚠️ **`.dockerignore` was not in CI's `image` filter** — the file that decides what ships did not
+turn on the in-image suite, so a `.dockerignore`-only PR stayed green everywhere a human looks.
+Third time that filter has been too narrow (#176, #218). Fixed in #374. ⚠️ That PR only ran the
+in-image suite because it happened to touch `ci.yml`.
+
+⚠️ **#375 filed**: `test_migration_phases.py::DESTRUCTIVE_RE` regexes the whole migration file
+**including comments**, so `sql/38` failed the phase tests for quoting the statements it was
+explaining it does not perform — a file described as safe, failing for describing itself. Worked
+around by wording the comment around the scanner; not fixed inline, because a migration stands
+alone. ⚠️ The tempting wrong fixes are `GRANDFATHERED_MIXED` or a false `-- deploy: after-pull`,
+either of which records a lie and damages the guard #277 exists to provide.
+
+⚠️ **The ruff three-pin split has caught four consecutive Dependabot groups** (#285, #342, #366,
+#373). The guard is working as designed; four for four is the signal the mechanism could move to
+deriving all three pins from one source. ⚠️ On #373 the container reported "Up 5 minutes" while
+serving the **pre-bump** versions — uptime is not freshness; confirm with `pip list` inside it.
+
+⚠️ **`anthropic` is now on `1.5.0`, two minors past anything production has exercised.**
+`tests/test_sdk_call_shape.py` passes, which proves the call shape, never a round trip.
+
 
 **The largest open thread is #355 — adopt BDD**, and its pilot #356 is scoped and unstarted.
 Read #355 before touching it: the tool is **`behave`** (Sean's call, 2026-09-03), and the
