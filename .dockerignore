@@ -17,6 +17,11 @@ backups/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+# ⚠️ .ruff_cache/ is not optional tidiness. It is populated by whoever last ran
+# ruff on the host, so leaving it in means the same source can produce different
+# images on different machines — quietly undermining the reproducibility the
+# fully-pinned requirements.txt exists to provide (#333).
+.ruff_cache/
 .coverage
 htmlcov/
 
@@ -27,8 +32,16 @@ venv/
 .idea/
 .DS_Store
 
-# Docs & local-only files not needed in the runtime image
-*.md
+# Docs & local-only files not needed in the runtime image.
+# ⚠️ `*.md` matches ONLY top-level — `**/*.md` is what matches nested. That gap
+# shipped every file in docs/ and the whole .claude/ harness for months, and it
+# was invisible because CLAUDE.md is listed separately and so WAS correctly
+# absent: the one file anyone would check for was the one the pattern caught
+# (#333). The directories are named explicitly as well, so that .claude/'s
+# non-markdown files (settings.json, hooks/) go too.
+**/*.md
 CLAUDE.md
+docs/
+.claude/
 docker-compose*.yml
 test.sh

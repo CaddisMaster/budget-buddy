@@ -56,7 +56,7 @@ app/
   templates/       # Jinja2, all extend base.html; partials/ = HTMX fragments; emails/ = digest
   static/          # style.css, vendored JS, PWA manifest + sw.js + icons
 sql/               # numbered migrations + schema.sql (clean single-file schema)
-scripts/           # ingest/clean/insert pipeline, migrate.py, seed_dev.py, release_prep.py, restore_check.py
+scripts/           # migrate.py, seed_dev.py, release_prep.py, restore_check.py, check_site_drift.py
 .github/workflows/ # ci.yml, release.yml, rollback.yml, changelog.yml, claude-triage.yml
 docs/              # the reference detail this file points at
 ```

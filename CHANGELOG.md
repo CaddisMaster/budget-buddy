@@ -8,6 +8,66 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Removed
+
+- **The `scripts/` ingest pipeline is gone** — `ingest.py`, `clean.py`,
+  `insert.py`, `test_connection.py` and `scripts/requirements.txt`. The pipeline
+  could not insert a single row and had not been able to since the app gained
+  users: `transactions.user_id` has been `NOT NULL` with no default since
+  `sql/10`, and the INSERT never supplied it. It also never set `account_id`,
+  never resolved a category *name* to a `category_id`, and swallowed its own
+  failure before exiting 0, so a shell or cron wrapper saw success.
+
+  Nobody noticed because there was nothing to run it against — `ingest.py` reads
+  `../data/transactions.csv`, and `data/` has never existed in the repo. The one
+  thing that referenced the pipeline was a sentence in `docs/architecture.md`
+  describing it as though it worked. `scripts/requirements.txt` existed solely to
+  keep `pandas` out of the app image for a pipeline that could not run, and
+  `seed_dev.py` already solves the problem this was written for — reproducibly,
+  and with tests.
+
+  Dependabot's `/scripts` pip ecosystem went with it: it existed only to watch
+  that requirements file, and would otherwise have been left scanning a
+  directory with no manifest in it. (#328)
+
+### Fixed
+
+- **The production image no longer ships the project's documentation or its
+  agent harness.** `.dockerignore` listed `*.md` under a comment reading "not
+  needed in the runtime image", but Docker's `*.md` matches **only top-level**,
+  so every file in `docs/` and the whole of `.claude/` — the agent prompts, the
+  `/wrap` command, the `verify` skill — travelled into every production
+  container. The gap was invisible for months precisely because `CLAUDE.md` is
+  listed separately and so genuinely was absent: the one file anyone would think
+  to check for was the one file the pattern caught.
+
+  Nothing here was secret — the repository is public and the image is published
+  to ghcr — so this is a correctness fix rather than a disclosure one: a stated
+  intent that the artifact did not honour, with `docs/status.md`'s operational
+  notes and standing decisions riding along for no reason. The patterns are now
+  `**/*.md` plus explicit `docs/` and `.claude/` entries. (#333)
+
+- **`.ruff_cache/` no longer ships either.** `.pytest_cache/` three lines above
+  it was already excluded. The cache is populated by whoever last ran `ruff` on
+  the host, which meant the same source could produce different images on
+  different machines — quietly undermining the reproducibility that the fully
+  pinned `requirements.txt` exists to provide. (#333)
+
+- **CI now proves what the image excludes instead of trusting the pattern.** A
+  new step in the `docker-build` job lists the built image and fails if any
+  markdown, `docs/`, `.claude/` or `.ruff_cache/` survived, so a nested pattern
+  that silently stops matching is caught at the artifact rather than believed at
+  the source. It asserts a positive control first, because a check looking in
+  the wrong place would otherwise report a spotless image. (#333)
+
+- **A `.dockerignore`-only change now triggers the in-image test run.** CI's
+  `changes` classifier decides whether to run the suite a second time inside the
+  built image, and `.dockerignore` was not one of the paths that turned it on —
+  even though it is the file that decides what ships. Because the dev bind mount
+  serves the files `.dockerignore` strips, such a pull request stayed green
+  everywhere a human looks and skipped the one run that could see the
+  difference. Same shape as #176 and #218, one file along. (#333)
+
 ## [0.10.0] - 2026-09-11
 
 ### Changed

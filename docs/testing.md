@@ -176,9 +176,28 @@ committed. **Count them instead** — `./test.sh --collect-only -q -n0 | tail -1
 
 ⚠️ **Two numbers legitimately differ and the gap is not a bug to fix**: the run inside the
 shipped image is smaller, because real-file tests skip when `.dockerignore` has stripped
-what they read (`*.md`, `test.sh`, `docker-compose*.yml`, `.env.*`). A handful also skip on
-the last day of a month (`test_forecast.py`'s date guards). Recount both rather than
-quoting either.
+what they read (`**/*.md`, `docs/`, `.claude/`, `test.sh`, `docker-compose*.yml`, `.env.*`).
+A handful also skip on the last day of a month (`test_forecast.py`'s date guards). Recount
+both rather than quoting either.
+
+⚠️ **That list said `*.md` until #333, and it was wrong in a way no test could see.** Docker's
+`*.md` matches **only top-level**, so `docs/` and the entire `.claude/` harness shipped —
+while `CLAUDE.md`, the one file anyone would check for, is listed separately and so really
+was absent. The belief was written in two places and contradicted by the artifact, which is
+why the check that now enforces it (`Excluded paths are absent from the shipped image`, in
+the `docker-build` job) interrogates **the built image** rather than the ignore file, and
+asserts a positive control first so it cannot pass by looking in the wrong place.
+
+Widening the patterns moved **17 tests** from passing to skipped in the in-image run, and the
+count was measured by building both images and diffing the skip report rather than predicted —
+the first estimate said 16 and missed one. They are `test_changelog_guard.py`'s 14 (reading
+`.claude/hooks/changelog-guard.sh`), two in `test_verify_skill.py` (reading
+`.claude/skills/verify/SKILL.md`), and `test_doc_claims.py`'s
+`test_every_docs_file_an_agent_is_pointed_at_exists` (reading `docs/`). In-image totals moved
+from `1275 passed, 26 skipped` to `1258 passed, 43 skipped`. That is correct rather than a
+loss: all three check the dev harness and the docs against each other, which is work for the
+host run, not for a production container — and the host total is unchanged at `1297 passed,
+4 skipped`.
 
 Cross-cutting patterns: **no real API calls anywhere** — every
 `ai.py::_call_*_model` seam (and `mailer.py::_call_resend`) is monkeypatched with canned
