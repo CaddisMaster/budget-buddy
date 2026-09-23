@@ -9,6 +9,11 @@ pytest==9.1.1
 # from PYTEST_XDIST_WORKER — every worker owns its own database rows. Read the
 # note there before changing how test users are named.
 pytest-xdist==3.8.0
+# The BDD runner for the .feature files under tests/features/ (#355, #356).
+# Serial by construction — it has no xdist — which is why only behaviour lives
+# there. ⚠️ With no features found it can still exit 0; tests/run_behave.py is
+# what makes zero scenarios a failure, so invoke it, never bare `behave`.
+behave==1.3.3
 # The linter ./test.sh runs before pytest (#264). It lives here rather than
 # being installed per run so the image's `dev` stage bakes it in.
 #

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Run the pytest suite against the dev Postgres, on the same Python 3.14 as
-# production. Nothing is installed on your machine.
+# Run the behave scenarios and the pytest suite against the dev Postgres, on
+# the same Python 3.14 as production. Nothing is installed on your machine.
 #
 # Usage:
 #   ./test.sh                       # run the whole suite (parallel)
@@ -10,8 +10,10 @@
 #   ./test.sh -v                    # verbose output
 #   ./test.sh -n0                   # SERIAL — for pdb, or readable failure output
 #   SKIP_LINT=1 ./test.sh           # skip ruff and go straight to the tests
+#   SKIP_BDD=1 ./test.sh            # skip the behave scenarios
 #
-# Any extra arguments are passed straight through to pytest.
+# Any extra arguments are passed straight through to pytest — and a run given
+# ANY arguments skips behave, since it is aimed at pytest (see the behave block).
 #
 # Runs `ruff check` FIRST and stops if it fails (#264) — lint is the cheapest
 # class of defect to fix and used to be caught only by CI, four minutes away.
@@ -165,8 +167,11 @@ web_is_running() {
 # pre-#264 container passing the check and then failing on the ruff invocation
 # below — turning "your container is slightly old", which this script already
 # knows how to repair silently, into a hard error on every run.
+#
+# behave (#356) is probed for the same reason: a container built before it
+# joined requirements-dev.txt would otherwise fail every run at the behave step.
 web_has_dev_deps() {
-  docker compose exec -T web python -c 'import pytest' >/dev/null 2>&1 &&
+  docker compose exec -T web python -c 'import pytest, behave' >/dev/null 2>&1 &&
     docker compose exec -T web python -m ruff --version >/dev/null 2>&1
 }
 
@@ -217,6 +222,33 @@ else
   if ! $RUNNER python -m ruff check; then
     echo "✗ ruff found problems — fix them, or re-run with SKIP_LINT=1 to get" >&2
     echo "  the test signal first. CI runs the same version and would fail here." >&2
+    exit 1
+  fi
+fi
+
+# ─── Behave scenarios (#356) ─────────────────────────────────────────────────
+#
+# The .feature files under tests/features/ run here, in the slot ruff already
+# uses: BEFORE the `exec`, inside the lock, fail-fast. ⚠️ Do not drop the
+# `exec` to run behave after pytest instead — the lock on fd 9 is held across
+# it deliberately, and option C in #264 was rejected for exactly that.
+#
+# Only on a run with NO arguments. `./test.sh tests/test_x.py` or `-k foo` is
+# aimed at pytest, and paying for behave there would be noise; the full run —
+# the one a PR is judged by — always includes it. `SKIP_BDD=1` mirrors
+# `SKIP_LINT=1` for when you want the pytest signal first.
+#
+# ⚠️ Through tests/run_behave.py, never bare `behave`: a run that selects zero
+# scenarios exits 0 from behave itself, and the wrapper is what makes it fail.
+if [ "$#" -gt 0 ]; then
+  echo "→ Skipping behave (arguments were given, so this run is aimed at pytest)."
+elif [ -n "${SKIP_BDD:-}" ]; then
+  echo "→ Skipping behave (SKIP_BDD is set)."
+else
+  # shellcheck disable=SC2086  # word-splitting $RUNNER is intended
+  if ! $RUNNER python -m tests.run_behave; then
+    echo "✗ A behave scenario failed — pytest was not run. Re-run with SKIP_BDD=1" >&2
+    echo "  to get the pytest signal first. CI runs the same scenarios." >&2
     exit 1
   fi
 fi

@@ -217,6 +217,16 @@ jobs:
         if: needs.changes.result != 'success' || needs.changes.outputs.app == 'true'
         run: pytest -q -n auto
 
+      # ⚠️ Its own step, because this job calls pytest directly and never goes
+      # through test.sh — wiring behave into test.sh alone would leave CI green
+      # having run no scenarios (#356). Through tests/run_behave.py, never bare
+      # `behave`, which exits 0 on a run that selects nothing. After pytest, not
+      # before, so a scenario failure never hides the pytest result; both must
+      # pass for the job to.
+      - name: Run behave scenarios
+        if: needs.changes.result != 'success' || needs.changes.outputs.app == 'true'
+        run: python -m tests.run_behave
+
       # The job still reports success, so the required check is satisfied.
       - name: No application changes
         if: needs.changes.result == 'success' && needs.changes.outputs.app != 'true'
@@ -511,11 +521,13 @@ jobs:
       # nothing else in the pipeline would notice.
       - name: Shipped image carries no test dependencies
         run: |
-          if docker run --rm budget-buddy:ci python -c 'import pytest' 2>/dev/null; then
-            echo "::error::pytest is present in the shipped image. The Dockerfile's final stage must be 'prod', not 'dev' — see the note at the top of that file."
-            exit 1
-          fi
-          echo "no pytest in the shipped image, as expected"
+          for dep in pytest behave; do
+            if docker run --rm budget-buddy:ci python -c "import $dep" 2>/dev/null; then
+              echo "::error::$dep is present in the shipped image. The Dockerfile's final stage must be 'prod', not 'dev' — see the note at the top of that file."
+              exit 1
+            fi
+            echo "no $dep in the shipped image, as expected"
+          done
 
       # ⚠️ This asserts against the BUILT IMAGE, never against .dockerignore's
       # text. Reading the pattern is precisely how `*.md` was believed to strip
@@ -625,8 +637,12 @@ jobs:
             -e DB_USER=budget -e DB_PASSWORD=budget \
             -e SECRET_KEY=ci-secret-key \
             budget-buddy:ci sh -c '
+              # set -e: several commands run here, and without it the step
+              # reports only the LAST one — a failing behave run would pass.
+              set -e
               python --version
               pip install -q -r requirements-dev.txt
+              python -m tests.run_behave
               # `python -m pytest`, not bare `pytest`: the image runs as the
               # non-root appuser, so pip puts console scripts in
               # /home/appuser/.local/bin, which is not on PATH. Going through
