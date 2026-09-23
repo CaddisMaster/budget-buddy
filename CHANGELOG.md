@@ -86,6 +86,17 @@ this project uses the `0.x` versioning scheme described in
   everywhere a human looks and skipped the one run that could see the
   difference. Same shape as #176 and #218, one file along. (#333)
 
+- **The migration phase rules now read the SQL, not the header comment.**
+  `test_migration_phases.py` ran its drop and add scanners over the whole file,
+  comments included, so an additive migration whose header *explained* that it
+  performs no `DROP TABLE` failed as if it did — `sql/38` had to word its own
+  comment around the scanner to ship. Both scanners now read the file with `--`
+  comments removed (a `--` inside a string literal is left alone, since treating
+  it as a comment could hide a real drop), while the phase pragma, itself a
+  comment, is still read from the raw text. Each half was checked by breaking it
+  on purpose: skipping string literals, reading the pragma from the stripped
+  text, and stripping everything each fail a named test. (#375)
+
 ## [0.10.0] - 2026-09-11
 
 ### Changed
