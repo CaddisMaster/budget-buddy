@@ -8,6 +8,17 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Added
+
+- **Executable Gherkin, as a pilot: the schedules behaviour now runs as behave
+  scenarios.** Twelve scenarios in `tests/features/` — due schedules posting and
+  moving on, catching up, stopping at an end date, never starting in the past,
+  and the two races the row lock exists for — run on every full `./test.sh`
+  and in CI, ahead of pytest. A run that selects no scenarios fails rather
+  than passing, which behave on its own does not do. behave is a development
+  dependency only, and CI asserts it is absent from the production image. The
+  pytest tests these duplicate stay for now, deliberately. (#356)
+
 ### Changed
 
 - **The test suite's plain helpers moved out of `conftest.py` into

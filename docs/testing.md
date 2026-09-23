@@ -7,6 +7,35 @@
 
 Run with **`./test.sh`** (args pass through to pytest, e.g. `./test.sh -k semimonthly`).
 
+## The behave scenarios (#356 — the BDD pilot)
+
+`tests/features/*.feature` are executable Gherkin, run by **behave**. `./test.sh` runs them
+**before** pytest, in the slot ruff uses — inside the `flock`, before the `exec`, fail-fast — and
+**only when given no arguments**: a targeted `./test.sh tests/test_x.py` or `-k foo` is aimed at
+pytest. `SKIP_BDD=1` skips them, mirroring `SKIP_LINT=1`. CI runs them as a separate step in
+the Tests job (it calls pytest directly, never `test.sh`) and inside the shipped image.
+
+- ⚠️ **Always `python -m tests.run_behave`, never bare `behave`.** Measured on 1.3.3: a missing or
+  empty features directory exits 1, but **a run that selects zero scenarios exits 0** — a tag
+  filter matching nothing, or a feature with no scenarios. The wrapper counts scenarios that
+  passed or failed from behave's own model and fails on zero. `test_behave_harness.py` runs it
+  in a subprocess against each case and asserts no script invokes bare `behave`.
+- ⚠️ **behave's own `Took …` line undercounts by ~10×.** It times steps only, not the
+  `before_scenario` hook where the users are created (bcrypt). Time the process instead: the
+  pilot's 12 scenarios are ~5.6s wall, the same as their 12 pytest twins run serially. **behave
+  has no parallel mode**, so a scenario always costs what a serial pytest test costs.
+- **The prefix is `__behave__`**, never pytest's — `tests/features/environment.py` is conftest's
+  fixtures rebuilt as hooks, and `test_behave_harness.py` asserts neither prefix starts the
+  other. Serial means one fixed prefix suffices; a sharding layer would need a per-shard one.
+- **Step functions carry distinct names**, not behave's customary `step_impl` everywhere, which
+  ruff reports as F811. Step fields use **constrained types** (`{who:Who}`, `{frequency:Freq}`):
+  parse's bare `{}` is a lazy `.+?` that spans spaces, so "a paused monthly … schedule" matched
+  the generic "a {frequency} {kind} schedule" step with `frequency="paused"`.
+- Steps must not import from `environment.py` — behave loads it itself, so an import is a
+  second copy of the module.
+- Default output is `progress3`: one line per scenario, and a failure printed inline with its
+  step, `file:line` and assertion message. `progress` drops the message; `pretty` lists every step.
+
 ⚠️ **`test.sh` runs `ruff check` FIRST and stops if it fails** (#264). Ruff used to exist
 only in CI, so an unused import was invisible locally and turned the remote build red —
 #263 orphaned four imports in `goals.py`, the local suite was green, CI failed on `F401`,
@@ -208,6 +237,7 @@ anon → 302. What each file covers:
 - `test_category_colour.py` — #257: `/categories` shows the colour a category is actually drawn in, and the fold cuts at `PALETTE_SIZE` rather than 6. ⚠️ **The load-bearing one is `test_the_swatch_shows_the_DRAWN_slot_not_the_preferred_one`** — every other test in the file also passes against the rejected `creation_index % PALETTE_SIZE` shortcut, which is right until two drawn categories contest a hue and then disagrees with the chart silently. It rebuilds #111's production collision (creation indices 1 and 9 both preferring slot 1, both drawn) and was verified red against the shortcut: *"Cat 8: /categories claims slot 2, chart draws 1"*, 5 of 10 failing. ⚠️ Its seed gives "Cat 8" the SECOND-HIGHEST total deliberately — with plain descending amounts it folds into "Other", the collision never happens, and the test fails on its own setup. Also: the uncharted state claims no hue, the legend appears only when something is uncharted, `test_colour_is_still_not_a_stored_property` guards #111's reversal at the schema, and `test_every_row_swap_carries_the_swatch` catches a render site that forgets `colour_slots` (the partial tolerates it missing so a swap cannot raise, which is exactly what would make it degrade silently)
 - `test_session_invalidation.py` — #272 (from #224): a password change signs out every other device. The `get_id()` format, the rotation, and **both** directions of the behaviour — the other device is signed out AND the acting device stays signed in (the second is easy to lose, and losing it logs you out of your own password change). Plus: a rejected change rotates nothing (otherwise the form is a DoS against your own devices), isolation, and login still working afterwards. ⚠️ **`test_the_pre_272_cookie_format_is_rejected` uses a REAL user's id deliberately** — written against a nonexistent id it passes whether or not the bare-id format is rejected, because a missing user returns `None` anyway; it was caught passing vacuously and rewritten. Verified red against the pre-fix app, and the byte-comparison fix verified red against the `str` version separately. ⚠️ No count recorded here on purpose — the follow-up commit that fixed `compare_digest` grew the parametrize lists, which would have made a number written with the first commit wrong within the same branch
 - `test_verify_skill.py` — #267: the `verify` skill's teardown cannot silently rot again. It was a hand-maintained copy of `conftest.py::_delete_user`; `sql/36` dropped two tables, `conftest.py` was updated and the copy was not, and under `-v ON_ERROR_STOP=1` the block aborted on the first missing table and **tore down nothing**. ⚠️ **The load-bearing one is `test_the_teardown_only_names_tables_that_exist`** — every table `_delete_user` names must appear in `sql/schema.sql`. Asserted against the schema FILE rather than a live database on purpose: it then fails in the pull request that drops the table, regardless of whether anyone's dev database has had the migration applied. The others hold the shape of the fix (the skill delegates, and carries no runnable `DELETE` list of its own — checked as "fewer than 3 distinct tables", since the prose still mentions the old block to explain why it went away). Verified red both ways: re-adding a dropped table to `_delete_user` fails naming it, and pasting a table list back into the skill fails naming those
+- `test_behave_harness.py` — #356: the behave wiring, one acceptance criterion per test. ⚠️ **The zero-scenario guards RUN the wrapper** in a subprocess against features written into `tmp_path` (behave's step registry is process-global, so in-process runs would collide), with a positive control first. Verified red, each separately: disabling the zero guard, counting `feature.scenarios` (misses `Rule:` blocks), dropping `exit 1` or the bare-behave ban from `test.sh`, dropping CI's behave step, `set -e` or the shipped-image probe, and borrowing pytest's prefix. Two of those first survived and exposed real defects — the `set -e` check matched its own comment, and `with_rules=True` would have *overcounted* (it adds Rule objects, which have a status)
 - `test_lint_local.py` — #264: that `./test.sh` lints before it tests. The **load-bearing one is `test_the_two_ruff_pins_agree`**, which asserts `requirements-dev.txt` and `ci.yml` name the same ruff version — stated as an equality between the two files rather than as a literal, so a bump edits both files and no test. Also: ruff runs BEFORE the `exec` (asserted as two *positions*, since a `ruff check` placed after it would satisfy a substring assertion and never run), a lint failure exits non-zero, `SKIP_LINT=1` exists, the container probe covers ruff and not just pytest, and #206's `flock` is still taken before the lint. ⚠️ Every test SKIPS when its file is absent, naming `.dockerignore` — **`test.sh` is genuinely stripped from the shipped image**, and this change touches `requirements*.txt` and `tests/`, so the in-image run really happens. Verified red: all 7 fail against the pre-fix files
 - `test_deploy_pinning.py` — #190: the compose image ref has **no `:-` default of any kind** (the property, not the string) and errors naming `TAG`; `.env.example` carries a `TAG=` line; both workflows rewrite the pin, `chmod 600` **before** the write, and the release pins **before** its first compose command. ⚠️ Every test SKIPS when the file it reads is absent, naming `.dockerignore` — `docker-compose*.yml` and `.env.*` are genuinely excluded from the shipped image (#176). Verified red against the pre-fix compose file
 - `test_model_constants.py` — #140: which model each beat runs on, **and the request

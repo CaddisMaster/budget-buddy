@@ -166,6 +166,11 @@ Details, including the xdist isolation rules that make `-n auto` safe, are in
 - It **runs `ruff check` first and stops if lint fails** (#264). `SKIP_LINT=1 ./test.sh` skips it.
   ⚠️ The ruff version is pinned in **both** `requirements-dev.txt` and `ci.yml` and they must
   agree — bumping it means editing both
+- Then it runs the **behave scenarios** in `tests/features/` (the BDD pilot, #356), then pytest.
+  **Only on a no-argument run** — `./test.sh <args>` is aimed at pytest and skips them;
+  `SKIP_BDD=1` skips them too. ⚠️ Always via `python -m tests.run_behave`, never bare `behave`,
+  which exits 0 on a run that selects nothing. Plain helpers shared by both runners live in
+  `tests/helpers.py`; it may not import pytest or read `TEST_PREFIX`
 - It **refuses to run while another run is in flight** (an advisory `flock`) — two concurrent runs
   corrupt each other through identical xdist prefixes
 - Defaults to a bounded `-n 10`; `-n0` is the serial escape for `pdb` or unreadable output
