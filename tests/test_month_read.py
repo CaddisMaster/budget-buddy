@@ -19,7 +19,7 @@ import app.ai as ai
 from app.ai import ParseError, _MonthRead
 from app.blueprints.insights import build_read_facts, compute_month_facts
 from app.db import get_db_connection
-from tests.conftest import (
+from tests.helpers import (
     create_account,
     create_budget,
     create_category,

@@ -10,11 +10,7 @@ from datetime import date
 
 from app.blueprints.insights import compute_month_facts
 from app.db import get_db_connection
-from tests.conftest import (
-    account_balance,
-    create_account,
-    create_transaction,
-)
+from tests.helpers import account_balance, create_account, create_transaction
 
 HX = {"HX-Request": "true"}
 DESC = "Balance check-in"

@@ -7,12 +7,7 @@ that one user can't touch another user's transfer group.
 """
 from datetime import date
 
-from tests.conftest import (
-    account_balance,
-    count_transfer_legs,
-    create_account,
-    create_transfer,
-)
+from tests.helpers import account_balance, count_transfer_legs, create_account, create_transfer
 
 TODAY = date.today().isoformat()
 
@@ -74,7 +69,7 @@ def test_a_bad_transfer_date_is_a_validation_error_not_a_server_fault(client_a, 
     identically) and it buries genuine unexpected failures in the log.
     """
     from app.helpers import GENERIC_ERROR
-    from tests.conftest import count_transactions_like
+    from tests.helpers import count_transactions_like
 
     other = create_account(users["a"]["id"], "bad-date-to")
     response = client_a.post(

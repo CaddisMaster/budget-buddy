@@ -10,7 +10,7 @@ Uses dates relative to today so the 6-month window always catches them.
 from datetime import datetime, timedelta
 
 from app.blueprints.budgets import compute_budget_suggestions
-from tests.conftest import create_category, create_transaction
+from tests.helpers import create_category, create_transaction
 
 
 def _this_month_day(day=10):

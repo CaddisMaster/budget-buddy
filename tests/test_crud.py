@@ -6,7 +6,7 @@ the change landed in the DB. The owner path is the complement to the 404 /
 isolation tests in test_isolation.py.
 """
 from app.db import get_db_connection
-from tests.conftest import (
+from tests.helpers import (
     create_budget,
     create_category,
     fetch_account,

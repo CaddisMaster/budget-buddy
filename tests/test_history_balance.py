@@ -14,7 +14,7 @@ outside its month by construction.
 import pytest
 
 from app.blueprints.transactions import PER_PAGE, _load_history
-from tests.conftest import create_transaction
+from tests.helpers import create_transaction
 
 
 def _signed(amount, ttype):

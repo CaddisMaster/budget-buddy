@@ -21,13 +21,8 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import (
-    PASSWORD,
-    TEST_PREFIX,
-    USER_A,
-    _create_user,
-    _delete_user,
-)
+from tests.conftest import TEST_PREFIX, USER_A
+from tests.helpers import PASSWORD, _create_user, _delete_user
 
 TEMPLATES = Path(__file__).resolve().parents[1] / "app" / "templates"
 CSS_PATH = Path(__file__).resolve().parents[1] / "app" / "static" / "style.css"

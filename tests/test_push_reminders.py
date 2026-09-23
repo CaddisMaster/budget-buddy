@@ -44,13 +44,8 @@ from app.blueprints.reminders import (
     send_due_reminders,
 )
 from app.db import get_db_connection
-from tests.conftest import (
-    TEST_PREFIX,
-    count_transactions_like,
-    create_account,
-    create_schedule,
-    create_transfer_schedule,
-)
+from tests.conftest import TEST_PREFIX
+from tests.helpers import count_transactions_like, create_account, create_schedule, create_transfer_schedule
 
 TODAY = date.today()
 TOMORROW = TODAY + timedelta(days=1)

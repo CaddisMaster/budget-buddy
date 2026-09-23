@@ -20,7 +20,7 @@ from datetime import datetime
 import pytest
 
 from app.blueprints.budgets import compute_budget_vs_actual
-from tests.conftest import create_budget, create_category, create_transaction
+from tests.helpers import create_budget, create_category, create_transaction
 
 
 def _row_for(rows, name):

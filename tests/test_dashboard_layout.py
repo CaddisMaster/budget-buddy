@@ -25,7 +25,7 @@ import re
 from datetime import date
 from pathlib import Path
 
-from tests.conftest import create_category, create_goal, create_transaction
+from tests.helpers import create_category, create_goal, create_transaction
 
 CSS_PATH = Path(__file__).resolve().parents[1] / "app" / "static" / "style.css"
 

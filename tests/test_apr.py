@@ -18,7 +18,7 @@ from app.blueprints.accounts import (
     monthly_interest,
 )
 from app.db import get_db_connection
-from tests.conftest import create_account, create_goal, create_transaction
+from tests.helpers import create_account, create_goal, create_transaction
 
 HX = {"HX-Request": "true"}
 

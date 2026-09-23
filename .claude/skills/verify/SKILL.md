@@ -98,11 +98,13 @@ Send `HX-Request: true` to get the fragment (row partial) instead of a redirect.
 
 ```bash
 docker compose exec -T web python -c "
-import sys; sys.path.insert(0, 'tests')
-from conftest import _delete_user
+from tests.helpers import _delete_user
 _delete_user('__verify__')
 print('torn down')"
 ```
+
+`_delete_user` lives in `tests/helpers.py` since #356 (it was in `conftest.py`,
+which is where the history below found it).
 
 ⚠️ **This block used to be a hand-maintained copy of
 `tests/conftest.py::_delete_user`, and it silently rotted (#267).** `sql/36`

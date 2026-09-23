@@ -13,7 +13,8 @@ from types import SimpleNamespace
 
 from app.blueprints.transactions import _csv_safe, _export_kind
 from app.db import get_db_connection
-from tests.conftest import PASSWORD, USER_A, create_account, create_transaction, create_transfer
+from tests.conftest import USER_A
+from tests.helpers import PASSWORD, create_account, create_transaction, create_transfer
 
 # --- CSV formula-injection sanitizer (pure) ---------------------------------
 

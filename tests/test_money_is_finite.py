@@ -47,13 +47,7 @@ import pytest
 
 from app.blueprints.goals import compute_goal_projection
 from app.db import db_cursor
-from tests.conftest import (
-    create_account,
-    create_budget,
-    create_goal,
-    create_schedule,
-    create_transfer_schedule,
-)
+from tests.helpers import create_account, create_budget, create_goal, create_schedule, create_transfer_schedule
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = REPO_ROOT / "sql" / "schema.sql"

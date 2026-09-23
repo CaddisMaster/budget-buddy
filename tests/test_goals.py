@@ -9,13 +9,7 @@ from datetime import date
 
 from app.blueprints.goals import build_goals_view
 from app.db import db_cursor, get_db_connection
-from tests.conftest import (
-    create_account,
-    create_goal,
-    create_transaction,
-    create_transfer,
-    fetch_goal,
-)
+from tests.helpers import create_account, create_goal, create_transaction, create_transfer, fetch_goal
 
 TODAY = date.today().isoformat()
 

@@ -19,7 +19,7 @@ import re
 from datetime import date, timedelta
 
 from app.db import get_db_connection
-from tests.conftest import create_account, create_category, create_transaction
+from tests.helpers import create_account, create_category, create_transaction
 
 
 def _mark_pending(transaction_id):
@@ -501,7 +501,7 @@ def test_pending_flag_survives_an_unrelated_users_activity(client_a, users):
 # --- schedules and transfers are never born pending --------------------------
 
 def test_a_transfer_leg_has_no_mark_posted_button(client_a, users):
-    from tests.conftest import create_transfer
+    from tests.helpers import create_transfer
     a = users["a"]
     other = create_account(a["id"], "Savings")
     create_transfer(a["id"], a["account_id"], other, 25.00, date.today())

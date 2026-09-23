@@ -13,11 +13,7 @@ from app.blueprints.schedules import (
     run_due_schedules,
 )
 from app.db import get_db_connection
-from tests.conftest import (
-    count_transactions_like,
-    create_schedule,
-    fetch_schedule,
-)
+from tests.helpers import count_transactions_like, create_schedule, fetch_schedule
 
 HX = {"HX-Request": "true"}
 

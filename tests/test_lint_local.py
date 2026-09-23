@@ -19,6 +19,7 @@ that image whenever the Dockerfile, requirements or tests change — which this
 change touches, so that run really happens. `requirements-dev.txt` and
 `.github/` are not excluded; they carry the guard for symmetry.
 """
+import ast
 import re
 from pathlib import Path
 
@@ -181,11 +182,13 @@ def test_the_concurrent_run_lock_is_untouched():
 
 TESTS_DIR = Path(__file__).resolve().parent
 
-# `from conftest import ...` / `import conftest` at the start of a line. The
-# dotted form is deliberately NOT matched: `from tests.conftest import` is the
-# correct spelling and every file should hit the second pattern below.
-_BARE_CONFTEST = re.compile(r"^(?:from conftest import|import conftest\b)", re.M)
-_DOTTED_CONFTEST = re.compile(r"^from tests\.conftest import", re.M)
+# `from conftest import ...` / `import conftest` at the start of a line — and the
+# same for `helpers`, which took conftest's plain functions in #356 and has the
+# same two-name hazard. The dotted form is deliberately NOT matched by the bare
+# pattern: `from tests.<module> import` is the correct spelling.
+_SHARED = r"(?:conftest|helpers)"
+_BARE_SHARED = re.compile(rf"^(?:from {_SHARED} import|import {_SHARED}\b)", re.M)
+_DOTTED_SHARED = re.compile(rf"^from tests\.{_SHARED} import", re.M)
 
 
 def _test_sources():
@@ -195,8 +198,11 @@ def _test_sources():
             for path in sorted(TESTS_DIR.glob("test_*.py"))}
 
 
-def test_conftest_is_imported_under_exactly_one_name():
+def test_the_shared_harness_is_imported_under_exactly_one_name():
     """⚠️ Two spellings of one import load the module TWICE.
+
+    Holds for `tests/conftest.py` and, since #356, `tests/helpers.py` — which
+    now holds the functions this docstring's example names.
 
     `pythonpath = .` (pytest.ini) puts the repo root on `sys.path`, so
     `tests.conftest` resolves; pytest separately inserts `tests/` itself, so a
@@ -228,15 +234,78 @@ def test_conftest_is_imported_under_exactly_one_name():
         "suite. Without this floor the assertions below check nothing."
     )
 
-    dotted = sorted(n for n, text in sources.items() if _DOTTED_CONFTEST.search(text))
+    # Counted over both modules together: most files moved from `tests.conftest`
+    # to `tests.helpers` in #356, and a per-module floor would fail for that
+    # reason rather than because the regex stopped matching.
+    dotted = sorted(n for n, text in sources.items() if _DOTTED_SHARED.search(text))
     assert len(dotted) > 20, (
-        f"only {len(dotted)} files import `tests.conftest` — the regex no longer "
-        "matches the form it is meant to accept, so the check below is vacuous."
+        f"only {len(dotted)} files import `tests.conftest`/`tests.helpers` — the "
+        "regex no longer matches the form it is meant to accept, so the check "
+        "below is vacuous."
     )
 
-    bare = sorted(n for n, text in sources.items() if _BARE_CONFTEST.search(text))
+    bare = sorted(n for n, text in sources.items() if _BARE_SHARED.search(text))
     assert not bare, (
-        f"{bare} import the shared harness as `conftest` rather than "
-        "`tests.conftest`. Both resolve, and loading it under two names creates "
-        "two module objects from one file — see this test's docstring."
+        f"{bare} import the shared harness as `conftest`/`helpers` rather than "
+        "`tests.conftest`/`tests.helpers`. Both resolve, and loading a module "
+        "under two names creates two module objects from one file — see this "
+        "test's docstring."
+    )
+
+
+def test_the_shared_helpers_are_runner_neutral():
+    """`tests/helpers.py` is shared by pytest and behave (#356), so it may not
+    depend on either runner.
+
+    ⚠️ The prefix is the one that matters. `TEST_PREFIX` is pytest's per-worker
+    `__pytest__…`; behave builds its own. A helper that read it — or imported
+    anything from `tests.conftest` — would let a behave run create or tear down
+    rows under pytest's prefix, which is the collision `docs/testing.md` records
+    as 424 errors when the prefix was briefly hardcoded. Helpers take the
+    username as an argument instead.
+    """
+    tree = ast.parse((TESTS_DIR / "helpers.py").read_text())
+
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module)
+    assert "app.db" in imported, "found no imports at all — the walk is broken"
+    assert "pytest" not in imported, "tests/helpers.py imports pytest"
+    assert not {m for m in imported if m.endswith("conftest")}, (
+        "tests/helpers.py imports from conftest, which is pytest's own"
+    )
+
+    names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+    assert not names & {"TEST_PREFIX", "USER_A", "USER_B", "USER_ADMIN"}, (
+        "a helper reads pytest's prefix — take the username as an argument"
+    )
+
+
+def test_nothing_imports_a_helper_through_conftest():
+    """Every name imported from `tests.conftest` must be DEFINED there.
+
+    `conftest.py` imports `PASSWORD`, `_login` and friends from `tests.helpers`,
+    so `from tests.conftest import PASSWORD` resolves — by accident. It breaks
+    the day conftest stops needing that name, in a file nobody touched. #356
+    found six such imports, all inside test bodies, which is where a
+    module-level search does not look; this walks every node.
+    """
+    conftest = ast.parse((TESTS_DIR / "conftest.py").read_text())
+    defined = {node.name for node in conftest.body if isinstance(node, ast.FunctionDef)}
+    defined |= {target.id for node in conftest.body if isinstance(node, ast.Assign)
+                for target in node.targets}
+    assert "TEST_PREFIX" in defined and "client_a" in defined, "conftest parse is broken"
+
+    leaks = []
+    for path in sorted(TESTS_DIR.glob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if isinstance(node, ast.ImportFrom) and node.module == "tests.conftest":
+                leaks += [f"{path.name}:{node.lineno} {alias.name}"
+                          for alias in node.names if alias.name not in defined]
+    assert not leaks, (
+        f"imported through conftest but defined elsewhere: {leaks} — import each "
+        "from where it lives (`tests.helpers`, `app.db`, …)"
     )

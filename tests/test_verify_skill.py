@@ -20,7 +20,11 @@ whoever dropped a table to remember a file in `.claude/`. The fix is structural
 
 ⚠️ (2) is the one that generalises. (1) only says the duplicate is gone; (2) is
 what would actually have caught #265's drop at the source.
+
+`_delete_user` moved from `conftest.py` to `tests/helpers.py` in #356, so that
+behave shares it. The history above keeps the old path because it was true.
 """
+import ast
 import re
 from pathlib import Path
 
@@ -29,7 +33,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 SKILL = REPO_ROOT / ".claude/skills/verify/SKILL.md"
-CONFTEST = REPO_ROOT / "tests/conftest.py"
+HELPERS = REPO_ROOT / "tests/helpers.py"
 SCHEMA = REPO_ROOT / "sql/schema.sql"
 
 _NOT_IN_IMAGE = "not present in the shipped image — .dockerignore excludes it"
@@ -46,24 +50,30 @@ _CREATE = re.compile(r"CREATE TABLE (?:IF NOT EXISTS )?(?:public\.)?\"?(\w+)\"?"
 
 
 def _delete_user_body():
-    src = CONFTEST.read_text()
-    start = src.index("def _delete_user(")
-    # Up to the next top-level def/decorator — the function is followed by a
-    # fixture, so this terminates.
-    rest = src[start:]
-    end = rest.index("\n@pytest.fixture")
-    return rest[:end]
+    """The function's own source, found by the parser.
+
+    ⚠️ This used to slice from `def _delete_user(` to the next `@pytest.fixture`,
+    which held only because a fixture happened to follow it in `conftest.py`.
+    `helpers.py` has no fixtures, so that slice would have run to the end of the
+    file and swept every later helper's SQL into the "teardown" — ast bounds it
+    to the function whatever comes next.
+    """
+    src = HELPERS.read_text()
+    for node in ast.parse(src).body:
+        if isinstance(node, ast.FunctionDef) and node.name == "_delete_user":
+            return ast.get_source_segment(src, node)
+    raise AssertionError("tests/helpers.py no longer defines _delete_user")
 
 
 def _teardown_tables():
     tables = _DELETE.findall(_delete_user_body())
-    assert tables, "conftest._delete_user no longer issues any DELETE FROM"
+    assert tables, "helpers._delete_user no longer issues any DELETE FROM"
     return tables
 
 
 # --- The one remaining copy must name only real tables ---------------------
 
-@pytest.mark.skipif(not (CONFTEST.exists() and SCHEMA.exists()), reason=_NOT_IN_IMAGE)
+@pytest.mark.skipif(not (HELPERS.exists() and SCHEMA.exists()), reason=_NOT_IN_IMAGE)
 def test_the_teardown_only_names_tables_that_exist():
     """⚠️ The load-bearing one.
 
@@ -78,12 +88,12 @@ def test_the_teardown_only_names_tables_that_exist():
     named = {t.lower() for t in _teardown_tables()}
     missing = sorted(named - schema_tables)
     assert not missing, (
-        f"conftest._delete_user deletes from {missing}, which sql/schema.sql does "
+        f"helpers._delete_user deletes from {missing}, which sql/schema.sql does "
         "not declare — a dropped table will make teardown fail silently"
     )
 
 
-@pytest.mark.skipif(not CONFTEST.exists(), reason=_NOT_IN_IMAGE)
+@pytest.mark.skipif(not HELPERS.exists(), reason=_NOT_IN_IMAGE)
 def test_the_teardown_still_ends_with_the_user_row():
     """FK-safe order means children first and `users` last. A reordering that
     put `users` earlier would fail against the real FKs, but only when a user
@@ -99,7 +109,7 @@ def test_the_teardown_still_ends_with_the_user_row():
 def test_the_verify_skill_delegates_its_teardown():
     body = SKILL.read_text()
     assert "_delete_user" in body, (
-        "the verify skill no longer calls conftest._delete_user for teardown"
+        "the verify skill no longer calls helpers._delete_user for teardown"
     )
 
 
@@ -115,5 +125,5 @@ def test_the_verify_skill_carries_no_table_list_of_its_own():
     tables = {t.lower() for t in _DELETE.findall(SKILL.read_text())}
     assert len(tables) < 3, (
         f"the verify skill has grown its own teardown table list again ({sorted(tables)}) "
-        "— call conftest._delete_user instead, so there is only one copy to maintain"
+        "— call helpers._delete_user instead, so there is only one copy to maintain"
     )

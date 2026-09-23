@@ -23,12 +23,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from tests.conftest import (
-    create_account,
-    create_goal,
-    create_schedule,
-    create_transfer_schedule,
-)
+from tests.helpers import create_account, create_goal, create_schedule, create_transfer_schedule
 
 SOON = date.today() + timedelta(days=7)
 

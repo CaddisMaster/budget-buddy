@@ -26,7 +26,7 @@ import pytest
 
 from app.blueprints.transactions import PER_PAGE, _load_history
 from app.db import get_db_connection
-from tests.conftest import create_account, create_transaction
+from tests.helpers import create_account, create_transaction
 
 
 def _ledger(html):

@@ -16,7 +16,7 @@ from datetime import date
 from pathlib import Path
 
 from app.blueprints.main import PALETTE_SIZE, assign_series_slots, fold_chart_tail
-from tests.conftest import create_category, create_transaction
+from tests.helpers import create_category, create_transaction
 
 # --- the redirect -------------------------------------------------------------
 
@@ -594,7 +594,7 @@ def test_budget_chart_payload_carries_each_category_separately(client_a, users):
     that used to collapse into a single bar carrying both categories' spend.
     """
     a = users["a"]
-    from tests.conftest import create_budget
+    from tests.helpers import create_budget
 
     first = create_category(a["id"], "ChartDup")
     second = create_category(a["id"], "ChartDup")

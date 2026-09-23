@@ -8,8 +8,8 @@ new routes keep the same per-user isolation as the pages they replaced.
 """
 from datetime import date, timedelta
 
-from tests.conftest import (
-    USER_A,
+from tests.conftest import USER_A
+from tests.helpers import (
     count_transactions_like,
     create_category,
     create_schedule,
