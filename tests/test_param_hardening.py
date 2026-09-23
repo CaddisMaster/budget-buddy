@@ -33,9 +33,9 @@ from app.helpers import (
     parse_month_param,
     parse_page_param,
 )
-from tests.conftest import (
+from tests.conftest import TEST_PREFIX
+from tests.helpers import (
     PASSWORD,
-    TEST_PREFIX,
     _create_user,
     _delete_user,
     _login,
@@ -233,7 +233,7 @@ def test_new_transaction_invalid_date_is_validation_error(client_a, users):
     }, follow_redirects=True)
     assert response.status_code == 200
     assert b"Date must be a valid date" in response.data
-    from tests.conftest import count_transactions_like
+    from tests.helpers import count_transactions_like
     assert count_transactions_like(users["a"]["id"], "bad-date") == 0
 
 
@@ -289,7 +289,7 @@ def test_admin_create_user_rejects_over_72_byte_password(admin_client):
         "username": LONGPW_USER, "password": "p" * 73,
     }, follow_redirects=True)
     assert b"72 bytes" in response.data
-    from tests.conftest import get_db_connection
+    from app.db import get_db_connection
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("SELECT 1 FROM users WHERE username = %s", (LONGPW_USER,))

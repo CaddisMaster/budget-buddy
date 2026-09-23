@@ -9,7 +9,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from app.blueprints.schedules import pick_next_due
-from tests.conftest import (
+from tests.helpers import (
     create_account,
     create_category,
     create_schedule,

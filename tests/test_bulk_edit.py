@@ -9,7 +9,7 @@ crafted selection can never orphan half a transfer pair.
 from datetime import date
 
 from app.db import get_db_connection
-from tests.conftest import create_category, create_transaction, create_transfer
+from tests.helpers import create_category, create_transaction, create_transfer
 
 HX = {"HX-Request": "true"}
 

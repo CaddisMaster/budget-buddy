@@ -26,12 +26,7 @@ from app.blueprints.digests import (
 from app.db import get_db_connection
 from app.helpers import most_recent_sunday as _most_recent_sunday
 from app.mailer import MailError
-from tests.conftest import (
-    create_account,
-    create_category,
-    create_schedule,
-    create_transfer_schedule,
-)
+from tests.helpers import create_account, create_category, create_schedule, create_transfer_schedule
 
 TODAY = date.today()
 

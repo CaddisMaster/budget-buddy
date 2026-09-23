@@ -271,7 +271,11 @@ anon → 302. What each file covers:
 - `test_budget_vs_actual.py` / `test_budget_suggestions.py` — the two budget helpers
 - `test_transfers.py` / `test_goals.py` — transfers + goals routes (payoff snapshot, balance-≥-0 rejection, payoff-edit lock; the analytics-exclusion test asserts the dashboard hero figures)
 
-Fixtures (`conftest.py`) use the dev Postgres with `__pytest__`-prefixed users, torn down in
+Fixtures (`conftest.py`) use the dev Postgres with `__pytest__`-prefixed users. The plain
+helpers they call — `_create_user`, `_delete_user`, every `create_*`/`fetch_*` — live in
+`tests/helpers.py` since #356, so behave can share them; `conftest.py` keeps only the per-worker
+prefix and the seven fixtures. ⚠️ Nothing in `helpers.py` may import pytest or read
+`TEST_PREFIX` — a helper takes the username. Users are torn down in
 FK-safe order (child rows first — transactions→categories/account are `ON DELETE RESTRICT`).
 CSRF + rate limiter disabled under test.
 

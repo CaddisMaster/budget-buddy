@@ -31,12 +31,8 @@ from app.blueprints.reminders import (
 )
 from app.blueprints.schedules import run_due_schedules
 from app.db import get_db_connection
-from tests.conftest import (
-    TEST_PREFIX,
-    create_account,
-    create_schedule,
-    create_transaction,
-)
+from tests.conftest import TEST_PREFIX
+from tests.helpers import create_account, create_schedule, create_transaction
 
 TODAY = date.today()
 

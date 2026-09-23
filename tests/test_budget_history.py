@@ -6,7 +6,7 @@ backfilled later, which is why the writer ships before any reader. These
 tests pin the three write points (set / clear / review-apply) and the
 no-op rules that keep the log a log of CHANGES.
 """
-from tests.conftest import create_budget, fetch_budget_history
+from tests.helpers import create_budget, fetch_budget_history
 
 # --- /budgets/set -------------------------------------------------------------
 

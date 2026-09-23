@@ -8,7 +8,7 @@ silent redirect with a misleading "success" flash), so these assert both the
 404 status and that B's data is untouched.
 """
 from app.db import get_db_connection
-from tests.conftest import (
+from tests.helpers import (
     create_budget,
     fetch_account,
     fetch_budget,

@@ -16,13 +16,7 @@ import pytest
 from dateutil.relativedelta import relativedelta
 
 from app.blueprints.forecasts import compute_forecast, project_expenses
-from tests.conftest import (
-    create_account,
-    create_budget,
-    create_category,
-    create_schedule,
-    create_transaction,
-)
+from tests.helpers import create_account, create_budget, create_category, create_schedule, create_transaction
 
 
 def _this_month():

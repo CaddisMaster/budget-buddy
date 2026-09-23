@@ -28,7 +28,7 @@ import pytest
 
 from app.db import db_cursor
 from app.models import User
-from tests.conftest import PASSWORD, _login
+from tests.helpers import PASSWORD, _login
 
 
 def _token(user_id):

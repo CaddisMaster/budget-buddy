@@ -36,7 +36,7 @@ from app.blueprints.agent import load_agent_run, run_money_agent
 from app.blueprints.digests import send_weekly_digests
 from app.db import get_db_connection
 from app.helpers import most_recent_sunday
-from tests.conftest import create_agent_run, fetch_agent_runs
+from tests.helpers import create_agent_run, fetch_agent_runs
 
 TODAY = date.today()
 WEEK = most_recent_sunday(TODAY)

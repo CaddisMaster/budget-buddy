@@ -446,7 +446,7 @@ def build_seed_plan(today, seed=DEFAULT_SEED, months=DEFAULT_MONTHS):
 # ── Database side ────────────────────────────────────────────────────────────
 # Every table a seeded user can own, ordered so that children go before parents.
 # transactions → categories/account are ON DELETE RESTRICT, so the user-row
-# cascade alone is not enough (the same trap tests/conftest.py documents).
+# cascade alone is not enough (the same trap tests/helpers.py documents).
 WIPE_ORDER = [
     'reminder_log', 'push_subscriptions', 'agent_runs',
     'insights', 'budget_history', 'budgets', 'goals',

@@ -14,7 +14,7 @@ from types import SimpleNamespace
 import app.ai as ai
 import app.blueprints.ask as ask
 from app.ai import ParseError, answer_question
-from tests.conftest import create_account, create_category, create_schedule, create_transaction
+from tests.helpers import create_account, create_category, create_schedule, create_transaction
 
 HX = {"HX-Request": "true"}
 

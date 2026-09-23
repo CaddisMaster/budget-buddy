@@ -8,6 +8,19 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Changed
+
+- **The test suite's plain helpers moved out of `conftest.py` into
+  `tests/helpers.py`.** Thirty-two of `conftest.py`'s thirty-nine members —
+  user setup, the FK-safe teardown, every `create_*` and `fetch_*` — were
+  ordinary functions with no pytest in them. They move unchanged, byte for byte,
+  so the coming behave pilot can share them without reaching into a pytest file;
+  `conftest.py` keeps the per-worker prefix and the seven fixtures. Three new
+  guards hold the split: the helpers may not import pytest or read pytest's
+  prefix, nothing may import a helper *through* conftest (six tests did, all
+  from inside a function body), and the double-load guard now covers
+  `helpers` as well as `conftest`. No behaviour changes. (#356)
+
 ### Fixed
 
 - **The database now refuses to store a NaN in any money column.** PostgreSQL's

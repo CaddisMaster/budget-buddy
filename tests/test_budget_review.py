@@ -16,12 +16,7 @@ import pytest
 import app.ai as ai
 from app.ai import ParseError, _normalize_budget_proposals, propose_budgets
 from app.blueprints.budgets import compute_budget_review_facts
-from tests.conftest import (
-    create_budget,
-    create_category,
-    create_transaction,
-    fetch_budget_by_category,
-)
+from tests.helpers import create_budget, create_category, create_transaction, fetch_budget_by_category
 
 HX = {"HX-Request": "true"}
 

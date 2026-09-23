@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from app.blueprints.budgets import BudgetRow, summarize_budgets
-from tests.conftest import create_budget, create_category, create_transaction
+from tests.helpers import create_budget, create_category, create_transaction
 
 CSS_PATH = Path(__file__).resolve().parents[1] / "app" / "static" / "style.css"
 
