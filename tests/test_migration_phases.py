@@ -57,6 +57,28 @@ DESTRUCTIVE_RE = re.compile(r"\bDROP\s+(TABLE|COLUMN)\b", re.I)
 # migration adds any of this it cannot be deferred past the swap.
 ADDITIVE_RE = re.compile(r"\b(?:CREATE\s+TABLE|ADD\s+COLUMN|ADD\s+CONSTRAINT)\b", re.I)
 
+# A string literal OR a `--` line comment, matched in one left-to-right pass so
+# that a `--` inside quotes is consumed as part of the string and never read as
+# the start of a comment (`''` is PostgreSQL's escaped quote). Only the comment
+# alternative is removed.
+#
+# ⚠️ Deliberately NOT handled: `/* */` block comments and `$$` dollar quoting.
+# Neither appears in sql/. Leaving block comments unstripped fails SAFE — a drop
+# named inside one makes the guard fire, loudly — whereas a stripper that got
+# either wrong could remove real SQL, and a hidden DROP is the silent failure.
+_STRING_OR_LINE_COMMENT = re.compile(r"'(?:[^']|'')*'|--[^\n]*")
+
+
+def sql_code(text):
+    """The migration with its `--` comments removed, for the two scanners.
+
+    ⚠️ The phase pragma is ITSELF a `--` comment, so `declared_phase` must keep
+    reading the raw text. Only DESTRUCTIVE_RE and ADDITIVE_RE read this (#375).
+    """
+    return _STRING_OR_LINE_COMMENT.sub(
+        lambda m: "" if m.group().startswith("--") else m.group(), text)
+
+
 # ⚠️ GRANDFATHERED, and the reason is the rule itself.
 #
 # `sql/13_monthly_budgets.sql` drops `budgets.period_start`/`period_end` AND adds
@@ -93,6 +115,41 @@ def declared_phase(path):
     return found[0] if found else None
 
 
+def drops_without_after_pull(paths):
+    """Rule 1's offenders: a DROP that does not declare `after-pull`."""
+    offenders = []
+    for path in paths:
+        if not DESTRUCTIVE_RE.search(sql_code(path.read_text())):
+            continue
+        if path.name in GRANDFATHERED_MIXED:
+            continue
+        if declared_phase(path) != "after-pull":
+            offenders.append(f"{path.name} (declares: {declared_phase(path)})")
+    return offenders
+
+
+def after_pull_that_adds_schema(paths):
+    """Rule 2's offenders: deferred past the swap, yet adds schema."""
+    offenders = []
+    for path in paths:
+        if path.name in GRANDFATHERED_MIXED:
+            continue
+        if declared_phase(path) != "after-pull":
+            continue
+        if ADDITIVE_RE.search(sql_code(path.read_text())):
+            offenders.append(path.name)
+    return offenders
+
+
+def undeclared_but_destructive(paths):
+    """Files that default to before-pull while containing a DROP."""
+    return [
+        path.name for path in paths
+        if declared_phase(path) is None
+        and DESTRUCTIVE_RE.search(sql_code(path.read_text()))
+    ]
+
+
 # ---------------------------------------------------------------------------
 # The sql/ corpus obeys the rule
 # ---------------------------------------------------------------------------
@@ -106,14 +163,7 @@ def test_every_destructive_migration_declares_after_pull():
     that does not exist yet — which is the only one that can still cause the
     outage.
     """
-    offenders = []
-    for path in migration_files():
-        if not DESTRUCTIVE_RE.search(path.read_text()):
-            continue
-        if path.name in GRANDFATHERED_MIXED:
-            continue
-        if declared_phase(path) != "after-pull":
-            offenders.append(f"{path.name} (declares: {declared_phase(path)})")
+    offenders = drops_without_after_pull(migration_files())
 
     assert not offenders, (
         "These migrations drop a table or column but do not declare "
@@ -133,14 +183,7 @@ def test_an_after_pull_migration_adds_no_schema_the_new_code_needs():
     the additive bug the original ordering existed to prevent, reintroduced by
     the fix for the destructive one.
     """
-    offenders = []
-    for path in migration_files():
-        if path.name in GRANDFATHERED_MIXED:
-            continue
-        if declared_phase(path) != "after-pull":
-            continue
-        if ADDITIVE_RE.search(path.read_text()):
-            offenders.append(path.name)
+    offenders = after_pull_that_adds_schema(migration_files())
 
     assert not offenders, (
         "These migrations defer to after the swap but also add schema:\n  "
@@ -177,10 +220,112 @@ def test_an_undeclared_migration_is_additive_by_default():
     undeclared = [p for p in migration_files() if declared_phase(p) is None]
     assert undeclared, "expected most migrations to declare nothing"
 
-    for path in undeclared:
-        assert not DESTRUCTIVE_RE.search(path.read_text()), (
-            f"{path.name} defaults to before-pull but contains a DROP"
-        )
+    offenders = undeclared_but_destructive(undeclared)
+    assert not offenders, (
+        f"{offenders} default to before-pull but contain a DROP"
+    )
+
+
+# ---------------------------------------------------------------------------
+# The rules read SQL, not prose (#375)
+# ---------------------------------------------------------------------------
+#
+# `sql/38` is additive, and failed rule 1's sibling because its header EXPLAINED
+# that it drops no table or column — quoting the two statements to say so. Every
+# migration here carries a long header, and a guard that fires on a file for
+# describing itself gets weakened mid-incident (a false pragma, or a new
+# GRANDFATHERED entry), which is worse than the confusion it causes.
+#
+# ⚠️ The second and third scenarios are the load-bearing ones. A fix that stops
+# scanning comments can just as easily stop catching real drops, or stop finding
+# the pragma — which is itself a comment — and both of those go silently green.
+
+
+def _migration(tmp_path, sql, name="99_under_test.sql"):
+    path = tmp_path / name
+    path.write_text(sql)
+    return [path]
+
+
+def test_an_additive_migration_may_describe_the_destructive_statements(tmp_path):
+    paths = _migration(tmp_path, (
+        "-- 99: add a check\n"
+        "--\n"
+        "-- DESTRUCTIVE_RE matches only DROP TABLE and DROP COLUMN, so the\n"
+        "-- DROP CONSTRAINT below is not a destructive statement.\n"
+        "\n"
+        "BEGIN;\n"
+        "ALTER TABLE t DROP CONSTRAINT IF EXISTS c;  -- not a DROP COLUMN\n"
+        "ALTER TABLE t ADD CONSTRAINT c CHECK (x > 0);\n"
+        "COMMIT;\n"
+    ))
+
+    assert undeclared_but_destructive(paths) == []
+    assert drops_without_after_pull(paths) == []
+
+
+def test_an_after_pull_migration_may_describe_the_additive_statements(tmp_path):
+    """The same defect in rule 2's scanner, which reads the same way."""
+    paths = _migration(tmp_path, (
+        "-- 99: drop a dead table\n"
+        "-- deploy: after-pull\n"
+        "-- Its replacement came from CREATE TABLE in an earlier file; this one\n"
+        "-- must not ADD COLUMN or ADD CONSTRAINT, or it would need both phases.\n"
+        "BEGIN;\n"
+        "DROP TABLE IF EXISTS dead;\n"
+        "COMMIT;\n"
+    ))
+
+    assert after_pull_that_adds_schema(paths) == []
+
+
+@pytest.mark.parametrize("sql", [
+    "BEGIN;\nDROP TABLE dead;\nCOMMIT;\n",
+    "ALTER TABLE t DROP COLUMN c;\n",
+    "-- a header\nALTER TABLE t\n    DROP COLUMN IF EXISTS c;\n",
+    "DROP TABLE dead;  -- trailing comment\n",
+    # A `--` inside a string literal is not a comment, so it must not swallow
+    # the rest of the line — that is the one way stripping could hide a drop.
+    "UPDATE t SET note = 'a -- b'; DROP TABLE dead;\n",
+    "UPDATE t SET note = 'it''s -- quoted'; DROP TABLE dead;\n",
+], ids=["bare", "column", "multiline", "trailing-comment",
+        "dashes-in-string", "escaped-quote-in-string"])
+def test_a_real_drop_is_still_caught(tmp_path, sql):
+    paths = _migration(tmp_path, sql)
+
+    assert undeclared_but_destructive(paths) == ["99_under_test.sql"]
+    assert drops_without_after_pull(paths) == ["99_under_test.sql (declares: None)"]
+
+
+def test_a_real_addition_after_the_pull_is_still_caught(tmp_path):
+    paths = _migration(tmp_path, (
+        "-- deploy: after-pull\n"
+        "DROP TABLE dead;\n"
+        "ALTER TABLE t ADD COLUMN c int;  -- the half that needed before-pull\n"
+    ))
+
+    assert after_pull_that_adds_schema(paths) == ["99_under_test.sql"]
+
+
+def test_the_pragma_is_still_read_although_it_is_a_comment(tmp_path):
+    """The asymmetry the fix depends on, pinned.
+
+    The scanners read the SQL with comments removed; the pragma lives in a
+    comment. If `declared_phase` were ever pointed at the stripped text, every
+    after-pull file would read as undeclared — and this correct drop would be
+    reported as an offender.
+    """
+    paths = _migration(tmp_path, (
+        "-- 99: drop a dead table\n"
+        "-- deploy: after-pull\n"
+        "BEGIN;\n"
+        "DROP TABLE dead;\n"
+        "COMMIT;\n"
+    ))
+
+    assert declared_phase(paths[0]) == "after-pull"
+    assert drops_without_after_pull(paths) == []
+    assert undeclared_but_destructive(paths) == []
 
 
 # ---------------------------------------------------------------------------

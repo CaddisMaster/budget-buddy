@@ -100,6 +100,8 @@
 -- fail `test_an_undeclared_migration_is_additive_by_default` — a file described
 -- as safe, failing for describing itself. Filed as #375 rather than fixed here,
 -- because a migration stands alone in its own PR.
+-- (2026-09-22: #375 fixed it — both scanners now read the SQL with `--`
+-- comments removed. The wording above is kept as it was written.)
 
 BEGIN;
 
