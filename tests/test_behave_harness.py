@@ -248,3 +248,42 @@ def test_behave_and_pytest_never_share_a_prefix():
     assert behave and pytest_base
     assert not behave.startswith(pytest_base)
     assert not pytest_base.startswith(behave)
+
+
+STEPS_DIR = REPO_ROOT / "tests/features/steps"
+
+
+def _step_files():
+    files = sorted(STEPS_DIR.glob("*.py"))
+    assert files, f"no step files found in {STEPS_DIR}"
+    return files
+
+
+def _imported_modules(path):
+    tree = ast.parse(path.read_text())
+    return {node.module for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module}
+
+
+def test_every_step_file_registers_its_types_through_support():
+    """#389 — behave hands every step matcher ONE shared type registry and
+    compiles lazily, and it loads `steps/` alphabetically. A step file that uses
+    `{who:Who}` and sorts before the file registering `Who` crashes the WHOLE
+    run with `format spec 'Who' not recognised` — measured with a probe, not
+    reasoned. Importing `tests.features.support` first makes it independent of
+    filenames. `common_steps.py` sorts before `schedule_steps.py`, so under the
+    old layout it would have broken on day one."""
+    missing = [p.name for p in _step_files()
+               if "tests.features.support" not in _imported_modules(p)]
+    assert not missing, f"step files not importing tests.features.support: {missing}"
+
+
+def test_no_step_file_imports_another():
+    """behave executes every file in `steps/`, so an imported step file runs a
+    second time and registers each of its steps twice (an AmbiguousStep).
+    Shared steps belong in `common_steps.py`; shared types in `support.py`."""
+    offenders = {p.name: sorted(m for m in _imported_modules(p)
+                                if m.startswith("tests.features.steps"))
+                 for p in _step_files()}
+    offenders = {k: v for k, v in offenders.items() if v}
+    assert not offenders, f"step files importing other step files: {offenders}"

@@ -34,6 +34,14 @@ the Tests job (it calls pytest directly, never `test.sh`) and inside the shipped
   the generic "a {frequency} {kind} schedule" step with `frequency="paused"`.
 - Steps must not import from `environment.py` — behave loads it itself, so an import is a
   second copy of the module.
+- 🛑 **Every step file imports `tests/features/support.py` first, and no step file imports
+  another** (#389, both asserted in `test_behave_harness.py`). behave hands every step matcher one
+  shared type registry, compiles patterns lazily, and loads `steps/` **alphabetically**. So a
+  step file using `{who:Who}` that sorts before the file registering `Who` crashes the whole run
+  with `ValueError: format spec 'Who' not recognised`. That was measured with a probe, not
+  inferred from the source. Shared types and `_user` live in `support.py`, outside `steps/` and
+  defining no steps. Shared *steps* ("user A is signed in") live in `steps/common_steps.py`: an
+  imported step file would run twice and register every step twice.
 - Default output is `progress3`: one line per scenario, and a failure printed inline with its
   step, `file:line` and assertion message. `progress` drops the message; `pretty` lists every step.
 
@@ -116,7 +124,24 @@ in `app/` and the scenario is shown to fail, which is the oracle #356 used.
 **Re-open this decision** (#355 carries the thread) when either of these happens first:
 - behave's wall time on a full `./test.sh` passes **15s**, as long as the whole parallel pytest
   run (lowered from 30s in #384, when pytest itself fell from 63s to 15s)
-- a **third area** beyond schedules has been converted, so there is evidence and not a prediction
+- a **third area** beyond schedules has been converted, so there is evidence and not a prediction.
+  **Transfers is the second** (#389, 2026-09-24), so the next conversion is the one that triggers it
+
+### Converted areas
+
+| Area | Issue | Scenarios | Twins |
+|---|---|---|---|
+| schedules | #356 | 12 | **kept**. The pilot left them as the oracle |
+| transfers | #389 | 10 | **deleted**, after every behaviour was broken in `app/` and its scenario went red |
+
+⚠️ **#389's mutation pass found two old twins that could not fail.** Removing the same-account
+check made the app record a transfer from an account to itself: an expense and an income that
+cancel out. The balance didn't move, which is all `test_transfer_to_same_account_rejected`
+checked, so it passed. The scenario checks the refusal message and that nothing was recorded.
+And deleting the transfer badge left `test_history_renders_transfer_row` green, because its
+`b"Transfer"` is also in the nav's "Transfers" link. **Converting is a chance to re-check what a
+test asserts, not just to re-type it**, and running the mutation against *both* runners is what
+showed it.
 
 ## Every promised scenario is claimed (#358)
 
@@ -417,7 +442,7 @@ anon → 302. What each file covers:
 - `test_crud.py` — create/edit/delete happy paths (incl. kind CRUD, flip-clears-budget, credit-limit persist)
 - `test_htmx.py` — fragment shape (no `<html>`), isolation 404s, admin 403 gaps
 - `test_budget_vs_actual.py` / `test_budget_suggestions.py` — the two budget helpers
-- `test_transfers.py` / `test_goals.py` — transfers + goals routes (payoff snapshot, balance-≥-0 rejection, payoff-edit lock; the analytics-exclusion test asserts the dashboard hero figures)
+- `test_goals.py` — goals routes (payoff snapshot, balance-≥-0 rejection, payoff-edit lock). Transfers moved to `tests/features/transfers.feature` in #389; `test_transfers.py` is gone
 
 Fixtures (`conftest.py`) use the dev Postgres with `__pytest__`-prefixed users. The plain
 helpers they call — `_create_user`, `_delete_user`, every `create_*`/`fetch_*` — live in

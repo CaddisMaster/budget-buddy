@@ -8,9 +8,8 @@ WHAT happens, and this file is the only place that knows HOW.
 call every one `step_impl`, which ruff reports as F811 (redefinition) — and
 silencing that rule would also hide a real redefinition somewhere else.
 """
-import re
 import threading
-from datetime import date, timedelta
+from datetime import date
 
 from behave import given, register_type, then, when
 
@@ -18,45 +17,12 @@ from app.blueprints.reminders import materialize_all_users
 from app.blueprints.schedules import run_due_schedules
 from app.blueprints.transactions import VALID_FREQUENCIES
 from app.db import get_db_connection
-from tests.helpers import _login, count_transactions_like, create_schedule, fetch_schedule
-
-HX = {"HX-Request": "true"}
+from tests.features.support import HX, _pattern, _user
+from tests.helpers import count_transactions_like, create_schedule, fetch_schedule
 
 # The description `create_schedule` gives every row it inserts, and so the one
 # every posted transaction carries.
 SEEDED = "seed-schedule"
-
-
-# ── Relative dates ──────────────────────────────────────────────────────────
-#
-# Scenarios speak in days relative to today, because every rule here is
-# relative to today: "due yesterday" means the same thing on any date the suite
-# runs, where a literal date would go stale or need a frozen clock.
-
-def _pattern(regex):
-    """What `parse.with_pattern` does, without importing `parse` — it reaches
-    this environment only as a dependency of behave, and nothing pins it."""
-    def mark(func):
-        func.pattern = regex
-        return func
-    return mark
-
-
-_REL = r"yesterday|today|tomorrow|in \d+ days?|\d+ (?:day|week)s? ago"
-
-
-@_pattern(_REL)
-def _relative_date(text):
-    today = date.today()
-    fixed = {"yesterday": -1, "today": 0, "tomorrow": 1}
-    if text in fixed:
-        return today + timedelta(days=fixed[text])
-    count, unit = re.search(r"(\d+) (day|week)", text).groups()
-    delta = timedelta(days=int(count)) if unit == "day" else timedelta(weeks=int(count))
-    return today + delta if text.startswith("in ") else today - delta
-
-
-register_type(Rel=_relative_date)
 
 
 # ⚠️ Constrained types, not bare `{}`. parse's default field is a lazy `.+?`
@@ -75,16 +41,7 @@ def _kind(text):
     return text
 
 
-@_pattern(r"[AB]")
-def _who(text):
-    return text
-
-
-register_type(Freq=_frequency, Kind=_kind, Who=_who)
-
-
-def _user(context, who):
-    return context.users[who.lower()]
+register_type(Freq=_frequency, Kind=_kind)
 
 
 # ── Given ───────────────────────────────────────────────────────────────────
@@ -109,13 +66,6 @@ def given_a_schedule_with_an_end(context, who, frequency, kind, due, end):
 @given("user {who:Who} has a paused {frequency:Freq} {kind:Kind} schedule due {due:Rel}")
 def given_a_paused_schedule(context, who, frequency, kind, due):
     _make_schedule(context, who, frequency, kind, due, active=False)
-
-
-@given("user {who:Who} is signed in")
-def given_signed_in(context, who):
-    client = context.app.test_client()
-    _login(client, _user(context, who)["username"])
-    context.client = client
 
 
 # ── When ────────────────────────────────────────────────────────────────────
