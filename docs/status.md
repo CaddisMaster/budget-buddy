@@ -5,12 +5,11 @@
 
 ## Current Status
 
-▶️ **NEXT SESSION: two decisions, then possibly `0.11.0`.** `0.10.0` (2026-09-11) is still what
-production runs. `main` is past it (`git log v0.10.0..main`), with **one migration** (`sql/38`, additive, so
-before-pull) and **no new env vars**. Open in `0.11.0`: **#355** (the BDD parent issue; its three
-stages are done, so close it or keep it for area conversions) and **#361** (55 green runs since
-#364, and the close decision is Sean's). **#36** stays date-parked. ⚠️ The new `Acceptance
-criteria` check is **not a required status check yet**.
+▶️ **NEXT SESSION: nothing filed.** ✅ **`0.11.0` shipped and verified 2026-09-24.** Milestone
+`0.11.0` closed at 30/30 on ship day; `0.12.0` is open and empty. **#36** stays date-parked.
+Candidates, unfiled: a third behave area (goals), which triggers #357's re-decision, or reusing DB
+connections. ⚠️ The `Acceptance criteria` check is **still not a required status check** (checked
+at the end of the session).
 
 ✅ **#309'S OUTPUT IS FULLY DISCHARGED as of 2026-09-16.** All twelve issues the full-repo read
 filed are closed: #326 `NOT_PLANNED` on 2026-09-11, then **#314, #328 and #333 merged on
@@ -24,6 +23,32 @@ the body, before proposing any issue as work.** ⚠️ A mechanical milestone ro
 either, so it will always overstate the work by however many decided-but-unclosed issues exist.
 
 ### The 2026-09-24 session: the BDD thread decided, and a 4× faster suite
+
+**After the mid-session record (#388), the same session went on to:**
+
+| PR | Issue | |
+|---|---|---|
+| #379 | — | Dependabot group (`anthropic` 1.7.0, `resend` 2.47.0, `ruff` 0.16.8), plus the two ruff pins it cannot see. Fifth consecutive group caught by `test_all_three_ruff_pins_agree` |
+| #390 | **#389** closed | transfers → behave, the second area; `test_transfers.py` deleted |
+| #392 | **#391** closed | Cut `0.11.0` |
+
+**#361 and #355 were closed** on Sean's call. **`0.11.0` shipped**; see CLAUDE.md's status block
+for the deploy log.
+
+- 🛑 **#389's mutation pass found two old transfer tests that could not fail.** A same-account
+  transfer records an expense and an income that cancel out, so "balance unchanged" passed while
+  the transfer was recorded. And the history test's `b"Transfer"` matched the nav link. Running
+  every mutant against *both* runners is what showed it. Detail in `docs/testing.md`.
+- 🛑 **behave's type registration depends on step-file load order, which is alphabetical.**
+  Probed, not inferred: a step file sorting before the one registering `Who` crashes the whole run
+  with `format spec 'Who' not recognised`. Fixed with `tests/features/support.py`, and two harness
+  tests hold the layout.
+- ⚠️ **A draft Release sends no notification.** Sean's usual cue is the `production` gate's
+  approval request, which only comes after *publishing*. Drafting and then waiting for a
+  notification that never arrives is the trap. Either publish, or say so.
+- ⚠️ **The mid-session notes pass (#388) was a mistake of timing, not content.** It was written
+  when the session looked finished, and then four more PRs and a release happened. It was
+  extended here at the true end rather than rewritten.
 
 Three PRs merged, **none deployed**. No app code changed.
 
