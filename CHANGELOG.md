@@ -21,6 +21,14 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **Which tests are written as behave scenarios is now a written rule, not
+  a judgement call.** A test becomes a `.feature` scenario only when it
+  transcribes a scenario from the issue's acceptance criteria and needs a user
+  in the database; everything else stays pytest. `docs/testing.md` records the
+  reasoning and the measured cost: behave cannot run in parallel, so converting
+  every eligible test at today's setup cost would take several minutes on
+  every run, against about one minute for the parallel pytest suite. The
+  boundary is provisional, with its re-open triggers written down. (#357)
 - **The test suite's plain helpers moved out of `conftest.py` into
   `tests/helpers.py`.** Thirty-two of `conftest.py`'s thirty-nine members —
   user setup, the FK-safe teardown, every `create_*` and `fetch_*` — were

@@ -19,8 +19,9 @@
 # class of defect to fix and used to be caught only by CI, four minutes away.
 # See the block above the invocation for why it fails fast rather than warning.
 #
-# Runs in PARALLEL by default, which takes the full suite from ~204s to well
-# under a minute. That is safe only because tests/conftest.py derives its
+# Runs in PARALLEL by default, which takes the full suite from ~380s serial
+# (measured 2026-09-24, 1355 tests; it was ~204s at a smaller size) to about a
+# minute. That is safe only because tests/conftest.py derives its
 # TEST_PREFIX from the xdist worker id so every worker owns its own database
 # rows — read the note there before changing how test users are named.
 #
