@@ -5,10 +5,12 @@
 
 ## Current Status
 
-▶️ **NEXT SESSION: the BDD thread, and nothing else is broken and waiting.** `0.10.0` shipped
-2026-09-11 and is still what production runs. The open milestone is **`0.11.0`**, carrying **six**
-— four are the BDD thread (**#355**, whose pilot **#356** is scoped and unstarted), one is #361
-(a flake left open on purpose) and one is **#375**, filed 2026-09-16.
+▶️ **NEXT SESSION: two decisions, then possibly `0.11.0`.** `0.10.0` (2026-09-11) is still what
+production runs. `main` is past it (`git log v0.10.0..main`), with **one migration** (`sql/38`, additive, so
+before-pull) and **no new env vars**. Open in `0.11.0`: **#355** (the BDD parent issue; its three
+stages are done, so close it or keep it for area conversions) and **#361** (55 green runs since
+#364, and the close decision is Sean's). **#36** stays date-parked. ⚠️ The new `Acceptance
+criteria` check is **not a required status check yet**.
 
 ✅ **#309'S OUTPUT IS FULLY DISCHARGED as of 2026-09-16.** All twelve issues the full-repo read
 filed are closed: #326 `NOT_PLANNED` on 2026-09-11, then **#314, #328 and #333 merged on
@@ -20,6 +22,45 @@ on 2026-09-04, when "#326 and #314, the two migrations" was proposed as the next
 decision lived only in a comment, where `gh issue list` cannot see it. **Read the comments, not just
 the body, before proposing any issue as work.** ⚠️ A mechanical milestone roll cannot read comments
 either, so it will always overstate the work by however many decided-but-unclosed issues exist.
+
+### The 2026-09-24 session: the BDD thread decided, and a 4× faster suite
+
+Three PRs merged, **none deployed**. No app code changed.
+
+⚠️ **The 2026-09-22/23 session left no status update.** It merged #381 and #382 (the behave
+pilot, closing **#356**) and #380 (closing **#375**, the phase test reading comments). This file
+still called #356 "scoped and unstarted" at the start of this session. `git log` is the only record
+of that session. The pilot's own report is in #382's body, and it is the evidence #357 was decided
+on.
+
+| PR | Issue | |
+|---|---|---|
+| #383 | **#357** closed | behave for behaviour only, provisionally. The rule is in `docs/testing.md` |
+| #385 | **#384** closed | test users at bcrypt cost 4; dev `tcp_tw_reuse`; #357's question 2 tightened |
+| #386 | **#358** closed | the `Acceptance criteria` PR check (`scripts/check_criteria.py`) |
+
+- **The suite is ~4× faster, and it wasn't behave that got faster.** Test users were hashed at
+  production cost 12 (0.183s a hash; 0.001s at 4), and every `users` fixture creates two. pytest
+  `-n 10` went 63s → 15s, `-n0` 380s → 58s, behave 5.7s → 1.2s. Found by measuring behave's
+  per-scenario cost for #357. ⚠️ The obvious fix (`BCRYPT_LOG_ROUNDS` in a fixture) is a silent
+  no-op, because Flask-Bcrypt reads it once in `init_app`.
+- 🛑 **The speed-up broke back-to-back runs.** A run opens ~9,000 DB connections, each holding a
+  port in TIME_WAIT for 60s, against 28,232 ports. At 15s a run, the third consecutive `./test.sh`
+  failed with 585 `Cannot assign requested address` errors. At 63s it never could. Fixed in the dev
+  override with `net.ipv4.tcp_tw_reuse: 1`, and six back-to-back runs then passed. **A container
+  started before #385 doesn't have it: `docker compose up -d web`.**
+- **#357's rule misfired on the day it was written.** "Needs a user row?" routed #384's own
+  hash-cost check to a `.feature` file. It now asks whether the `When` drives the app as a user.
+- **#358 was designed against its own premise.** Its sketches assumed every criterion becomes a
+  `.feature` file, which #357 had just made false. Sean chose title matching with three claim
+  forms. Run against today's two earlier PRs, it fails and names all six of their scenarios, which
+  is the gap #358 described. Seven guards were mutated separately; two survived at first, both
+  fixture gaps.
+- **#361: 40 more green runs**, made affordable by #384. With #364's 15, that's 55: P = 0.002 at
+  the titled 11%, 0.11 at the pooled 4%. ⚠️ Confound: the timing change moves xdist scheduling,
+  which could hide a race as easily as #364 fixed one.
+- ⚠️ `test.sh`'s serial figure (~204s) and #357's "3.5 minutes" were both stale. Serial was 380s
+  before #384. `test.sh`'s worker-count table predates #384 and was not re-measured.
 
 ### The 2026-09-16 session: the #309 remnants cleared
 

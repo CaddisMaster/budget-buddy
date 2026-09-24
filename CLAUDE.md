@@ -288,11 +288,14 @@ server itself — **read it before touching anything on the Droplet.**
 
 ## Current status
 
-▶️ **NEXT UP: the BDD thread.** `0.10.0` shipped 2026-09-11 and is still what production runs; the
-open milestone is **`0.11.0`**, carrying **six open** — four are the BDD thread (**#355**, whose
-pilot #356 is scoped and unstarted), one is #361 (a flake left open on purpose), and one is **#375**
-(filed 2026-09-16). ✅ **#309's output is FULLY DISCHARGED as of 2026-09-16**: #314, #328 and #333
-merged, after #326 was closed `NOT_PLANNED` on 2026-09-11.
+▶️ **NEXT UP: two decisions of Sean's, then possibly cutting `0.11.0`.** `0.10.0` (2026-09-11) is
+still what production runs. `main` is past it (`git log v0.10.0..main` for the set), carrying **one migration** (`sql/38`,
+additive) and **no new env vars**. The BDD thread's stages are done as of 2026-09-24: the pilot
+(#356), the boundary (#357), and the criteria check (#358). What's open in `0.11.0` is **#355**
+(the parent; close it, or keep it for area-by-area conversions?) and **#361** (55 consecutive green
+runs, [numbers in its thread](https://github.com/CaddisMaster/budget-buddy/issues/361#issuecomment-5818146485),
+close decision is Sean's). ⚠️ **"Issue criteria are claimed by tests" is NOT yet a required
+check**, so a red result shows but doesn't block a merge. Adding it is a settings change.
 
 🛑 **AN ISSUE BEING OPEN IS NOT EVIDENCE THAT IT IS OPEN WORK.** Kept as a standing rule now that
 its examples are closed. On 2026-09-04 "#326 and #314, the two migrations" was proposed as the next
