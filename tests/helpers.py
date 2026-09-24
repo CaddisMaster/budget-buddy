@@ -22,6 +22,14 @@ from app.db import get_db_connection
 
 PASSWORD = "test-password-123"
 
+# bcrypt cost for test users (#384). The app hashes at Flask-Bcrypt's default
+# of 12, ~0.18s a hash; at 4 it is ~0.001s, and every pytest `users` fixture and
+# every behave scenario creates two users. ⚠️ Passed per call, not via
+# `BCRYPT_LOG_ROUNDS`: Flask-Bcrypt reads that once in `init_app`, at import, so
+# setting it from a fixture is a silent no-op. Login is unaffected, because
+# `check_password_hash` reads the cost from the stored hash.
+TEST_BCRYPT_ROUNDS = 4
+
 
 def _wait_for_db(attempts=10, delay=1.0):
     """The db container may still be starting when `docker compose run` fires;
@@ -42,7 +50,7 @@ def _wait_for_db(attempts=10, delay=1.0):
 def _create_user(username, password, is_admin=False):
     conn = get_db_connection()
     cur = conn.cursor()
-    pw_hash = bcrypt.generate_password_hash(password).decode("utf-8")
+    pw_hash = bcrypt.generate_password_hash(password, rounds=TEST_BCRYPT_ROUNDS).decode("utf-8")
     cur.execute(
         "INSERT INTO users (username, password_hash, is_admin) "
         "VALUES (%s, %s, %s) RETURNING id",

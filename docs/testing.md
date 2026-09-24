@@ -22,7 +22,8 @@ the Tests job (it calls pytest directly, never `test.sh`) and inside the shipped
   in a subprocess against each case and asserts no script invokes bare `behave`.
 - ⚠️ **behave's own `Took …` line undercounts by ~10×.** It times steps only, not the
   `before_scenario` hook where the users are created (bcrypt). Time the process instead: the
-  pilot's 12 scenarios are ~5.6s wall, the same as their 12 pytest twins run serially. **behave
+  pilot's 12 scenarios were ~5.6s wall, the same as their 12 pytest twins run serially (~1.2s
+  since #384 made test users cheap to hash). **behave
   has no parallel mode**, so a scenario always costs what a serial pytest test costs.
 - **The prefix is `__behave__`**, never pytest's — `tests/features/environment.py` is conftest's
   fixtures rebuilt as hooks, and `test_behave_harness.py` asserts neither prefix starts the
@@ -45,13 +46,21 @@ neither asks you to judge whether your test is "behavioural":
 1. **Are you transcribing a `Scenario:` from the acceptance criteria of the issue you are
    closing?** No → **pytest**. A regression test, a guard found while working, a structural check
    — anything not written as Gherkin first — is pytest.
-2. **Does it need a user row?** In other words, would the pytest version take `users`, `client_a`,
-   `client_b` or `admin_client`? No → **pytest**, even though it started as Gherkin. That covers
-   pure functions (`compute_initial_semimonthly_due`), repo-file checks (the ruff pins, the
-   migration phases, the design tokens) and doc claims.
+2. **Does its `When` drive the app as a user?** That means a request through `client_a`,
+   `client_b` or `admin_client`, or a job run over that user's data (the schedules runner, the
+   daily reminders pass). No → **pytest**, even though it started as Gherkin. That covers pure
+   functions (`compute_initial_semimonthly_due`), repo-file checks (the ruff pins, the migration
+   phases, the design tokens), doc claims, and **checks on a stored value that needs a user only
+   as setup**.
 
 **Both yes → a `.feature` scenario** under `tests/features/`. For example, #357's own
 "`docs/testing.md` states the rule" scenario fails question 2 and is not a behave scenario.
+
+⚠️ **Question 2 was tightened on 2026-09-24, the day it was written (#384).** It first asked
+"does it need a user row?", and #384's "test users are hashed at cost 4" passed that question.
+That test creates a user and reads the stored hash, but no user does anything in it, so it belongs
+in pytest. Needing the database is not the same as having an actor, and the actor is what makes
+Gherkin read well.
 
 **Why this boundary, not "everything":**
 
@@ -61,40 +70,52 @@ neither asks you to judge whether your test is "behavioural":
   `test_migration_phases.py`) would lose directness for nothing.
 - **behave is serial, and nothing else about it costs more.** Measured on the pilot, a scenario
   costs what the same test costs in pytest with `-n0`. The only difference is that behave has no
-  `-n` to reach for. The boundary is how the suite stays about a minute long, and a one-minute
-  suite is what makes CLAUDE.md's "do not ration test runs" affordable.
-- **Question 2 tracks the cost.** A scenario needs a user because it needs the database. That is
-  exactly where Gherkin reads well (an actor, an action, a result) and where the per-scenario
-  setup is spent.
+  `-n` to reach for. The boundary is how the suite stays short, and a short suite is what makes
+  CLAUDE.md's "do not ration test runs" affordable.
+- **Question 2 tracks the cost.** A test that drives the app as a user needs users in the
+  database. That is exactly where Gherkin reads well (an actor, an action, a result) and where the
+  per-scenario setup is spent.
 
-**The runtime cost, measured 2026-09-24 on `jupiter` (8 cores), 1355 pytest tests + 12 scenarios:**
+**The runtime cost, measured 2026-09-24 on `jupiter` (8 cores), ~1357 pytest tests + 12
+scenarios**, before and after #384 put test users at bcrypt cost 4. The same method was used for
+both columns: only `TEST_BCRYPT_ROUNDS` changed, and each run's pass count was checked.
 
-| | wall |
-|---|---|
-| pytest, `-n 10` (the default) | **63s** (70s for the whole `./test.sh`, with lint and behave) |
-| pytest, `-n0` | **380s**. ⚠️ Not the ~204s in `test.sh`'s header, which dates from a smaller suite |
-| behave, the 12 pilot scenarios | ~5.6s, ~0.45s each |
+| | cost 12 (before #384) | cost 4 (now) |
+|---|---|---|
+| behave, the 12 pilot scenarios | 5.6–5.7s, ~0.47s each | **1.2–1.3s, ~0.1s each** |
+| pytest, `-n 10` (the default) | 63–64s | **15–16s** |
+| pytest, `-n0` | 380s | **58s** |
 
-Applying the rule to today's suite: **627 of the 1178 test functions need a user row.** Converting
-all of them is the full rollout under this boundary. At the measured serial cost that is roughly
-**3–5 minutes of behave** (627 × 0.28s, the serial pytest average, up to 627 × 0.45s, the pilot's
-per-scenario figure). The 63s parallel pytest run it would replace is for the *whole* suite. So a
-full rollout at today's per-scenario cost makes every full run several times longer. Converting
-everything (option 2) is ~380s serial, plus whatever sharding layer is then built to escape it.
+A bcrypt hash takes 0.183s at cost 12 and 0.001s at cost 4. Test users were hashed at 12 until
+#384, and every `users` fixture and every scenario creates two. That was most of the suite's time,
+not just behave's. `tests/test_bcrypt_cost.py` holds both sides: test users at 4, the app at 12.
 
-⚠️ **The lever is bcrypt, and it is not pulled yet.** No test config sets `BCRYPT_LOG_ROUNDS`, so
-test users hash at Flask-Bcrypt's default cost of 12. Measured in the dev container: **0.183s per
-hash at 12, 0.001s at 4**. Every scenario creates two users, so ~0.37s of each ~0.45s scenario is
-bcrypt. This is arithmetic, not a measurement, but at cost 4 the rollout's serial time should fall
-to around a minute. It would speed up pytest too. **Pull it before converting any area beyond
-schedules.**
+⚠️ **A fast suite ran out of ports, and the dev container now reuses them.** Every
+`get_db_connection()` opens a fresh TCP connection, and a full run opens **~9,000**. Each one
+holds its local port in TIME_WAIT for 60s against a range of 28,232 (32768–60999). At 63s a run
+the ports drained as fast as they were used. At ~15s, **the third back-to-back `./test.sh` failed
+every connection** with `psycopg2.OperationalError: … Cannot assign requested address`, which
+shows up as hundreds of errors across files nobody touched. `docker-compose.override.yml` sets
+`net.ipv4.tcp_tw_reuse: 1` on `web` (dev only; the Droplet has no override). After that, six
+back-to-back runs passed and TIME_WAIT levelled off at ~11,200. **If you see that error,
+`docker compose up -d web` to pick up the sysctl** — a container started before this change does
+not have it. CI is unaffected: it runs the suite once, on the runner.
+
+Applying the rule to today's suite, **at most 627 of the 1178 test functions** could become
+scenarios. That is the count needing a user row, and the tightened question 2 admits fewer.
+Converting all 627 at the measured serial cost is roughly **30–60s of behave** (627 × ~0.043s, the
+serial pytest average, up to 627 × ~0.1s, the per-scenario figure). The parallel pytest run it
+would replace takes 15s for the *whole* suite, so even this bounded rollout makes a full run
+noticeably longer. Converting everything (option 2) is ~58s serial, plus whatever sharding layer
+is then built to escape it.
 
 **Existing tests are not converted just because they now qualify.** An area moves over
 deliberately, as a stage of #355. Its pytest twins are deleted only after each behaviour is broken
 in `app/` and the scenario is shown to fail, which is the oracle #356 used.
 
 **Re-open this decision** (#355 carries the thread) when either of these happens first:
-- behave's wall time on a full `./test.sh` passes **30s**, about half the parallel pytest run
+- behave's wall time on a full `./test.sh` passes **15s**, as long as the whole parallel pytest
+  run (lowered from 30s in #384, when pytest itself fell from 63s to 15s)
 - a **third area** beyond schedules has been converted, so there is evidence and not a prediction
 
 ⚠️ **`test.sh` runs `ruff check` FIRST and stops if it fails** (#264). Ruff used to exist
@@ -298,6 +319,7 @@ anon → 302. What each file covers:
 - `test_category_colour.py` — #257: `/categories` shows the colour a category is actually drawn in, and the fold cuts at `PALETTE_SIZE` rather than 6. ⚠️ **The load-bearing one is `test_the_swatch_shows_the_DRAWN_slot_not_the_preferred_one`** — every other test in the file also passes against the rejected `creation_index % PALETTE_SIZE` shortcut, which is right until two drawn categories contest a hue and then disagrees with the chart silently. It rebuilds #111's production collision (creation indices 1 and 9 both preferring slot 1, both drawn) and was verified red against the shortcut: *"Cat 8: /categories claims slot 2, chart draws 1"*, 5 of 10 failing. ⚠️ Its seed gives "Cat 8" the SECOND-HIGHEST total deliberately — with plain descending amounts it folds into "Other", the collision never happens, and the test fails on its own setup. Also: the uncharted state claims no hue, the legend appears only when something is uncharted, `test_colour_is_still_not_a_stored_property` guards #111's reversal at the schema, and `test_every_row_swap_carries_the_swatch` catches a render site that forgets `colour_slots` (the partial tolerates it missing so a swap cannot raise, which is exactly what would make it degrade silently)
 - `test_session_invalidation.py` — #272 (from #224): a password change signs out every other device. The `get_id()` format, the rotation, and **both** directions of the behaviour — the other device is signed out AND the acting device stays signed in (the second is easy to lose, and losing it logs you out of your own password change). Plus: a rejected change rotates nothing (otherwise the form is a DoS against your own devices), isolation, and login still working afterwards. ⚠️ **`test_the_pre_272_cookie_format_is_rejected` uses a REAL user's id deliberately** — written against a nonexistent id it passes whether or not the bare-id format is rejected, because a missing user returns `None` anyway; it was caught passing vacuously and rewritten. Verified red against the pre-fix app, and the byte-comparison fix verified red against the `str` version separately. ⚠️ No count recorded here on purpose — the follow-up commit that fixed `compare_digest` grew the parametrize lists, which would have made a number written with the first commit wrong within the same branch
 - `test_verify_skill.py` — #267: the `verify` skill's teardown cannot silently rot again. It was a hand-maintained copy of `conftest.py::_delete_user`; `sql/36` dropped two tables, `conftest.py` was updated and the copy was not, and under `-v ON_ERROR_STOP=1` the block aborted on the first missing table and **tore down nothing**. ⚠️ **The load-bearing one is `test_the_teardown_only_names_tables_that_exist`** — every table `_delete_user` names must appear in `sql/schema.sql`. Asserted against the schema FILE rather than a live database on purpose: it then fails in the pull request that drops the table, regardless of whether anyone's dev database has had the migration applied. The others hold the shape of the fix (the skill delegates, and carries no runnable `DELETE` list of its own — checked as "fewer than 3 distinct tables", since the prose still mentions the old block to explain why it went away). Verified red both ways: re-adding a dropped table to `_delete_user` fails naming it, and pasting a table list back into the skill fails naming those
+- `test_bcrypt_cost.py` — #384: test users are hashed at bcrypt cost 4 (read from the stored hash) and the app still hashes at 12. ⚠️ **The first test is the load-bearing one**: Flask-Bcrypt reads `BCRYPT_LOG_ROUNDS` once in `init_app`, so the obvious fix, setting it in the `app` fixture, is a silent no-op. Verified: that mutant leaves the test red with `$2b$12$`. Its third test guards the override's `tcp_tw_reuse` sysctl (see "Which tests get behave") and skips in the image, where `.dockerignore` drops the override. ⚠️ Mutate it by setting the value to `0`, not by deleting the line: an empty `sysctls:` block fails compose validation, so `./test.sh` never reaches pytest and the "mutant" proves nothing
 - `test_behave_harness.py` — #356: the behave wiring, one acceptance criterion per test. ⚠️ **The zero-scenario guards RUN the wrapper** in a subprocess against features written into `tmp_path` (behave's step registry is process-global, so in-process runs would collide), with a positive control first. Verified red, each separately: disabling the zero guard, counting `feature.scenarios` (misses `Rule:` blocks), dropping `exit 1` or the bare-behave ban from `test.sh`, dropping CI's behave step, `set -e` or the shipped-image probe, and borrowing pytest's prefix. Two of those first survived and exposed real defects — the `set -e` check matched its own comment, and `with_rules=True` would have *overcounted* (it adds Rule objects, which have a status)
 - `test_lint_local.py` — #264: that `./test.sh` lints before it tests. The **load-bearing one is `test_the_two_ruff_pins_agree`**, which asserts `requirements-dev.txt` and `ci.yml` name the same ruff version — stated as an equality between the two files rather than as a literal, so a bump edits both files and no test. Also: ruff runs BEFORE the `exec` (asserted as two *positions*, since a `ruff check` placed after it would satisfy a substring assertion and never run), a lint failure exits non-zero, `SKIP_LINT=1` exists, the container probe covers ruff and not just pytest, and #206's `flock` is still taken before the lint. ⚠️ Every test SKIPS when its file is absent, naming `.dockerignore` — **`test.sh` is genuinely stripped from the shipped image**, and this change touches `requirements*.txt` and `tests/`, so the in-image run really happens. Verified red: all 7 fail against the pre-fix files
 - `test_deploy_pinning.py` — #190: the compose image ref has **no `:-` default of any kind** (the property, not the string) and errors naming `TAG`; `.env.example` carries a `TAG=` line; both workflows rewrite the pin, `chmod 600` **before** the write, and the release pins **before** its first compose command. ⚠️ Every test SKIPS when the file it reads is absent, naming `.dockerignore` — `docker-compose*.yml` and `.env.*` are genuinely excluded from the shipped image (#176). Verified red against the pre-fix compose file

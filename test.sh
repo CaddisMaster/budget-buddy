@@ -19,9 +19,9 @@
 # class of defect to fix and used to be caught only by CI, four minutes away.
 # See the block above the invocation for why it fails fast rather than warning.
 #
-# Runs in PARALLEL by default, which takes the full suite from ~380s serial
-# (measured 2026-09-24, 1355 tests; it was ~204s at a smaller size) to about a
-# minute. That is safe only because tests/conftest.py derives its
+# Runs in PARALLEL by default, which takes the full suite from ~58s serial to
+# ~15s (measured 2026-09-24, 1357 tests, after #384 dropped test users to bcrypt
+# cost 4; at cost 12 the same suite was ~380s and ~63s). That is safe only because tests/conftest.py derives its
 # TEST_PREFIX from the xdist worker id so every worker owns its own database
 # rows — read the note there before changing how test users are named.
 #
@@ -40,6 +40,9 @@
 # So on the current machine the bound does nothing: `auto` is EIGHT workers,
 # which is fewer than the default of 10, and marginally faster. The two are
 # within noise of each other and both are ~1.7x faster than -n 4.
+# ⚠️ That table predates #384, which cut `-n 10` from ~63s to ~15s by making
+# test users cheap to hash. The ratios between worker counts were NOT
+# re-measured afterwards.
 #
 # ⚠️ The original rationale — reproduced here because it explains the 10, and
 # because it is what a future move back would make true again — was measured on
