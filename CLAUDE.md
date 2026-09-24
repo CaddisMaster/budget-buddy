@@ -288,14 +288,13 @@ server itself — **read it before touching anything on the Droplet.**
 
 ## Current status
 
-▶️ **NEXT UP: two decisions of Sean's, then possibly cutting `0.11.0`.** `0.10.0` (2026-09-11) is
-still what production runs. `main` is past it (`git log v0.10.0..main` for the set), carrying **one migration** (`sql/38`,
-additive) and **no new env vars**. The BDD thread's stages are done as of 2026-09-24: the pilot
-(#356), the boundary (#357), and the criteria check (#358). What's open in `0.11.0` is **#355**
-(the parent; close it, or keep it for area-by-area conversions?) and **#361** (55 consecutive green
-runs, [numbers in its thread](https://github.com/CaddisMaster/budget-buddy/issues/361#issuecomment-5818146485),
-close decision is Sean's). ⚠️ **"Issue criteria are claimed by tests" is NOT yet a required
-check**, so a red result shows but doesn't block a merge. Adding it is a settings change.
+▶️ **NEXT UP: nothing is filed.** ✅ **`0.11.0` shipped and was verified 2026-09-24**, and its
+milestone closed that day at 30/30. The open milestone is **`0.12.0`, empty**. The only open issue
+is **#36**, date-parked to ~Dec 2026. Candidates, none filed: a **third behave area** (goals is
+the natural one; it triggers #357's re-decision, see `docs/testing.md`), or reusing DB
+connections (a run opens ~9,000; see the TIME_WAIT note in `docs/testing.md`). ⚠️ **"Issue
+criteria are claimed by tests" is still NOT a required check**, so a red result doesn't block a
+merge. Adding it is a branch-protection setting, and it's Sean's.
 
 🛑 **AN ISSUE BEING OPEN IS NOT EVIDENCE THAT IT IS OPEN WORK.** Kept as a standing rule now that
 its examples are closed. On 2026-09-04 "#326 and #314, the two migrations" was proposed as the next
@@ -328,7 +327,17 @@ easy to get wrong.
 describes the last session rather than the current tree, and it asserts rather than going quiet.
 **Reconcile against `git log` and `gh issue list` at the start of every session.**
 
-- ✅ **Prod runs `0.10.0`, shipped and verified 2026-09-11** (13 PRs, no new env vars, no new
+- ✅ **Prod runs `0.11.0`, shipped and verified 2026-09-24** (16 PRs, no new env vars, **one
+  migration**). The deploy log read, in order: `backup ok` → `applying 38_money_is_finite.sql ...
+  ok` → `running version 0.11.0 (matches 0.11.0)` → `Nothing to apply for phase after-pull` →
+  `Announced 0.11.0 to 3 device(s).`, and live `/healthz` returned 200. `sql/38` was rehearsed
+  first against a restore of that morning's production dump, because it fails the deploy if a NaN
+  exists. The What's-new strip holds one block (the NaN refusal), on Sean's call: nothing else in
+  the release is user-facing. ⚠️ **`anthropic` is now 1.7.0 (#379) and still has made no live
+  model call**, so the first round trip is still a manual check in prod. ⚠️ The Release was
+  **drafted, then published only after `main` was confirmed at the prep commit**. The tag is
+  created at publish time, so a merge in between would have shipped a commit the prep never saw.
+- ✅ **`0.10.0`, shipped and verified 2026-09-11** (13 PRs, no new env vars, no new
   migrations). `/healthz` 200 on the first attempt; `Announced 0.10.0 to 3 device(s).` Unlike
   `0.9.0` it carries **user-facing change** — the What's-new strip holds three blocks rather than
   one admin-only note. ⚠️ **`anthropic` STILL has not made a live model call**, now on `1.3.0`
