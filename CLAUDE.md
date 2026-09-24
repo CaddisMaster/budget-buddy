@@ -142,7 +142,7 @@ These apply to nearly every change, which is why they are here rather than in `d
 - CSRF: one `hx-headers` on `<body>` in base.html covers every HTMX write
 
 **Process**
-- Run **`./test.sh`** (full suite, ~35–55s). Do not ration test runs, and do not delegate running them
+- Run **`./test.sh`** (full suite, ~20s since #384). Do not ration test runs, and do not delegate running them
 - New behaviour gets a test that **fails without it**
 - Update `CHANGELOG.md` under `## [Unreleased]` in every PR
 - **Automated issue triage is OPT-IN**: the `triage` label runs
@@ -172,9 +172,9 @@ Details, including the xdist isolation rules that make `-n auto` safe, are in
   which exits 0 on a run that selects nothing. Plain helpers shared by both runners live in
   `tests/helpers.py`; it may not import pytest or read `TEST_PREFIX`
 - **Which runner a new test goes in is decided (#357):** a `.feature` scenario only if it
-  transcribes a `Scenario:` from the issue's acceptance criteria **and** needs a user row;
-  everything else is pytest. The rule, its reason and its measured cost are in
-  `docs/testing.md`
+  transcribes a `Scenario:` from the issue's acceptance criteria **and** its `When` drives the
+  app as a user (a request, or a job run over their data); everything else is pytest. The rule,
+  its reason and its measured cost are in `docs/testing.md`
 - It **refuses to run while another run is in flight** (an advisory `flock`) — two concurrent runs
   corrupt each other through identical xdist prefixes
 - Defaults to a bounded `-n 10`; `-n0` is the serial escape for `pdb` or unreadable output

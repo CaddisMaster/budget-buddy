@@ -31,6 +31,14 @@ services:
       # cache — a silent no-op that looks like the mount is broken. Read in
       # app/__init__.py; never set on the Droplet.
       TEMPLATES_AUTO_RELOAD: "1"
+    # Let outgoing connections reuse ports held in TIME_WAIT (#384). Every
+    # get_db_connection() opens a fresh TCP connection, and a full ./test.sh
+    # opens ~9,000; each holds its local port for 60s after closing, against a
+    # range of ~28,000. Once test users became cheap to hash, a run took ~15s
+    # instead of ~63s, and the third back-to-back run failed to connect with
+    # "Cannot assign requested address". Namespaced to this container only.
+    sysctls:
+      net.ipv4.tcp_tw_reuse: 1
     # Same as the image's CMD plus --reload, which restarts the worker when a
     # source file changes. Kept in full rather than as a fragment so it is
     # obvious this is the production command with one flag added.

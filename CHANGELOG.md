@@ -21,10 +21,19 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The full test suite runs about four times faster: ~15s instead of ~63s.**
+  Test users were created with the production password-hashing cost, and
+  every test that logs in creates two of them, so hashing was most of the run.
+  They are now hashed at bcrypt's lowest practical cost. The app itself is
+  unchanged and still hashes at cost 12, and a test holds both sides. The behave
+  scenarios fell from ~5.7s to ~1.2s. The dev container now reuses ports held
+  in TIME_WAIT, because a run this fast used them up: the third back-to-back
+  run failed to connect to the database. (#384)
 - **Which tests are written as behave scenarios is now a written rule, not
   a judgement call.** A test becomes a `.feature` scenario only when it
-  transcribes a scenario from the issue's acceptance criteria and needs a user
-  in the database; everything else stays pytest. `docs/testing.md` records the
+  transcribes a scenario from the issue's acceptance criteria and drives the app
+  as a user, through a request or a job run over their data; everything else
+  stays pytest. `docs/testing.md` records the
   reasoning and the measured cost: behave cannot run in parallel, so converting
   every eligible test at today's setup cost would take several minutes on
   every run, against about one minute for the parallel pytest suite. The
