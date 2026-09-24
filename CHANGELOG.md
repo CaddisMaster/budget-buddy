@@ -31,6 +31,15 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The transfer tests are now behave scenarios, and two of them can finally
+  fail.** Ten scenarios in `tests/features/transfers.feature` replace
+  `tests/test_transfers.py`, the second area converted after schedules. Each
+  behaviour was broken in the app to prove its scenario catches it. That showed
+  two of the old tests could not: a transfer from an account to itself left the
+  balance unchanged, which was all the old test checked, and the history test
+  was satisfied by the word "Transfer" in the navigation bar. Shared step
+  vocabulary moved to `tests/features/support.py`, because behave loads step
+  files alphabetically and a file sorting early crashed the whole run. (#389)
 - **The full test suite runs about four times faster: ~15s instead of ~63s.**
   Test users were created with the production password-hashing cost, and
   every test that logs in creates two of them, so hashing was most of the run.
