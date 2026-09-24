@@ -122,10 +122,10 @@
    recurs: this strip renders on '/' whether or not AI is configured, so any
    copy naming an AI-gated element can make an absence assertion elsewhere fail
    from the one place on the page that ignores the gate. #}
-<div class="card whatsnew" id="whatsnew" data-version="v0.10.0" hidden>
+<div class="card whatsnew" id="whatsnew" data-version="v0.11.0" hidden>
   <div class="whatsnew-head">
-    <strong>What's new in v0.10.0</strong>
-    <span class="recurring-badge">2026-09-11</span>
+    <strong>What's new in v0.11.0</strong>
+    <span class="recurring-badge">2026-09-24</span>
     <span class="whatsnew-actions">
       <button type="button" class="btn btn-sm" id="whatsnew-toggle">Details</button>
       <button type="button" class="btn btn-sm" id="whatsnew-dismiss" aria-label="Dismiss">&#10005;</button>
@@ -133,45 +133,14 @@
   </div>
   <div class="whatsnew-body" hidden>
     <div class="whatsnew-block">
-      <strong>Two categories with the same name no longer share one budget row</strong>
+      <strong>Your numbers are protected one layer deeper</strong>
       <ul class="whatsnew-list">
-        <li><strong>Budgets could show a number that was never real.</strong> If two of your
-            categories had the same name, their spending was added together into a single row
-            and compared against one of the two budgets &mdash; so a category you were well
-            inside could be reported as over.</li>
-        <li><strong>The monthly read repeated it as fact.</strong> That row fed the AI summary
-            on Home, which had no way to know the figure was wrong, so the overrun was
-            explained back to you rather than questioned.</li>
-        <li><strong>Rows are now matched on the category itself, not its name.</strong> Two
-            categories that happen to share a name stay two rows with two budgets.</li>
-      </ul>
-    </div>
-    <div class="whatsnew-block">
-      <strong>The question box on Home turns down an over-long question</strong>
-      <ul class="whatsnew-list">
-        <li><strong>There was no limit on what it would send.</strong> Pasting something long
-            &mdash; a statement, a document &mdash; sent all of it away to be answered, and
-            again with every follow-up. The only sign it had happened would have been the
-            bill.</li>
-        <li><strong>Questions now stop at a thousand characters,</strong> far more than a
-            question about your money needs, and the box stops accepting more as you type
-            &mdash; so you see the limit before you send rather than after.</li>
-        <li><strong>It declines rather than quietly shortening.</strong> Half a question
-            answered as though it were the whole one is worse than being told to trim it.</li>
-      </ul>
-    </div>
-    <div class="whatsnew-block">
-      <strong>Home, History and the weekly email now look like one app</strong>
-      <ul class="whatsnew-list">
-        <li><strong>Where the app speaks, it now looks the same everywhere.</strong> The
-            suggestion banner on History was an ordinary light card while the same kind of
-            feature on Home and Budgets was a dark panel, so one thing looked like two
-            depending on which page you were standing on.</li>
-        <li><strong>The weekly email is in the app's own colours.</strong> It was a different
-            shade from the app it opens, so tapping through changed colour on the way in. It
-            now reads more clearly than it did before, not just differently.</li>
-        <li><strong>Home opens with the month itself</strong> rather than a line counting the
-            days left in it.</li>
+        <li><strong>The database itself now refuses an amount that isn't a real
+            number.</strong> The forms already did. Now the place your money is stored does
+            too, so a figure like that can never end up inside a total.</li>
+        <li><strong>Nothing changes in how you use the app.</strong> Everything you had
+            already entered was checked before the change went in, and none of it needed
+            fixing.</li>
       </ul>
     </div>
   </div>

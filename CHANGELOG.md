@@ -8,6 +8,8 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-24
+
 ### Added
 
 - **A PR can no longer quietly drop a scenario its issue promised.** A new
@@ -86,30 +88,6 @@ this project uses the `0.x` versioning scheme described in
   someone has to remember at the next column. Verified against the current
   production dump first — no existing row violates it. (#314)
 
-### Removed
-
-- **The `scripts/` ingest pipeline is gone** — `ingest.py`, `clean.py`,
-  `insert.py`, `test_connection.py` and `scripts/requirements.txt`. The pipeline
-  could not insert a single row and had not been able to since the app gained
-  users: `transactions.user_id` has been `NOT NULL` with no default since
-  `sql/10`, and the INSERT never supplied it. It also never set `account_id`,
-  never resolved a category *name* to a `category_id`, and swallowed its own
-  failure before exiting 0, so a shell or cron wrapper saw success.
-
-  Nobody noticed because there was nothing to run it against — `ingest.py` reads
-  `../data/transactions.csv`, and `data/` has never existed in the repo. The one
-  thing that referenced the pipeline was a sentence in `docs/architecture.md`
-  describing it as though it worked. `scripts/requirements.txt` existed solely to
-  keep `pandas` out of the app image for a pipeline that could not run, and
-  `seed_dev.py` already solves the problem this was written for — reproducibly,
-  and with tests.
-
-  Dependabot's `/scripts` pip ecosystem went with it: it existed only to watch
-  that requirements file, and would otherwise have been left scanning a
-  directory with no manifest in it. (#328)
-
-### Fixed
-
 - **The production image no longer ships the project's documentation or its
   agent harness.** `.dockerignore` listed `*.md` under a comment reading "not
   needed in the runtime image", but Docker's `*.md` matches **only top-level**,
@@ -156,6 +134,28 @@ this project uses the `0.x` versioning scheme described in
   comment, is still read from the raw text. Each half was checked by breaking it
   on purpose: skipping string literals, reading the pragma from the stripped
   text, and stripping everything each fail a named test. (#375)
+
+### Removed
+
+- **The `scripts/` ingest pipeline is gone** — `ingest.py`, `clean.py`,
+  `insert.py`, `test_connection.py` and `scripts/requirements.txt`. The pipeline
+  could not insert a single row and had not been able to since the app gained
+  users: `transactions.user_id` has been `NOT NULL` with no default since
+  `sql/10`, and the INSERT never supplied it. It also never set `account_id`,
+  never resolved a category *name* to a `category_id`, and swallowed its own
+  failure before exiting 0, so a shell or cron wrapper saw success.
+
+  Nobody noticed because there was nothing to run it against — `ingest.py` reads
+  `../data/transactions.csv`, and `data/` has never existed in the repo. The one
+  thing that referenced the pipeline was a sentence in `docs/architecture.md`
+  describing it as though it worked. `scripts/requirements.txt` existed solely to
+  keep `pandas` out of the app image for a pipeline that could not run, and
+  `seed_dev.py` already solves the problem this was written for — reproducibly,
+  and with tests.
+
+  Dependabot's `/scripts` pip ecosystem went with it: it existed only to watch
+  that requirements file, and would otherwise have been left scanning a
+  directory with no manifest in it. (#328)
 
 ## [0.10.0] - 2026-09-11
 
@@ -1578,7 +1578,8 @@ lineage, most recent first:
 - **v9.0** — conversational transaction entry (first AI feature)
 - **v1–v8** — core CRUD and deployment, UI overhaul, multi-user authentication, blueprints and pytest, ownership guards, transfers and goals, smart budgets, HTMX inline CRUD and CI
 
-[Unreleased]: https://github.com/CaddisMaster/budget-buddy/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/CaddisMaster/budget-buddy/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.7.0...v0.8.0
