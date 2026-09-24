@@ -171,6 +171,10 @@ Details, including the xdist isolation rules that make `-n auto` safe, are in
   `SKIP_BDD=1` skips them too. ⚠️ Always via `python -m tests.run_behave`, never bare `behave`,
   which exits 0 on a run that selects nothing. Plain helpers shared by both runners live in
   `tests/helpers.py`; it may not import pytest or read `TEST_PREFIX`
+- **Which runner a new test goes in is decided (#357):** a `.feature` scenario only if it
+  transcribes a `Scenario:` from the issue's acceptance criteria **and** needs a user row;
+  everything else is pytest. The rule, its reason and its measured cost are in
+  `docs/testing.md`
 - It **refuses to run while another run is in flight** (an advisory `flock`) — two concurrent runs
   corrupt each other through identical xdist prefixes
 - Defaults to a bounded `-n 10`; `-n0` is the serial escape for `pdb` or unreadable output

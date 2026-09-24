@@ -36,6 +36,67 @@ the Tests job (it calls pytest directly, never `test.sh`) and inside the shipped
 - Default output is `progress3`: one line per scenario, and a failure printed inline with its
   step, `file:line` and assertion message. `progress` drops the message; `pretty` lists every step.
 
+## Which tests get behave, and which stay pytest (#357)
+
+Decided 2026-09-24: **behaviour only, and the boundary is provisional** (#357 option 3). Answer
+two questions about the test you are about to write. Both are about what is in front of you, and
+neither asks you to judge whether your test is "behavioural":
+
+1. **Are you transcribing a `Scenario:` from the acceptance criteria of the issue you are
+   closing?** No → **pytest**. A regression test, a guard found while working, a structural check
+   — anything not written as Gherkin first — is pytest.
+2. **Does it need a user row?** In other words, would the pytest version take `users`, `client_a`,
+   `client_b` or `admin_client`? No → **pytest**, even though it started as Gherkin. That covers
+   pure functions (`compute_initial_semimonthly_due`), repo-file checks (the ruff pins, the
+   migration phases, the design tokens) and doc claims.
+
+**Both yes → a `.feature` scenario** under `tests/features/`. For example, #357's own
+"`docs/testing.md` states the rule" scenario fails question 2 and is not a behave scenario.
+
+**Why this boundary, not "everything":**
+
+- **Most invariants have no actor.** In Gherkin, "Given two files pin ruff, Then they agree" is
+  just an assertion in costume. It is longer and indirect, and it says less than a docstring. The
+  files that make CLAUDE.md's rules mechanical (`test_lint_local.py`,
+  `test_migration_phases.py`) would lose directness for nothing.
+- **behave is serial, and nothing else about it costs more.** Measured on the pilot, a scenario
+  costs what the same test costs in pytest with `-n0`. The only difference is that behave has no
+  `-n` to reach for. The boundary is how the suite stays about a minute long, and a one-minute
+  suite is what makes CLAUDE.md's "do not ration test runs" affordable.
+- **Question 2 tracks the cost.** A scenario needs a user because it needs the database. That is
+  exactly where Gherkin reads well (an actor, an action, a result) and where the per-scenario
+  setup is spent.
+
+**The runtime cost, measured 2026-09-24 on `jupiter` (8 cores), 1355 pytest tests + 12 scenarios:**
+
+| | wall |
+|---|---|
+| pytest, `-n 10` (the default) | **63s** (70s for the whole `./test.sh`, with lint and behave) |
+| pytest, `-n0` | **380s**. ⚠️ Not the ~204s in `test.sh`'s header, which dates from a smaller suite |
+| behave, the 12 pilot scenarios | ~5.6s, ~0.45s each |
+
+Applying the rule to today's suite: **627 of the 1178 test functions need a user row.** Converting
+all of them is the full rollout under this boundary. At the measured serial cost that is roughly
+**3–5 minutes of behave** (627 × 0.28s, the serial pytest average, up to 627 × 0.45s, the pilot's
+per-scenario figure). The 63s parallel pytest run it would replace is for the *whole* suite. So a
+full rollout at today's per-scenario cost makes every full run several times longer. Converting
+everything (option 2) is ~380s serial, plus whatever sharding layer is then built to escape it.
+
+⚠️ **The lever is bcrypt, and it is not pulled yet.** No test config sets `BCRYPT_LOG_ROUNDS`, so
+test users hash at Flask-Bcrypt's default cost of 12. Measured in the dev container: **0.183s per
+hash at 12, 0.001s at 4**. Every scenario creates two users, so ~0.37s of each ~0.45s scenario is
+bcrypt. This is arithmetic, not a measurement, but at cost 4 the rollout's serial time should fall
+to around a minute. It would speed up pytest too. **Pull it before converting any area beyond
+schedules.**
+
+**Existing tests are not converted just because they now qualify.** An area moves over
+deliberately, as a stage of #355. Its pytest twins are deleted only after each behaviour is broken
+in `app/` and the scenario is shown to fail, which is the oracle #356 used.
+
+**Re-open this decision** (#355 carries the thread) when either of these happens first:
+- behave's wall time on a full `./test.sh` passes **30s**, about half the parallel pytest run
+- a **third area** beyond schedules has been converted, so there is evidence and not a prediction
+
 ⚠️ **`test.sh` runs `ruff check` FIRST and stops if it fails** (#264). Ruff used to exist
 only in CI, so an unused import was invisible locally and turned the remote build red —
 #263 orphaned four imports in `goals.py`, the local suite was green, CI failed on `F401`,
