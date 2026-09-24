@@ -142,8 +142,12 @@ These apply to nearly every change, which is why they are here rather than in `d
 - CSRF: one `hx-headers` on `<body>` in base.html covers every HTMX write
 
 **Process**
-- Run **`./test.sh`** (full suite, ~35–55s). Do not ration test runs, and do not delegate running them
+- Run **`./test.sh`** (full suite, ~20s since #384). Do not ration test runs, and do not delegate running them
 - New behaviour gets a test that **fails without it**
+- **Every acceptance-criteria `Scenario:` of a closed issue must be CLAIMED** (#358):
+  `@pytest.mark.criterion(<n>, "<title>")`, an `@issue-<n>` tag on a `.feature` scenario, or
+  `Verified by hand: #<n> "<title>" — why` in the PR body. The `Acceptance criteria` check fails
+  the PR otherwise. **A wrong criterion is fixed in the issue**, then the check is re-run by hand
 - Update `CHANGELOG.md` under `## [Unreleased]` in every PR
 - **Automated issue triage is OPT-IN**: the `triage` label runs
   `.github/workflows/claude-triage.yml` (~$0.50 of subscription budget per run). The two issue
@@ -171,6 +175,10 @@ Details, including the xdist isolation rules that make `-n auto` safe, are in
   `SKIP_BDD=1` skips them too. ⚠️ Always via `python -m tests.run_behave`, never bare `behave`,
   which exits 0 on a run that selects nothing. Plain helpers shared by both runners live in
   `tests/helpers.py`; it may not import pytest or read `TEST_PREFIX`
+- **Which runner a new test goes in is decided (#357):** a `.feature` scenario only if it
+  transcribes a `Scenario:` from the issue's acceptance criteria **and** its `When` drives the
+  app as a user (a request, or a job run over their data); everything else is pytest. The rule,
+  its reason and its measured cost are in `docs/testing.md`
 - It **refuses to run while another run is in flight** (an advisory `flock`) — two concurrent runs
   corrupt each other through identical xdist prefixes
 - Defaults to a bounded `-n 10`; `-n0` is the serial escape for `pdb` or unreadable output
@@ -280,11 +288,14 @@ server itself — **read it before touching anything on the Droplet.**
 
 ## Current status
 
-▶️ **NEXT UP: the BDD thread.** `0.10.0` shipped 2026-09-11 and is still what production runs; the
-open milestone is **`0.11.0`**, carrying **six open** — four are the BDD thread (**#355**, whose
-pilot #356 is scoped and unstarted), one is #361 (a flake left open on purpose), and one is **#375**
-(filed 2026-09-16). ✅ **#309's output is FULLY DISCHARGED as of 2026-09-16**: #314, #328 and #333
-merged, after #326 was closed `NOT_PLANNED` on 2026-09-11.
+▶️ **NEXT UP: two decisions of Sean's, then possibly cutting `0.11.0`.** `0.10.0` (2026-09-11) is
+still what production runs. `main` is past it (`git log v0.10.0..main` for the set), carrying **one migration** (`sql/38`,
+additive) and **no new env vars**. The BDD thread's stages are done as of 2026-09-24: the pilot
+(#356), the boundary (#357), and the criteria check (#358). What's open in `0.11.0` is **#355**
+(the parent; close it, or keep it for area-by-area conversions?) and **#361** (55 consecutive green
+runs, [numbers in its thread](https://github.com/CaddisMaster/budget-buddy/issues/361#issuecomment-5818146485),
+close decision is Sean's). ⚠️ **"Issue criteria are claimed by tests" is NOT yet a required
+check**, so a red result shows but doesn't block a merge. Adding it is a settings change.
 
 🛑 **AN ISSUE BEING OPEN IS NOT EVIDENCE THAT IT IS OPEN WORK.** Kept as a standing rule now that
 its examples are closed. On 2026-09-04 "#326 and #314, the two migrations" was proposed as the next

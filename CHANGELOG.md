@@ -10,6 +10,16 @@ this project uses the `0.x` versioning scheme described in
 
 ### Added
 
+- **A PR can no longer quietly drop a scenario its issue promised.** A new
+  pull-request check, `Acceptance criteria`, reads the Gherkin scenarios under
+  each closed issue's "Acceptance criteria" heading and fails the PR if any is
+  not claimed: by a test marked `@pytest.mark.criterion(<issue>, "<title>")`,
+  by a behave scenario tagged `@issue-<n>`, or by a `Verified by hand:` line in
+  the PR body for criteria no test can hold. A criterion that turned out to be
+  wrong is corrected in the issue; a claim left behind by the correction is
+  a warning, not a failure. The check fails closed if GitHub cannot be read.
+  (#358)
+
 - **Executable Gherkin, as a pilot: the schedules behaviour now runs as behave
   scenarios.** Twelve scenarios in `tests/features/` — due schedules posting and
   moving on, catching up, stopping at an end date, never starting in the past,
@@ -21,6 +31,23 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The full test suite runs about four times faster: ~15s instead of ~63s.**
+  Test users were created with the production password-hashing cost, and
+  every test that logs in creates two of them, so hashing was most of the run.
+  They are now hashed at bcrypt's lowest practical cost. The app itself is
+  unchanged and still hashes at cost 12, and a test holds both sides. The behave
+  scenarios fell from ~5.7s to ~1.2s. The dev container now reuses ports held
+  in TIME_WAIT, because a run this fast used them up: the third back-to-back
+  run failed to connect to the database. (#384)
+- **Which tests are written as behave scenarios is now a written rule, not
+  a judgement call.** A test becomes a `.feature` scenario only when it
+  transcribes a scenario from the issue's acceptance criteria and drives the app
+  as a user, through a request or a job run over their data; everything else
+  stays pytest. `docs/testing.md` records the
+  reasoning and the measured cost: behave cannot run in parallel, so converting
+  every eligible test at today's setup cost would take several minutes on
+  every run, against about one minute for the parallel pytest suite. The
+  boundary is provisional, with its re-open triggers written down. (#357)
 - **The test suite's plain helpers moved out of `conftest.py` into
   `tests/helpers.py`.** Thirty-two of `conftest.py`'s thirty-nine members —
   user setup, the FK-safe teardown, every `create_*` and `fetch_*` — were

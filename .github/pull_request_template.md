@@ -12,6 +12,13 @@ Closes #
 - [ ] `docker compose up --build` and exercised the change in the browser
 - [ ] `./test.sh` passes in full
 - [ ] New behaviour has a test that fails without this change
+- [ ] Every `Scenario:` in the issue's acceptance criteria is claimed — a `@issue-<n>` tagged
+      `.feature` scenario, a `@pytest.mark.criterion(<n>, "<title>")` test, or a line below
+      (the `Acceptance criteria` check enforces this; see `docs/testing.md`)
+
+<!-- For a criterion no test can hold (docs, process), one line each:
+Verified by hand: #<n> "<Scenario title>" — what you checked
+-->
 
 ## Checklist
 
