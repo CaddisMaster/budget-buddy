@@ -118,6 +118,40 @@ in `app/` and the scenario is shown to fail, which is the oracle #356 used.
   run (lowered from 30s in #384, when pytest itself fell from 63s to 15s)
 - a **third area** beyond schedules has been converted, so there is evidence and not a prediction
 
+## Every promised scenario is claimed (#358)
+
+The `Acceptance criteria` PR check (`.github/workflows/criteria.yml` →
+`scripts/check_criteria.py`) reads every issue the PR **closes**. It takes the `Scenario:` titles
+inside the Gherkin fences under the issue's **"Acceptance criteria"** heading, at any level: issue
+forms render it as `###`. It fails the PR if any title is not claimed. Three ways to claim one,
+matching the title case-insensitively with whitespace collapsed:
+
+| Where the criterion is implemented | Claim |
+|---|---|
+| a pytest test | `@pytest.mark.criterion(384, "Test users are hashed at low cost")` — two **literals**; anything else is an error, not a silent miss |
+| a behave scenario | the same title, tagged `@issue-384` on the scenario, its `Rule:` or its `Feature:` |
+| nothing a test can hold (docs, process, a measurement) | a PR-body line `Verified by hand: #384 "The saving is measured, not assumed" — what you checked` |
+
+Which of the first two to use is #357's rule above. The claim follows the test; it doesn't decide
+where the test goes.
+
+- ⚠️ **A wrong criterion is corrected in the ISSUE**, and the check reads the issue at run time, so
+  the implementation never has to bend to match a bad spec. A claim left behind by the correction
+  is a **warning, not a failure** (`test_correcting_the_issue_leaves_a_stale_claim_as_a_warning_only`).
+  **Editing an issue does not trigger the check**, so re-run the workflow afterwards. Editing the
+  *PR body* does trigger it (`edited`).
+- ⚠️ **Only the "Acceptance criteria" section counts.** Issues quote other issues' Gherkin to
+  explain themselves, and #358's own body quotes a scenario from #324. A column-0 `#` inside a
+  Gherkin fence is a comment, not a markdown heading, and does not end the section.
+- ⚠️ **It fails closed.** If `gh` cannot read the PR or an issue, the step exits 2 and says so. It
+  is its own workflow and is **not gated by `ci.yml`'s `changes` classifier**, which fails open on
+  a push to `main` (#281). A PR that closes no issue (Dependabot) or only issues without criteria
+  (bugs) passes and prints why.
+- **Nothing is backfilled.** The check only reads the issues of the PR it runs on, so the history
+  before #358 is untouched. Run `python3 scripts/check_criteria.py --pr <n>` locally against any PR
+  to see its table; the two PRs merged just before it (#383, #385) fail and name six scenarios
+  between them, which is the gap #358 described.
+
 ⚠️ **`test.sh` runs `ruff check` FIRST and stops if it fails** (#264). Ruff used to exist
 only in CI, so an unused import was invisible locally and turned the remote build red —
 #263 orphaned four imports in `goals.py`, the local suite was green, CI failed on `F401`,
@@ -320,6 +354,7 @@ anon → 302. What each file covers:
 - `test_session_invalidation.py` — #272 (from #224): a password change signs out every other device. The `get_id()` format, the rotation, and **both** directions of the behaviour — the other device is signed out AND the acting device stays signed in (the second is easy to lose, and losing it logs you out of your own password change). Plus: a rejected change rotates nothing (otherwise the form is a DoS against your own devices), isolation, and login still working afterwards. ⚠️ **`test_the_pre_272_cookie_format_is_rejected` uses a REAL user's id deliberately** — written against a nonexistent id it passes whether or not the bare-id format is rejected, because a missing user returns `None` anyway; it was caught passing vacuously and rewritten. Verified red against the pre-fix app, and the byte-comparison fix verified red against the `str` version separately. ⚠️ No count recorded here on purpose — the follow-up commit that fixed `compare_digest` grew the parametrize lists, which would have made a number written with the first commit wrong within the same branch
 - `test_verify_skill.py` — #267: the `verify` skill's teardown cannot silently rot again. It was a hand-maintained copy of `conftest.py::_delete_user`; `sql/36` dropped two tables, `conftest.py` was updated and the copy was not, and under `-v ON_ERROR_STOP=1` the block aborted on the first missing table and **tore down nothing**. ⚠️ **The load-bearing one is `test_the_teardown_only_names_tables_that_exist`** — every table `_delete_user` names must appear in `sql/schema.sql`. Asserted against the schema FILE rather than a live database on purpose: it then fails in the pull request that drops the table, regardless of whether anyone's dev database has had the migration applied. The others hold the shape of the fix (the skill delegates, and carries no runnable `DELETE` list of its own — checked as "fewer than 3 distinct tables", since the prose still mentions the old block to explain why it went away). Verified red both ways: re-adding a dropped table to `_delete_user` fails naming it, and pasting a table list back into the skill fails naming those
 - `test_bcrypt_cost.py` — #384: test users are hashed at bcrypt cost 4 (read from the stored hash) and the app still hashes at 12. ⚠️ **The first test is the load-bearing one**: Flask-Bcrypt reads `BCRYPT_LOG_ROUNDS` once in `init_app`, so the obvious fix, setting it in the `app` fixture, is a silent no-op. Verified: that mutant leaves the test red with `$2b$12$`. Its third test guards the override's `tcp_tw_reuse` sysctl (see "Which tests get behave") and skips in the image, where `.dockerignore` drops the override. ⚠️ Mutate it by setting the value to `0`, not by deleting the line: an empty `sysctls:` block fails compose validation, so `./test.sh` never reaches pytest and the "mutant" proves nothing
+- `test_criteria_check.py` — #358: `scripts/check_criteria.py` with no network (`run()` is handed the bodies `fetch_from_github()` would return). Carries the `criterion` markers for #358's own three scenarios, and `test_this_repos_own_claims_are_found` proves the collectors read the real tree, since every other test could pass against a scanner that finds nothing here. ⚠️ Each guard was mutated separately; two survived at first, and both were gaps in the test fixtures, not the script. The Gherkin comment in the fixture was indented, so it never looked like a heading either way. And the scenario-tagged case was the LAST scenario, so a leaking tag had nothing to leak onto. Both fixtures now make the failure observable
 - `test_behave_harness.py` — #356: the behave wiring, one acceptance criterion per test. ⚠️ **The zero-scenario guards RUN the wrapper** in a subprocess against features written into `tmp_path` (behave's step registry is process-global, so in-process runs would collide), with a positive control first. Verified red, each separately: disabling the zero guard, counting `feature.scenarios` (misses `Rule:` blocks), dropping `exit 1` or the bare-behave ban from `test.sh`, dropping CI's behave step, `set -e` or the shipped-image probe, and borrowing pytest's prefix. Two of those first survived and exposed real defects — the `set -e` check matched its own comment, and `with_rules=True` would have *overcounted* (it adds Rule objects, which have a status)
 - `test_lint_local.py` — #264: that `./test.sh` lints before it tests. The **load-bearing one is `test_the_two_ruff_pins_agree`**, which asserts `requirements-dev.txt` and `ci.yml` name the same ruff version — stated as an equality between the two files rather than as a literal, so a bump edits both files and no test. Also: ruff runs BEFORE the `exec` (asserted as two *positions*, since a `ruff check` placed after it would satisfy a substring assertion and never run), a lint failure exits non-zero, `SKIP_LINT=1` exists, the container probe covers ruff and not just pytest, and #206's `flock` is still taken before the lint. ⚠️ Every test SKIPS when its file is absent, naming `.dockerignore` — **`test.sh` is genuinely stripped from the shipped image**, and this change touches `requirements*.txt` and `tests/`, so the in-image run really happens. Verified red: all 7 fail against the pre-fix files
 - `test_deploy_pinning.py` — #190: the compose image ref has **no `:-` default of any kind** (the property, not the string) and errors naming `TAG`; `.env.example` carries a `TAG=` line; both workflows rewrite the pin, `chmod 600` **before** the write, and the release pins **before** its first compose command. ⚠️ Every test SKIPS when the file it reads is absent, naming `.dockerignore` — `docker-compose*.yml` and `.env.*` are genuinely excluded from the shipped image (#176). Verified red against the pre-fix compose file

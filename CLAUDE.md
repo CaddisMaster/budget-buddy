@@ -144,6 +144,10 @@ These apply to nearly every change, which is why they are here rather than in `d
 **Process**
 - Run **`./test.sh`** (full suite, ~20s since #384). Do not ration test runs, and do not delegate running them
 - New behaviour gets a test that **fails without it**
+- **Every acceptance-criteria `Scenario:` of a closed issue must be CLAIMED** (#358):
+  `@pytest.mark.criterion(<n>, "<title>")`, an `@issue-<n>` tag on a `.feature` scenario, or
+  `Verified by hand: #<n> "<title>" — why` in the PR body. The `Acceptance criteria` check fails
+  the PR otherwise. **A wrong criterion is fixed in the issue**, then the check is re-run by hand
 - Update `CHANGELOG.md` under `## [Unreleased]` in every PR
 - **Automated issue triage is OPT-IN**: the `triage` label runs
   `.github/workflows/claude-triage.yml` (~$0.50 of subscription budget per run). The two issue

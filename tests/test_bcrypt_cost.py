@@ -28,6 +28,7 @@ def _cost(pw_hash):
     return int(pw_hash.split("$")[2])
 
 
+@pytest.mark.criterion(384, "Test users are hashed at low cost")
 def test_test_users_are_hashed_at_low_cost(users):
     with db_cursor() as cur:
         cur.execute("SELECT password_hash FROM users WHERE username = %s", (USER_A,))
@@ -36,6 +37,7 @@ def test_test_users_are_hashed_at_low_cost(users):
     assert _cost(row.password_hash) == 4, row.password_hash[:7]
 
 
+@pytest.mark.criterion(384, "The app itself still hashes at full cost")
 def test_the_app_still_hashes_at_full_cost():
     pw_hash = bcrypt.generate_password_hash("any-password").decode("utf-8")
     assert _cost(pw_hash) == 12, pw_hash[:7]

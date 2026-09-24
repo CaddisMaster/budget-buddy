@@ -10,6 +10,16 @@ this project uses the `0.x` versioning scheme described in
 
 ### Added
 
+- **A PR can no longer quietly drop a scenario its issue promised.** A new
+  pull-request check, `Acceptance criteria`, reads the Gherkin scenarios under
+  each closed issue's "Acceptance criteria" heading and fails the PR if any is
+  not claimed: by a test marked `@pytest.mark.criterion(<issue>, "<title>")`,
+  by a behave scenario tagged `@issue-<n>`, or by a `Verified by hand:` line in
+  the PR body for criteria no test can hold. A criterion that turned out to be
+  wrong is corrected in the issue; a claim left behind by the correction is
+  a warning, not a failure. The check fails closed if GitHub cannot be read.
+  (#358)
+
 - **Executable Gherkin, as a pilot: the schedules behaviour now runs as behave
   scenarios.** Twelve scenarios in `tests/features/` — due schedules posting and
   moving on, catching up, stopping at an end date, never starting in the past,
