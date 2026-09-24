@@ -1,0 +1,43 @@
+name: Acceptance criteria
+
+# Every Scenario an issue's acceptance criteria promise must be claimed by a
+# test, or declared verified by hand in the PR body (#358). The logic, and how
+# to claim a scenario, is in scripts/check_criteria.py and docs/testing.md.
+#
+# Its own workflow, like changelog.yml, and for the same reason: `edited` must
+# re-run it the moment the PR body gains a `Verified by hand:` line, and putting
+# that trigger on ci.yml would re-run the whole suite for a text edit.
+#
+# ⚠️ NOT gated by ci.yml's `changes` classifier, and deliberately so. That
+# classifier fails open on a push to main (#281), and an inert PR skips steps
+# inside a job that still reports `pass`. This job always runs its one step on
+# every PR; the script fails CLOSED if GitHub cannot be read.
+#
+# ⚠️ Editing the ISSUE does not trigger this — correcting a wrong criterion
+# means editing the issue and then re-running this workflow by hand.
+#
+# No `concurrency` block, for the reason written at length in changelog.yml:
+# with cancel-in-progress, events fired in the same second cancel each other
+# and can leave a required check unsatisfied.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+jobs:
+  criteria:
+    name: Issue criteria are claimed by tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Every acceptance-criteria scenario is claimed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: python3 scripts/check_criteria.py --pr "$PR"
