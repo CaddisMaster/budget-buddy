@@ -81,13 +81,6 @@ def test_ask_box_renders_on_dashboard(client_a, monkeypatch):
     assert b"Ask your finances" in response.data
 
 
-def test_ask_box_hidden_without_key(client_a, monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    response = client_a.get("/")
-    assert response.status_code == 200
-    assert b"Ask your finances" not in response.data
-
-
 # --- ported sections ------------------------------------------------------------
 
 def test_day_of_week_chart_renders(client_a):

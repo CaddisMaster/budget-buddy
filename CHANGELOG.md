@@ -27,6 +27,13 @@ this project uses the `0.x` versioning scheme described in
   guarding the Goal Coach's removal and two dropped database tables are gone:
   every part that still mattered was shown to be caught by another test
   first. (#396)
+- **The warning that feedback is posted publicly is now actually checked to
+  sit above the form.** The only test for its position was skipped whenever
+  feedback wasn't configured, which is always the case in CI and development,
+  so it had never run. Moving the warning below the Send button left every
+  test passing. The check now runs with feedback turned on. The audit also
+  removed three tests that only repeated another one, and one more that never
+  ran. (#396)
 
 ## [0.11.0] - 2026-09-24
 
