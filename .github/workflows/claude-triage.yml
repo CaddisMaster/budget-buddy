@@ -80,7 +80,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Resolves BOTH the target issue and which prompt to run, once, for either
       # trigger.
@@ -166,7 +166,7 @@ jobs:
       # TRIAGE — the default path. Runs for `bug` and for anything unlabelled.
       - name: Triage a reported defect
         if: steps.target.outputs.mode == 'triage'
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@9171db3e57d6a3140a37ddc2ba92788584e0ead6 # v1.0.234
         with:
           # Authenticates against the Claude subscription rather than metered API
           # credits. Generated locally with `claude setup-token`. NOTE: this draws
@@ -238,7 +238,7 @@ jobs:
       # so the job is to pin the idea down, NOT to invent the missing half of it.
       - name: Specify a feature request
         if: steps.target.outputs.mode == 'specify'
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@9171db3e57d6a3140a37ddc2ba92788584e0ead6 # v1.0.234
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # Same allowlist and cap as the triage step above — read the note there

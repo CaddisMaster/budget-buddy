@@ -5,7 +5,21 @@
 # workflow, and a bare `docker build .`. If `dev` ever becomes the last stage,
 # every one of them silently starts shipping pytest and the dev dependencies to
 # production. Add new stages ABOVE prod, never below it.
-FROM python:3.14-slim AS base
+#
+# The base image is pinned by DIGEST (#405): a tag is movable, and whoever
+# controls it decides what the next build runs. The digest is the multi-arch
+# INDEX, so one line serves the arm64 VM and the amd64 CI/Droplet alike.
+#
+# ⚠️ The tag names the Python PATCH (3.14.7), not 3.14, on purpose. Read in
+# Dependabot's docker updater source (not assumed): it rewrites a pinned
+# digest in place, but a GitHub-side experiment
+# (`docker_digest_only_update_suppression`) can skip a digest-only refresh
+# of a versioned tag whose NAME is unchanged, and nobody outside GitHub can
+# see whether it is on. Pinned to `3.14-slim`, that would freeze the image,
+# with no Debian security rebuilds, until 3.15 existed, and nothing would
+# say so. A patch tag changes name at every Python patch, and a tag change
+# is never suppressed.
+FROM python:3.14.7-slim@sha256:caaf356f40667c496d405780745b9ac25771c189a51dfcc42430d531ea09f8a2 AS base
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

@@ -10,6 +10,12 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The build runs only the code it was reviewed with.** Every GitHub Actions
+  step used to name its action by a version tag such as `@v7`, which whoever
+  controls the tag can point at different code. Two of those actions receive
+  secrets. Each one is now pinned to an exact commit, with its release named
+  beside it, and the Docker base image is pinned by digest. A test fails if a
+  new workflow names an action by tag. (#405)
 - **Production now logs what it does, and ties each request's lines together.**
   Nothing configured logging before, so the app ran at Python's default of
   WARNING and dropped every informational line. That included the audit line
