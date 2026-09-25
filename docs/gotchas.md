@@ -248,6 +248,12 @@
 - ⚠️ **`NaN = NaN` is TRUE for Postgres `numeric`, so the obvious NaN check fails OPEN.** `numeric` is deliberately not IEEE 754 here: NaN equals itself so the type can be sorted and indexed. That makes `CHECK (col IS NULL OR col = col)` — the form everyone writes first, and the one #314 originally specified — pass for a NaN and store the row. The working form is `CHECK (col <> 'NaN'::numeric)`; NULL needs no clause, because a CHECK passes when its expression is NULL. Measured against `postgres:16`, not inferred, and `tests/test_money_is_finite.py` asserts it per column. Note this is the opposite of Python, where `float('nan') != float('nan')` — so a guard ported from the app layer to SQL inverts silently
 - **Param validation:** same rule for query/form params — `?month` → `parse_month_param()`, `?page` → `parse_page_param()`, posted FK ids → `parse_int_param()`. A raw string into a psycopg2 `%s` against an int column raises (= 500)
 - **Write-side FK ownership:** when a form posts a `category_id`/`account_id`, validate it belongs to the user *before* the INSERT/UPDATE — `validate_category_account()` in transactions.py, folded into the route's validation-error path. Used by transaction new/edit, schedule create/edit, bulk edit, cleanup apply
+- **Logging (#404, `app/logs.py`):** the app's loggers are at INFO, and every line carries a request ID
+  (`-` outside a request) that the response echoes as `X-Request-ID`. **Never log `request.form`,
+  `request.values` or a request body.** The ledger is financial data, and the log leaves the app on every
+  `docker logs`. Flask's own unhandled-error line records the path and method only. Use a module
+  logger under `app.` (`logging.getLogger(__name__)`) or `current_app.logger`; a logger outside `app.*`
+  stays at the root's WARNING
 - **Error messages:** unexpected write failures show `helpers.GENERIC_ERROR` and log the real exception via `current_app.logger.exception()` — never flash/toast `str(e)` (psycopg2 text leaks constraint names/SQL). The two FK-delete sites keep their friendly "Cannot delete — in use" branch
 - ⚠️ **The release notification title deliberately does NOT name the app** —
   `Version {version} is live`, not `Budget Buddy {version} is live` (#133, PR #135).

@@ -10,6 +10,18 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **Production now logs what it does, and ties each request's lines together.**
+  Nothing configured logging before, so the app ran at Python's default of
+  WARNING and dropped every informational line. That included the audit line
+  written when an admin downloads the whole database, and the daily job's
+  summary. The app now logs at INFO, in the same `[time] [pid] [LEVEL]` shape
+  as gunicorn, with a request ID on every line. The same ID is sent back as an
+  `X-Request-ID` header. An unhandled error is logged with its traceback and
+  that ID, and never with what was typed into the form. The tests had missed
+  this twice over: pytest's `caplog.at_level` and behave's log capture both
+  lower the logging level for the test, which hides a line production drops.
+  The backup test no longer lowers it, and the behave runner now turns the
+  capture off. (#404)
 - **Scheduled jobs now run in their own process, so the web server can use more
   than one worker.** The daily bill reminders and recurring transactions, and
   the weekly digest, used to run inside the web server. That is why it was
