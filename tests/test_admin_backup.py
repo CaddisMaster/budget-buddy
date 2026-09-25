@@ -5,7 +5,6 @@ highest-value single endpoint in the application. These tests pin the access
 rules and the audit trail. The rate limit itself is disabled under test (see
 conftest), so its registration is asserted rather than its behaviour.
 """
-import logging
 from unittest.mock import patch
 
 from tests.conftest import USER_ADMIN
@@ -48,11 +47,14 @@ def test_non_admin_never_reaches_pg_dump(client_a):
 def test_admin_can_download_and_it_is_logged(admin_client, caplog):
     """A full-database export previously left no trace at all. Without a log
     line, a compromise that exfiltrated everything would be invisible after
-    the fact."""
-    with caplog.at_level(logging.INFO):
-        with patch("app.blueprints.admin.subprocess.run",
-                   return_value=_FakeCompleted()) as run:
-            response = admin_client.get("/admin/backup")
+    the fact.
+
+    ⚠️ No `caplog.at_level(logging.INFO)` (#404). It LOWERS the level it then
+    captures at, so this test passed for months while production, where
+    nothing configured logging, dropped the line at WARNING."""
+    with patch("app.blueprints.admin.subprocess.run",
+               return_value=_FakeCompleted()) as run:
+        response = admin_client.get("/admin/backup")
 
     assert response.status_code == 200
     assert response.headers["Content-Type"] == "application/octet-stream"

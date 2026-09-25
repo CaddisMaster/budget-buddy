@@ -42,6 +42,12 @@ the Tests job (it calls pytest directly, never `test.sh`) and inside the shipped
   inferred from the source. Shared types and `_user` live in `support.py`, outside `steps/` and
   defining no steps. Shared *steps* ("user A is signed in") live in `steps/common_steps.py`: an
   imported step file would run twice and register every step twice.
+- 🛑 **Neither runner may lower the logging level a test checks (#404).** behave's log capture sets
+  the ROOT logger to INFO around every scenario, and pytest's `caplog.at_level(logging.INFO)` lowers
+  the logger it captures from. Either one makes an INFO line production drops look logged, and
+  between them they hid #404's defect from both its old test and its new scenario. `run_behave.py`
+  passes `--no-logcapture`, and `log_steps.py` asserts the root is at WARNING before reading. Read
+  the app's real handler (`app.logs.handler.setStream(buffer)`), or plain `caplog` without `at_level`.
 - Default output is `progress3`: one line per scenario, and a failure printed inline with its
   step, `file:line` and assertion message. `progress` drops the message; `pretty` lists every step.
 

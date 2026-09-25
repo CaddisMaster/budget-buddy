@@ -79,12 +79,21 @@ def scenarios_that_ran(features):
 # as a diagnosis when red. Pass your own --format to override it.
 DEFAULT_FORMAT = "progress3"
 
+# ⚠️ behave's log capture sets the ROOT logger to INFO around every scenario
+# (behave/log_capture.py, measured on 1.3.3), where production's stays at
+# WARNING. That made a logger stuck at WARNING invisible to every scenario:
+# #404's own defect survived its own test until this was added. The app's
+# handler writes to stderr, which behave still captures and prints on failure.
+NO_LOGCAPTURE = "--no-logcapture"
+
 
 def main(argv):
     if not any(not arg.startswith("-") and Path(arg).exists() for arg in argv):
         argv = [str(FEATURES), *argv]
     if not any(arg in ("-f", "--format") or arg.startswith(("-f", "--format=")) for arg in argv):
         argv = ["--format", DEFAULT_FORMAT, *argv]
+    if NO_LOGCAPTURE not in argv:
+        argv = [NO_LOGCAPTURE, *argv]
 
     code = run_behave(Configuration(command_args=argv), runner_class=_RecordingRunner)
     if code != 0:
