@@ -38,6 +38,28 @@ def _transfer_legs(user_id, description):
     return rows
 
 
+def _legs_on_accounts_of(owner_id, description):
+    """(legs, owned): transfer legs posted onto `owner_id`'s accounts, whoever's
+    ledger they landed in, and how many of those landed in the owner's own.
+
+    ⚠️ Counting by the ledger's `user_id` (`_transfer_legs`) cannot see a runner
+    that posts one user's transfer under another user's id: the owner's count
+    stays 0, which is exactly what "B's run never fires A's transfer" expects.
+    Transfer legs carry no schedule id, so the accounts are the link (#396)."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT COUNT(*), COUNT(*) FILTER (WHERE t.user_id = a.user_id) "
+        "FROM transactions t JOIN account a ON a.account_id = t.account_id "
+        "WHERE a.user_id = %s AND t.description = %s AND t.is_transfer",
+        (owner_id, description),
+    )
+    legs, owned = cur.fetchone()
+    cur.close()
+    conn.close()
+    return legs, owned
+
+
 # --- run_due_transfers ------------------------------------------------------
 
 def test_due_transfer_materializes_a_pair_and_advances(users):
@@ -133,9 +155,9 @@ def test_run_due_transfers_is_user_scoped(users):
     create_transfer_schedule(a["id"], a["account_id"], to_acct, 20, "monthly",
                              yesterday)
     run_due_transfers(b["id"])  # B's run must not fire A's transfer
-    assert len(_transfer_legs(a["id"], LABEL)) == 0
+    assert _legs_on_accounts_of(a["id"], LABEL) == (0, 0)
     run_due_transfers(a["id"])
-    assert len(_transfer_legs(a["id"], LABEL)) == 2
+    assert _legs_on_accounts_of(a["id"], LABEL) == (2, 2)
 
 
 # --- inline CRUD routes -----------------------------------------------------
