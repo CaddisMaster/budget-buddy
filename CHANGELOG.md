@@ -10,6 +10,13 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **A daily-job test can no longer post another test's bill.** The test for
+  the daily job posts every due recurring transaction of every user in the
+  test database. Tests run in parallel, so that included users other tests
+  were still using, and one test's scheduled bill got posted out from under
+  it. It only happened after the 16th of the month, which is why it looked
+  like a random failure (2 runs in 10 on 2026-09-25). Every test now limits
+  that job to its own users, and 30 full runs in a row were clean. (#411)
 - **The build runs only the code it was reviewed with.** Every GitHub Actions
   step used to name its action by a version tag such as `@v7`, which whoever
   controls the tag can point at different code. Two of those actions receive

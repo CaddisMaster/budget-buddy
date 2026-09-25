@@ -25,6 +25,7 @@ from tests.helpers import (
     _login,
     _seed_basic_data,
     _wait_for_db,
+    only_users_prefixed,
     refuse_a_database_that_holds_users,
 )
 
@@ -48,6 +49,22 @@ TEST_PREFIX = "__pytest__" + os.environ.get("PYTEST_XDIST_WORKER", "")
 USER_A = TEST_PREFIX + "user_a"
 USER_B = TEST_PREFIX + "user_b"
 USER_ADMIN = TEST_PREFIX + "admin"
+
+
+@pytest.fixture(autouse=True)
+def _sweeps_see_only_this_worker(monkeypatch):
+    """Scope the daily sweep to this worker's users, for every test (#411).
+
+    `scheduler_sweep` serializes the sweeping FILES against each other, not
+    against the rest of the parallel suite, so a sweep here once posted a
+    schedule another worker's test had just made. Autouse rather than per
+    file: a hand-kept list of sweeping files fails silently for the next one.
+    See `helpers.only_users_prefixed`, and tests/test_sweep_scope.py.
+    """
+    from app.blueprints import reminders
+
+    monkeypatch.setattr(reminders, "_users_with_schedules",
+                        only_users_prefixed(TEST_PREFIX, reminders._users_with_schedules))
 
 
 def pytest_configure(config):

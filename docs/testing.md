@@ -409,6 +409,20 @@ and this is contention over a global *operation*. FIVE files drive such a sweep
 (`test_push_reminders.py`, `test_job_runs.py`, `test_digest.py`, `test_money_agent.py`,
 `test_variable_bills.py`) plus the broadcast in `test_release_announce.py`; all carry the group.
 
+🛑 **The group serializes sweeps against EACH OTHER, not against the rest of the suite (#411).**
+`materialize_all_users()` posts every due schedule of every user, against the real clock, and
+nothing stopped it posting a schedule that an *ungrouped* test in another worker had just made.
+`test_month_read`'s bill (due the 16th under a clock frozen at the 15th) failed 2 runs in 10,
+**only after the 16th of the real month**, which is why it hid. Here `TEST_PREFIX` *can* help,
+because the sweep's result is a list of users: conftest's autouse
+`_sweeps_see_only_this_worker` narrows `reminders._users_with_schedules` to this worker's users
+(`helpers.only_users_prefixed`), for every test, so a new sweeping test is covered without being
+listed. ⚠️ The match rejects a digit after the prefix, because `__pytest__gw1` is a prefix of
+`__pytest__gw10…`. ⚠️ **A test that simulates "another worker" must use a prefix that matches no
+user** (`test_sweep_scope.NO_SUCH_WORKER`). The first version used `__elsewhere__`, which also
+matched the victim the neighbouring test creates, and failed 3 runs in 30 on the test suite's
+own rows. behave is unaffected: it runs serially, never beside pytest.
+
 What still holds: the suite's content assertions are the only net for Jinja's
 silent-empty-string failure mode, so a global change (a cursor-factory flip, a template-wide
 sweep) must be gated on the full suite. And when planning a sweep, grep for the failure SHAPE
