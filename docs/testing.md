@@ -152,6 +152,38 @@ and it also asserts every such row landed in the owner's ledger. Each assertion 
 on its own. **When the rows a check counts are selected by the very column the mutant
 corrupts, the check cannot see the mutant.**
 
+## Auditing the suite for dead weight (#396)
+
+#309 read every test asking **"can this fail?"**. #396 asked **"does it still earn its place?"**,
+file by file (the table is in #399's body). **The suite turned out to hold very little
+redundancy**: 11 schedule twins (#395), two tombstone files, three duplicate pairs, and two tests
+that had never run. Most of what the audit found was tests that **could not fail**, not tests that
+were unneeded.
+
+**Method, so it can be repeated:**
+- `coverage` with `dynamic_context = test_function` over a serial pytest run, plus behave under
+  its own context. From that: each file's lines that no other file reaches, and pairs of tests in
+  different files that run **identical line sets** (≥30 lines). Coverage is a place to look,
+  never a verdict. It can't see an assertion, a CHECK constraint or CSS. 11 files reach no line
+  of their own and are all keeps, because each is the only thing that *checks* lines others merely
+  run. It isn't installed. `pip install --target /tmp/covlib coverage` inside the dev container,
+  then `PYTHONPATH=/tmp/covlib`, is enough.
+- **Every deletion is a mutation, not an argument.** Break what the test guards, run the suite
+  without it, and show that another test goes red.
+- **Clean up after a mutant that crosses users.** An unscoped due-runner writes rows that point
+  at another user's account, and the teardown then fails with a foreign-key error in every later
+  test. `materialize_all_users()` sweeps *every* user, so it also writes into the dev database's
+  real dev users.
+
+🛑 **A test that skips before asserting anything has not run, and nothing says so.** Two tests in
+`test_profile_settings_login.py` skipped whenever push or feedback was unconfigured, which is
+always true in CI and dev. One of them was the **only** check that the feedback form's
+public-posting warning sits above the fields. Moving it below "Send report" left all 1338 tests
+green. The skip named another file as "the always-running copy", and a meta-test guarded that
+pointer, but the copy never checked position. **Turn the feature on with `monkeypatch` and
+assert, rather than skip.** A skip that follows an assertion, like `test_state_first_pages`'s
+"the form really is absent", is fine.
+
 ## Every promised scenario is claimed (#358)
 
 The `Acceptance criteria` PR check (`.github/workflows/criteria.yml` →

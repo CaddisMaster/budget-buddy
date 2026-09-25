@@ -88,48 +88,6 @@ def test_settings_still_never_renders_a_credential(admin_client, monkeypatch):
 # --- #245: Profile grouped by what it affects ---------------------------------
 
 
-def test_profile_still_names_every_kind_of_notification(client_a):
-    """⚠️ The consent record (#115/#191). Asserted per-kind, not as one "does
-    it mention notifications" check — that would pass while a whole category
-    went undisclosed.
-
-    ⚠️ SKIPS when push is not configured, which it is not in CI or the dev
-    container: the whole section is gated on push_enabled(). The canonical,
-    always-running copy of this assertion is
-    test_release_announce.py::test_profile_copy_names_every_kind_of_notification,
-    which sets the VAPID env up itself. This one exists because #245 REORDERS
-    the page that paragraph sits on, and a reorder is exactly the kind of
-    change that could drop it.
-
-    ⚠️ That pointer named test_push_reminders.py until #309 tranche 8b, and the
-    test has never lived there. The assertion was fine; the signpost was not,
-    and a reader checking whether the consent record was still covered would
-    have found nothing where it said to look. It is asserted rather than
-    written down now — see test_the_delegated_assertions_exist below.
-    """
-    html = client_a.get("/profile").get_data(as_text=True)
-    if 'id="push-toggle"' not in html:
-        pytest.skip("push is not configured here; see test_release_announce.py")
-    assert "before" in html and "due" in html, "the bill reminder is undisclosed"
-    assert "posted" in html or "changes" in html, \
-        "the variable-bill nudge is undisclosed"
-    assert "updated" in html, "the release note is undisclosed"
-
-
-def test_profile_keeps_the_feedback_publicity_warning_above_the_fields(client_a):
-    """#64 — the warning is the ONLY control on what gets published, and its
-    POSITION is part of that: above the fields, not below the button.
-
-    ⚠️ Skips when the feedback feature is gated off (no GitHub token), for the
-    same reason as the test above. test_feedback.py owns the gate itself.
-    """
-    html = client_a.get("/profile").get_data(as_text=True)
-    if "published publicly on GitHub" not in html:
-        pytest.skip("feedback is not configured here; see test_feedback.py")
-    assert html.index("published publicly on GitHub") < html.index('name="title"'), \
-        "the publicity warning moved below the fields"
-
-
 def test_profile_groups_its_sections(client_a):
     """#245: "grouped by what they affect, not laid out as four peers".
 
@@ -270,34 +228,3 @@ def test_the_two_login_failures_render_identically(anon_client, users):
         follow_redirects=True).get_data(as_text=True))
     assert unknown == wrong, \
         "the two failure pages differ, which enumerates usernames"
-
-
-# --- the two skips above delegate; this is what stops them delegating to
-#     nothing (#309, tranche 8b) ------------------------------------------------
-
-
-def test_the_delegated_assertions_exist():
-    """⚠️ Two tests in this file SKIP when their feature is unconfigured and name
-    another file as the always-running copy. That makes those names load-bearing:
-    if the named test is renamed, moved or deleted, the skip here stops being a
-    delegation and becomes a silent coverage hole — the whole assertion is gone
-    and nothing goes red, because a skip is not a failure.
-
-    One of the two pointers was already wrong when this was written (it named
-    test_push_reminders.py for a test that lives in test_release_announce.py),
-    which is the case for stating it as code rather than as prose.
-    """
-    import tests.test_feedback as feedback_tests
-    import tests.test_release_announce as announce_tests
-
-    delegated = [
-        (announce_tests, "test_profile_copy_names_every_kind_of_notification"),
-        (feedback_tests, "test_the_form_warns_that_reports_are_public"),
-    ]
-    missing = [f"{module.__name__}::{name}"
-               for module, name in delegated
-               if not callable(getattr(module, name, None))]
-    assert not missing, (
-        f"the skips in this file delegate to {missing}, which no longer exist — "
-        "so the assertion they stand in for is running nowhere"
-    )

@@ -79,9 +79,17 @@ def test_profile_offers_the_form_with_a_token(client_a, enabled):
 
 def test_the_form_warns_that_reports_are_public(client_a, enabled):
     """The warning is the ONLY control on what a user publishes. If this test
-    fails because the copy moved, re-point it — do not delete it."""
+    fails because the copy moved, re-point it — do not delete it.
+
+    Its POSITION is part of that control: above the fields, not below the
+    button. ⚠️ Until #396 the position was asserted only in
+    test_profile_settings_login.py, by a test that skipped whenever feedback
+    was unconfigured, which it always is in CI and dev. So it had never run,
+    and moving the warning below "Send report" left the whole suite green."""
     body = client_a.get('/profile').get_data(as_text=True)
     assert 'published publicly on GitHub' in body
+    assert body.index('published publicly on GitHub') < body.index('name="title"'), \
+        "the publicity warning moved below the fields"
 
 
 def test_route_without_a_token_creates_nothing(client_a, seam, monkeypatch):

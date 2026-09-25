@@ -296,11 +296,6 @@ def test_utilization_facts_figures(users):
                       "available": 1500.0, "utilization_pct": 25.0}]
 
 
-def test_utilization_facts_empty_without_limits(users):
-    create_account(users["a"]["id"], "EmptyCard", "Credit Card")
-    assert credit_card_utilization_facts(users["a"]["id"]) == []
-
-
 def test_utilization_facts_user_isolation(users):
     create_account(users["a"]["id"], "IsoCardA", "Credit Card",
                    credit_limit=1000)

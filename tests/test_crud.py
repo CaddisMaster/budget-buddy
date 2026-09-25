@@ -42,12 +42,6 @@ def test_edit_category(client_a, users):
     assert description == "now edited"
 
 
-def test_delete_category(client_a, users):
-    cid = create_category(users["a"]["id"], "Disposable")
-    client_a.delete(f"/categories/{cid}", follow_redirects=True)
-    assert fetch_category(cid) is None
-
-
 def test_create_category_income_kind(client_a, users):
     client_a.post("/categories", data={"name": "Freelance", "kind": "income"},
                   follow_redirects=True)
