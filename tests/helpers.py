@@ -461,6 +461,29 @@ def count_transactions_like(user_id, description):
     return n
 
 
+def count_posted_from_schedules(owner_id):
+    """(posted, owned): transactions posted from `owner_id`'s schedules, found
+    by `schedule_id` whoever's ledger they landed in, and how many of those
+    landed in the owner's own.
+
+    ⚠️ Counting by the transaction's `user_id` alone cannot see a runner that
+    posts one user's schedule under another user's id: the owner's count
+    stays 0, which is exactly what "never posts another user's schedule"
+    expects (#395). `owned` keeps the check `count_transactions_like` made."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT COUNT(*), COUNT(*) FILTER (WHERE t.user_id = s.user_id) "
+        "FROM transactions t JOIN schedules s ON s.id = t.schedule_id "
+        "WHERE s.user_id = %s",
+        (owner_id,),
+    )
+    posted, owned = cur.fetchone()
+    cur.close()
+    conn.close()
+    return posted, owned
+
+
 def account_balance(account_id):
     """Net income − expense for an account, straight from the DB (for asserts)."""
     conn = get_db_connection()

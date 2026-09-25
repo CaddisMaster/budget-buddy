@@ -1,11 +1,15 @@
 """v10.0 Scheduled — recurring income/expense schedules.
 
-Covers the pure next-due math, the run_due_schedules generator (materialize +
-catch-up + isolation + active gate + concurrent-run locking), and the inline-CRUD
-routes (fragment shape, persistence, ownership 404s). The route tests rely on the
-dev DB via the shared fixtures; CSRF + rate limiter are disabled under test.
+Covers the pure next-due math, the inline-CRUD routes (fragment shape,
+persistence, ownership 404s) and #32's end-date form handling. The route tests
+rely on the dev DB via the shared fixtures; CSRF + rate limiter are disabled
+under test.
+
+⚠️ What the due-runner DOES — posting, catch-up, the paused and not-yet-due
+gates, user scoping, both FOR UPDATE races, and the end-date cut-offs — is in
+tests/features/schedule_*.feature. The pytest twins were deleted in #395, after
+every one of those behaviours was broken in app/ and its scenario went red.
 """
-import threading
 from datetime import date, timedelta
 
 from app.blueprints.schedules import (
@@ -73,88 +77,6 @@ def test_semimonthly_due_clamps_last_day():
     assert compute_initial_semimonthly_due(15, 31, date(2026, 6, 20)) == date(2026, 6, 30)
 
 
-# --- run_due_schedules ------------------------------------------------------
-
-def test_due_schedule_materializes_one_and_advances(users):
-    uid = users["a"]["id"]
-    yesterday = date.today() - timedelta(days=1)
-    sid = create_schedule(uid, users["a"]["account_id"], 50, "monthly", yesterday,
-                          transaction_type="income")
-    run_due_schedules(uid)
-    assert count_transactions_like(uid, "seed-schedule") == 1
-    # next_due advanced into the future so a re-run doesn't duplicate.
-    assert fetch_schedule(sid)[2] > date.today()
-    run_due_schedules(uid)
-    assert count_transactions_like(uid, "seed-schedule") == 1
-
-
-def test_far_behind_schedule_catches_up(users):
-    uid = users["a"]["id"]
-    three_weeks_ago = date.today() - timedelta(weeks=3)
-    create_schedule(uid, users["a"]["account_id"], 20, "weekly", three_weeks_ago)
-    run_due_schedules(uid)
-    # Occurrences at -21, -14, -7, and today → 4 generated.
-    assert count_transactions_like(uid, "seed-schedule") == 4
-
-
-def test_future_schedule_generates_nothing(users):
-    uid = users["a"]["id"]
-    next_week = date.today() + timedelta(days=7)
-    create_schedule(uid, users["a"]["account_id"], 20, "weekly", next_week)
-    run_due_schedules(uid)
-    assert count_transactions_like(uid, "seed-schedule") == 0
-
-
-def test_inactive_schedule_generates_nothing(users):
-    uid = users["a"]["id"]
-    yesterday = date.today() - timedelta(days=1)
-    create_schedule(uid, users["a"]["account_id"], 20, "monthly", yesterday,
-                    is_active=False)
-    run_due_schedules(uid)
-    assert count_transactions_like(uid, "seed-schedule") == 0
-
-
-def test_concurrent_runs_materialize_exactly_once(users):
-    # gunicorn serves requests on multiple threads, so two page loads can run
-    # run_due_schedules at the same time. The FOR UPDATE row lock must serialize
-    # them: exactly one occurrence gets materialized, never a duplicate. Each
-    # call opens its own connection (db_cursor), so real thread interleaving is
-    # exercised here.
-    uid = users["a"]["id"]
-    yesterday = date.today() - timedelta(days=1)
-    sid = create_schedule(uid, users["a"]["account_id"], 50, "monthly", yesterday)
-
-    barrier = threading.Barrier(4)
-    errors = []
-
-    def run():
-        barrier.wait()  # line all threads up on the same race window
-        try:
-            run_due_schedules(uid)
-        except Exception as e:  # pragma: no cover - surfaced via the assert
-            errors.append(e)
-
-    threads = [threading.Thread(target=run) for _ in range(4)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-
-    assert errors == []
-    assert count_transactions_like(uid, "seed-schedule") == 1
-    assert fetch_schedule(sid)[2] > date.today()
-
-
-def test_run_due_schedules_is_user_scoped(users):
-    a_id, b_id = users["a"]["id"], users["b"]["id"]
-    yesterday = date.today() - timedelta(days=1)
-    create_schedule(a_id, users["a"]["account_id"], 20, "monthly", yesterday)
-    run_due_schedules(b_id)  # B's run must not fire A's schedule
-    assert count_transactions_like(a_id, "seed-schedule") == 0
-    run_due_schedules(a_id)
-    assert count_transactions_like(a_id, "seed-schedule") == 1
-
-
 # --- inline CRUD routes -----------------------------------------------------
 
 def test_create_schedule_returns_row_fragment(client_a, users):
@@ -186,19 +108,6 @@ def test_create_semimonthly_computes_next_due(client_a, users):
     })
     assert resp.status_code == 200
     assert _schedule_count(uid) == 1
-
-
-def test_create_schedule_rejects_past_date(client_a, users):
-    uid = users["a"]["id"]
-    resp = client_a.post("/scheduled", headers=HX, data={
-        "transaction_type": "expense",
-        "amount": "30",
-        "account_id": users["a"]["account_id"],
-        "frequency": "monthly",
-        "next_due": (date.today() - timedelta(days=2)).isoformat(),
-    })
-    assert resp.status_code == 200
-    assert _schedule_count(uid) == 0  # nothing created on validation failure
 
 
 def test_edit_then_delete_schedule(client_a, users):
@@ -237,45 +146,9 @@ def test_cannot_edit_or_delete_other_users_schedule(client_a, users):
 
 # --- #32 end date -----------------------------------------------------------
 
-def test_schedule_stops_materializing_at_its_end_date(users):
-    # The issue's headline scenario. A weekly schedule three weeks overdue with
-    # an end date two weeks back: the catch-up loop must post the occurrences up
-    # to the end date and then stop, not run to today.
-    uid = users["a"]["id"]
-    three_weeks_ago = date.today() - timedelta(weeks=3)
-    create_schedule(uid, users["a"]["account_id"], 20, "weekly", three_weeks_ago,
-                    end_date=three_weeks_ago + timedelta(weeks=1))
-    run_due_schedules(uid)
-    # Occurrences at -21 and -14 only; -7 and today are past the end date.
-    assert count_transactions_like(uid, "seed-schedule") == 2
-
-
-def test_finished_schedule_never_backfills(users):
-    # The trap called out in the issue: a schedule whose next_due went stale AND
-    # whose end date has since passed must post NOTHING when the user finally
-    # logs in — not a back-fill of every occurrence it "missed".
-    uid = users["a"]["id"]
-    long_ago = date.today() - timedelta(weeks=8)
-    create_schedule(uid, users["a"]["account_id"], 20, "weekly", long_ago,
-                    end_date=long_ago - timedelta(days=1))
-    run_due_schedules(uid)
-    assert count_transactions_like(uid, "seed-schedule") == 0
-
-
-def test_schedule_ending_today_still_posts_today(users):
-    # The end date is the last day the schedule RUNS, not the first day it
-    # doesn't — an off-by-one here silently drops a real final payment.
-    uid = users["a"]["id"]
-    today = date.today()
-    create_schedule(uid, users["a"]["account_id"], 20, "weekly", today,
-                    end_date=today)
-    run_due_schedules(uid)
-    assert count_transactions_like(uid, "seed-schedule") == 1
-
-
 def test_schedule_without_end_date_is_unchanged(users):
     # Every schedule that existed before #32 has end_date NULL. Same catch-up
-    # count as test_far_behind_schedule_catches_up.
+    # count as the "fell behind" scenario in schedule_materialization.feature.
     uid = users["a"]["id"]
     three_weeks_ago = date.today() - timedelta(weeks=3)
     create_schedule(uid, users["a"]["account_id"], 20, "weekly", three_weeks_ago,
