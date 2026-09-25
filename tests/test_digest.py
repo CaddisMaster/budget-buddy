@@ -8,7 +8,7 @@ route all run while CI (no keys) stays offline and free.
 The locked principle — "the app computes the numbers, the model only narrates" — is
 exercised by compute_digest_facts() running directly against seeded data; the runner
 is asserted on per-user DB state (not a global send count) so it's robust against any
-other opted-in rows in the shared dev DB.
+other opted-in rows in the shared test database.
 """
 from datetime import date, timedelta
 

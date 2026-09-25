@@ -26,7 +26,14 @@ way conftest's became per-worker.
 """
 from app import app as flask_app
 from app import limiter
-from tests.helpers import PASSWORD, _create_user, _delete_user, _seed_basic_data, _wait_for_db
+from tests.helpers import (
+    PASSWORD,
+    _create_user,
+    _delete_user,
+    _seed_basic_data,
+    _wait_for_db,
+    refuse_a_database_that_holds_users,
+)
 
 BEHAVE_PREFIX = "__behave__"
 USER_A = BEHAVE_PREFIX + "user_a"
@@ -35,6 +42,9 @@ USER_B = BEHAVE_PREFIX + "user_b"
 
 def before_all(context):
     _wait_for_db()
+    # A user present before the first scenario means this is a real database,
+    # not the one test.sh just built (#400). Raising here aborts the whole run.
+    refuse_a_database_that_holds_users()
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False  # no token plumbing in tests
     if not flask_app.secret_key:

@@ -47,6 +47,33 @@ def _wait_for_db(attempts=10, delay=1.0):
     raise RuntimeError(f"Database not reachable for tests: {last_err}")
 
 
+def refuse_a_database_that_holds_users():
+    """Raise unless the `users` table is empty — call once, before any test runs.
+
+    ⚠️ The suite runs against its own database (#400): `test.sh` rebuilds it from
+    `sql/schema.sql` before each runner, and CI loads a fresh one. Both start
+    with no users. So a user present at the start means this is somebody's REAL
+    database — the dev one, most likely, because the process inherited the dev
+    server's `DB_NAME` — and a run there would sweep its users: anything that
+    iterates every user (`materialize_all_users()`) posts into their ledgers.
+
+    Checked by emptiness rather than by name, because CI's database and the dev
+    one are both called `budget`."""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT current_database(), COUNT(*) FROM users")
+        dbname, count = cur.fetchone()
+        cur.close()
+    finally:
+        conn.close()
+    if count:
+        raise RuntimeError(
+            f"Refusing to run the tests: database {dbname!r} already holds "
+            f"{count} user(s), so it is not a fresh test database. Run the suite "
+            "through ./test.sh, which builds one (#400).")
+
+
 def _create_user(username, password, is_admin=False):
     conn = get_db_connection()
     cur = conn.cursor()

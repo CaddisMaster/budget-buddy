@@ -166,7 +166,9 @@ Details, including the xdist isolation rules that make `-n auto` safe, are in
 [`docs/testing.md`](docs/testing.md) — **read it before adding tests or sweeping a pattern.**
 
 - **`./test.sh`** is the only path (args pass through to pytest). It runs in a container on prod's
-  Python 3.14; the dev `db` container must be up. `runtests` was retired 2026-08-17
+  Python 3.14; the dev `db` container must be up. ⚠️ It tests against its **own `budget_test`
+  database** (#400), rebuilt from `schema.sql` before each runner, never the dev one, and both
+  runners **refuse a database that already holds users**. `runtests` was retired 2026-08-17
 - It **runs `ruff check` first and stops if lint fails** (#264). `SKIP_LINT=1 ./test.sh` skips it.
   ⚠️ The ruff version is pinned in **both** `requirements-dev.txt` and `ci.yml` and they must
   agree — bumping it means editing both

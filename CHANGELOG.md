@@ -10,6 +10,12 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The test suite has its own database, and refuses anyone else's.**
+  `./test.sh` now builds a fresh test database from the schema before each run.
+  Before, the tests ran against the development database, and anything that
+  ran for every user also posted into the real development accounts. Both test
+  runners now stop before any test if the database already has users in it,
+  which is what a real database looks like. (#400)
 - **The schedule tests that duplicated its behave scenarios are gone, and one
   scenario can now actually fail.** The pilot kept eleven pytest twins beside
   its scenarios as a check. Each behaviour was then broken in the app, one at a
