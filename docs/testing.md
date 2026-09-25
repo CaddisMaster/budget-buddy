@@ -131,7 +131,7 @@ in `app/` and the scenario is shown to fail, which is the oracle #356 used.
 
 | Area | Issue | Scenarios | Twins |
 |---|---|---|---|
-| schedules | #356 | 12 | **kept**. The pilot left them as the oracle |
+| schedules | #356, #395 | 12 | **deleted** in #395 (11 twins; the create-from-today scenario had none). The pilot had kept them as the oracle |
 | transfers | #389 | 10 | **deleted**, after every behaviour was broken in `app/` and its scenario went red |
 
 ⚠️ **#389's mutation pass found two old twins that could not fail.** Removing the same-account
@@ -142,6 +142,15 @@ And deleting the transfer badge left `test_history_renders_transfer_row` green, 
 `b"Transfer"` is also in the nav's "Transfers" link. **Converting is a chance to re-check what a
 test asserts, not just to re-type it**, and running the mutation against *both* runners is what
 showed it.
+
+⚠️ **#395's pass found a gap the twin and the scenario SHARED.** Dropping `user_id` from the
+due-runner's SELECT makes user B's run post A's schedule, but under **B's** id. Both versions
+counted A's *ledger*, which stayed at 0, so "B's run never posts A's schedule" held while it was
+being broken. The scenario only went red through a foreign-key error in teardown, which is not
+an assertion. The step now counts by `schedule_id` (`helpers.count_posted_from_schedules`),
+and it also asserts every such row landed in the owner's ledger. Each assertion was shown red
+on its own. **When the rows a check counts are selected by the very column the mutant
+corrupts, the check cannot see the mutant.**
 
 ## Every promised scenario is claimed (#358)
 
@@ -432,7 +441,7 @@ anon → 302. What each file covers:
 - `test_hardening.py` — `_csv_safe` + CSV end-to-end, security headers, cookie flags, constant-bcrypt path; plus #87's `Kind` column — pure `_export_kind()`, the header contract, per-row labelling, that transfer legs/adjustments are still PRESENT (a regression test against "fixing" it by filtering), and **the reconciliation arithmetic** (all rows minus blank-Kind rows == the transfer legs + adjustment exactly)
 - `test_month_read.py` (replaced `test_insight.py` in #232) — `compute_month_facts()`, `build_read_facts()` (**the load-bearing one: the read must see BOTH builders**), the `/insights/read` route, **cache-hit (a page load never calls the model)**, the deferred first read (`hx-trigger="load"`, seam not called during GET), graceful failure, isolation, and the absence of the three retired cards + the quick-add
 - `test_forecast.py` — now **arithmetic only** (#234 left it no routes and no model seam): pure `project_expenses()` and `compute_forecast()` incl. the end-date gate. Its narration half moved to `test_month_read.py`
-- `test_schedules.py` — semimonthly init math, materialize/catch-up/gates, the **4-thread FOR UPDATE concurrency test** (verified red without the lock), CRUD
+- `test_schedules.py` — semimonthly init math, CRUD/IDOR, #32's end-date form handling. What the due-runner *does* (materialize, catch-up, gates, scoping, both FOR UPDATE races) moved to `tests/features/schedule_*.feature` in #395
 - `test_recurring.py` — `compute_next_due()`, all 6 frequencies (pure)
 - `test_doc_claims.py` also gained a seam-name check in #309: every `_call_*` identifier mentioned anywhere under `app/` or `tests/` must resolve to a real seam, or be listed in `DELIBERATELY_ABSENT_SEAMS` (one entry — the Goal Coach seam, named by the test asserting it stayed removed). ⚠️ **The first cut failed on its own docstring**, which spelled out an example dangling name — the same self-match that once failed a correct `Dockerfile`. Describe a wrong name, never write one. Verified red by planting a comment naming a seam that does not exist
 - `test_history_row_shape.py` — #309: History is the one place a row reaches a template by POSITION (`HistoryRow(*t, ...)`), so the namedtuple's field order and the SELECT's column order are one unit — and there are **TWO** feeding queries, the paged one and the page-1 pending pin, so a column added to one alone shifts every field after it on pinned rows only. ⚠️ The load-bearing test is `test_both_history_queries_are_found`: without it the others pass vacuously against an empty match list. The pattern is anchored on `t.id, t.amount` because three other queries in that module also read `FROM transactions t` and a looser one matched four. Verified red two ways — a column added to one query, and the two queries reordered against each other

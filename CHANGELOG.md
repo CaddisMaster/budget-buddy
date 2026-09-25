@@ -8,6 +8,18 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Changed
+
+- **The schedule tests that duplicated its behave scenarios are gone, and one
+  scenario can now actually fail.** The pilot kept eleven pytest twins beside
+  its scenarios as a check. Each behaviour was then broken in the app, one at a
+  time, and both versions run against the break. Every scenario went red. One
+  break showed a gap in both: when a user's schedule run was not limited to
+  that user, it posted someone else's schedule under its own id. The owner's
+  count stayed at zero, which is exactly what "never posts another user's
+  schedule" expected. The scenario now counts the rows posted from the owner's
+  schedules, whoever they were posted for, and the twins are deleted. (#395)
+
 ## [0.11.0] - 2026-09-24
 
 ### Added

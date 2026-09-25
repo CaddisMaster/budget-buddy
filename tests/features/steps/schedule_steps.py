@@ -1,8 +1,8 @@
 """Steps for the schedule features (#356).
 
-Every step is a thin call into the same helpers and app functions the pytest
-twins in `test_schedules.py` / `test_push_reminders.py` use — the Gherkin says
-WHAT happens, and this file is the only place that knows HOW.
+Every step is a thin call into the shared helpers and the app's own functions
+— the Gherkin says WHAT happens, and this file is the only place that knows
+HOW. The pytest twins these replaced were deleted in #395.
 
 ⚠️ Step functions get distinct names on purpose. behave's convention is to
 call every one `step_impl`, which ruff reports as F811 (redefinition) — and
@@ -18,12 +18,7 @@ from app.blueprints.schedules import run_due_schedules
 from app.blueprints.transactions import VALID_FREQUENCIES
 from app.db import get_db_connection
 from tests.features.support import HX, _pattern, _user
-from tests.helpers import count_transactions_like, create_schedule, fetch_schedule
-
-# The description `create_schedule` gives every row it inserts, and so the one
-# every posted transaction carries.
-SEEDED = "seed-schedule"
-
+from tests.helpers import count_posted_from_schedules, create_schedule, fetch_schedule
 
 # ⚠️ Constrained types, not bare `{}`. parse's default field is a lazy `.+?`
 # that happily spans spaces, so "has a paused monthly expense schedule" also
@@ -129,8 +124,11 @@ def when_creating_a_schedule(context, who, frequency, kind, start):
 @then("{count:d} transaction has been posted from user {who:Who}'s schedules")
 @then("{count:d} transactions have been posted from user {who:Who}'s schedules")
 def then_posted(context, count, who):
-    posted = count_transactions_like(_user(context, who)["id"], SEEDED)
+    # By schedule, not by ledger: a runner that posts A's schedule under B's id
+    # would leave A's ledger untouched and pass a count of A's rows (#395).
+    posted, owned = count_posted_from_schedules(_user(context, who)["id"])
     assert posted == count, f"expected {count} posted, found {posted}"
+    assert owned == posted, f"{posted - owned} of {posted} posted into another user's ledger"
 
 
 @then("the schedule's next due date is after today")

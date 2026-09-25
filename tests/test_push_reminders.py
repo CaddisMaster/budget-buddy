@@ -31,7 +31,6 @@ stub too. Two rules follow, both enforced in _capture():
     another file's missing row.
 """
 import json
-import threading
 from datetime import date, timedelta
 
 import pytest
@@ -464,41 +463,3 @@ def test_materialize_is_isolated_per_user(users):
     materialize_all_users()
     assert count_transactions_like(a, "seed-schedule") == 0
     assert count_transactions_like(b, "seed-schedule") == 1
-
-
-def test_daily_job_racing_a_page_load_materializes_once(users):
-    """The FOR UPDATE twin of test_schedules.py's concurrency test. Those locks
-    used to guard two page loads; now the scheduler thread races them too, which
-    is what makes them load-bearing rather than merely prudent."""
-    from app.blueprints.schedules import run_due_schedules
-
-    a = users["a"]["id"]
-    acct = create_account(a, "race-acct")
-    create_schedule(a, acct, 30, "monthly", TODAY - timedelta(days=1))
-
-    barrier = threading.Barrier(4)
-    errors = []
-
-    def as_page_load():
-        barrier.wait()
-        try:
-            run_due_schedules(a)
-        except Exception as e:  # pragma: no cover - surfaced via the assert
-            errors.append(e)
-
-    def as_daily_job():
-        barrier.wait()
-        try:
-            materialize_all_users()
-        except Exception as e:  # pragma: no cover
-            errors.append(e)
-
-    threads = ([threading.Thread(target=as_page_load) for _ in range(2)]
-               + [threading.Thread(target=as_daily_job) for _ in range(2)])
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-
-    assert not errors
-    assert count_transactions_like(a, "seed-schedule") == 1
