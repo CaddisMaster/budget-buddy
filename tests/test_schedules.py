@@ -2,7 +2,7 @@
 
 Covers the pure next-due math, the inline-CRUD routes (fragment shape,
 persistence, ownership 404s) and #32's end-date form handling. The route tests
-rely on the dev DB via the shared fixtures; CSRF + rate limiter are disabled
+rely on the test database via the shared fixtures; CSRF + rate limiter are disabled
 under test.
 
 ⚠️ What the due-runner DOES — posting, catch-up, the paused and not-yet-due

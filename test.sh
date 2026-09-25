@@ -179,9 +179,52 @@ web_has_dev_deps() {
     docker compose exec -T web python -m ruff --version >/dev/null 2>&1
 }
 
+# ─── The suite's own database (#400) ─────────────────────────────────────────
+#
+# The tests used to run against the DEV database, the one the local app serves.
+# Test users were prefixed and torn down, but anything that sweeps every user
+# reached the real ones: `materialize_all_users()` posted due schedules into
+# `sean`/`dev`/`portfolio-demo` on every run, and two mutation passes on
+# 2026-09-25 left stray rows in their ledgers that had to be deleted by hand.
+#
+# So each runner gets a fresh `budget_test` database in the same Postgres
+# container, built from sql/schema.sql exactly as CI builds its own. Measured at
+# ~0.3s, which is why there is no cached template: rebuilding is cheaper than
+# deciding whether a template is stale. `-e DB_NAME=` on the runner points the
+# test process at it; the dev server in the same container keeps its own env.
+#
+# ⚠️ The runners REFUSE a database that already holds users
+# (`refuse_a_database_that_holds_users` in tests/helpers.py). That is the net
+# under this block: drop the `-e`, and the run stops at the dev database's
+# users instead of sweeping them.
+TEST_DB=budget_test
+
+fresh_test_db() {
+  # The db service must be up; on the throwaway path nothing may have started it.
+  docker compose up -d db >/dev/null 2>&1
+  local tries=0
+  until docker compose exec -T db sh -c 'pg_isready -q -U "$POSTGRES_USER"' 2>/dev/null; do
+    tries=$((tries + 1))
+    if [ "$tries" -ge 30 ]; then
+      echo "✗ The db container did not become ready." >&2
+      return 1
+    fi
+    sleep 1
+  done
+  # WITH (FORCE) ends connections a killed run left behind (an orphaned
+  # container pytest keeps its connections open). ON_ERROR_STOP because psql
+  # otherwise exits 0 on a failed statement inside a file.
+  docker compose exec -T -e TEST_DB="$TEST_DB" db sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -q -v ON_ERROR_STOP=1 \
+       -c "DROP DATABASE IF EXISTS \"$TEST_DB\" WITH (FORCE)" \
+       -c "CREATE DATABASE \"$TEST_DB\""' &&
+    docker compose exec -T -e TEST_DB="$TEST_DB" -e PGOPTIONS='--client-min-messages=warning' db sh -c \
+      'psql -U "$POSTGRES_USER" -d "$TEST_DB" -q -v ON_ERROR_STOP=1' < sql/schema.sql >/dev/null
+}
+
 if web_is_running && web_has_dev_deps; then
   echo "→ Using the running web container."
-  RUNNER="docker compose exec -T web"
+  RUNNER="docker compose exec -T -e DB_NAME=$TEST_DB web"
 else
   if web_is_running; then
     echo "→ The running web container predates the dev image; using a throwaway one."
@@ -189,7 +232,7 @@ else
   else
     echo "→ No running stack; building a throwaway container."
   fi
-  RUNNER="docker compose run --rm --build web"
+  RUNNER="docker compose run --rm --build -e DB_NAME=$TEST_DB web"
 fi
 
 # ─── Lint before tests (#264) ────────────────────────────────────────────────
@@ -249,12 +292,22 @@ if [ "$#" -gt 0 ]; then
 elif [ -n "${SKIP_BDD:-}" ]; then
   echo "→ Skipping behave (SKIP_BDD is set)."
 else
+  if ! fresh_test_db; then
+    echo "✗ Could not build the $TEST_DB database." >&2
+    exit 1
+  fi
   # shellcheck disable=SC2086  # word-splitting $RUNNER is intended
   if ! $RUNNER python -m tests.run_behave; then
     echo "✗ A behave scenario failed — pytest was not run. Re-run with SKIP_BDD=1" >&2
     echo "  to get the pytest signal first. CI runs the same scenarios." >&2
     exit 1
   fi
+fi
+
+# A second fresh database for pytest, so it never starts on behave's leftovers.
+if ! fresh_test_db; then
+  echo "✗ Could not build the $TEST_DB database." >&2
+  exit 1
 fi
 
 # shellcheck disable=SC2086  # word-splitting $RUNNER is intended

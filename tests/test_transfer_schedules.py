@@ -2,7 +2,7 @@
 
 Covers the run_due_transfers generator (materializes a PAIRED transfer, catch-up,
 active/future gates, user isolation) and the inline-CRUD routes (fragment shape,
-validation, ownership 404s). Route tests hit the dev DB via the shared fixtures;
+validation, ownership 404s). Route tests hit the test database via the shared fixtures;
 CSRF + rate limiter are disabled under test.
 """
 import threading

@@ -152,7 +152,30 @@ and it also asserts every such row landed in the owner's ledger. Each assertion 
 on its own. **When the rows a check counts are selected by the very column the mutant
 corrupts, the check cannot see the mutant.**
 
-## Auditing the suite for dead weight (#396)
+## The suite's own database (#400)
+
+`test.sh` drops and rebuilds **`budget_test`** in the dev Postgres container from `sql/schema.sql`
+before behave, and again before pytest, then runs both with `-e DB_NAME=budget_test`. The dev
+server in the same container keeps its own environment, so the dev database is never touched.
+Verified across a full run: identical row counts, and Postgres's insert/update/delete counters for
+the dev database did not move.
+
+- **Why:** test users were prefixed and torn down, but anything that sweeps *every* user
+  (`materialize_all_users()`) reached the real dev users on every run.
+- **No cached template.** The whole build measured **~0.3s**. That's cheaper than deciding
+  whether a template is stale, and it builds exactly what CI's "Load schema" step builds.
+- 🛑 **Both runners refuse a database that already holds users**
+  (`helpers.refuse_a_database_that_holds_users`: pytest's `pytest_configure`, behave's
+  `before_all`). A fresh test database has none, and a real one does. It is checked by emptiness,
+  not by name, because CI's database and the dev one are both called `budget`. Removing the
+  `-e DB_NAME` from `test.sh` makes the run stop at the dev database's users (exit 1) instead of
+  sweeping them. ⚠️ Under xdist the pytest check runs **only in the controller**, before any
+  worker exists. A late worker would otherwise see its siblings' fixture users.
+- ⚠️ **Running `pytest` by hand in the container now refuses**, because it inherits the dev
+  server's `DB_NAME`. That's intended. `./test.sh <args>` is the way to run a subset, and it
+  rebuilds the database too.
+
+
 
 #309 read every test asking **"can this fail?"**. #396 asked **"does it still earn its place?"**,
 file by file (the table is in #399's body). **The suite turned out to hold very little
@@ -172,8 +195,9 @@ were unneeded.
   without it, and show that another test goes red.
 - **Clean up after a mutant that crosses users.** An unscoped due-runner writes rows that point
   at another user's account, and the teardown then fails with a foreign-key error in every later
-  test. `materialize_all_users()` sweeps *every* user, so it also writes into the dev database's
-  real dev users.
+  test. `materialize_all_users()` sweeps *every* user, so until #400 it also wrote into the dev
+  database's real dev users. Since #400 the suite has its own database, and the next `./test.sh`
+  rebuilds it, so a mutant's debris lasts only until then.
 
 🛑 **A test that skips before asserting anything has not run, and nothing says so.** Two tests in
 `test_profile_settings_login.py` skipped whenever push or feedback was unconfigured, which is
@@ -276,8 +300,8 @@ place. The retired script and its full write-up are in `personal-vault/infra/vm/
 This is a property of `test.sh`, not of tmux, so it will bite the same way under any front end.
 
 It runs in a throwaway `web` container on prod's Python 3.14 — no local venv;
-`requirements-dev.txt` adds `pytest`, `pytest-xdist` and `ruff`. Needs the dev `db` container up (route/isolation
-tests hit it). Also runs in **GitHub Actions CI** on every push/PR (`.github/workflows/ci.yml`,
+`requirements-dev.txt` adds `pytest`, `pytest-xdist` and `ruff`. Needs the dev `db` container up: the suite
+runs in a **`budget_test` database inside it** (#400, see below), never the dev database itself. Also runs in **GitHub Actions CI** on every push/PR (`.github/workflows/ci.yml`,
 `postgres:16` service + `schema.sql`) — but **only when the diff can affect behaviour** (the
 `changes` job's `app` flag; a docs-only PR skips the suite and the job still reports success).
 **When `Dockerfile`/`requirements*.txt` change, the suite ALSO runs inside the built image**
@@ -485,7 +509,7 @@ anon → 302. What each file covers:
 - `test_budget_vs_actual.py` / `test_budget_suggestions.py` — the two budget helpers
 - `test_goals.py` — goals routes (payoff snapshot, balance-≥-0 rejection, payoff-edit lock). Transfers moved to `tests/features/transfers.feature` in #389; `test_transfers.py` is gone
 
-Fixtures (`conftest.py`) use the dev Postgres with `__pytest__`-prefixed users. The plain
+Fixtures (`conftest.py`) use the suite's own `budget_test` database (#400) with `__pytest__`-prefixed users. The plain
 helpers they call — `_create_user`, `_delete_user`, every `create_*`/`fetch_*` — live in
 `tests/helpers.py` since #356, so behave can share them; `conftest.py` keeps only the per-worker
 prefix and the seven fixtures. ⚠️ Nothing in `helpers.py` may import pytest or read

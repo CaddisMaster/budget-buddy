@@ -12,7 +12,7 @@ which silently reassigned every index — `row[1]` went from the budget to the
 name. Attribute access is also what app code uses, per the namedtuple rule
 in app/db.py.
 
-These run against the dev Postgres via the `users` fixture (USER_A); all seeded
+These run against the test database via the `users` fixture (USER_A); all seeded
 rows are cleaned up when that fixture tears the test users down.
 """
 from datetime import datetime

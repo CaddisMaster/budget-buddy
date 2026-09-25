@@ -1,8 +1,11 @@
 """Shared pytest fixtures for the route and data-isolation tests.
 
-These tests run against the *dev* Postgres container (the same DB the local app
-uses). To avoid touching real data, every fixture creates dedicated test users
-behind a recognizable prefix and tears them — and only them — down afterwards.
+These tests run against their OWN database (#400): `test.sh` rebuilds
+`budget_test` from `sql/schema.sql` in the dev Postgres container before each
+run, and CI loads a fresh one. `pytest_configure` below refuses to start if the
+database already holds users, which is what a real database looks like. Every
+fixture still creates dedicated users behind a recognizable prefix and tears
+them down, because xdist workers share the one database.
 
 This file holds only what is pytest's own: the per-worker prefix and the
 fixtures. The plain helpers — user setup and FK-safe teardown, every `create_*`
@@ -15,7 +18,15 @@ import pytest
 
 from app import app as flask_app
 from app import limiter
-from tests.helpers import PASSWORD, _create_user, _delete_user, _login, _seed_basic_data, _wait_for_db
+from tests.helpers import (
+    PASSWORD,
+    _create_user,
+    _delete_user,
+    _login,
+    _seed_basic_data,
+    _wait_for_db,
+    refuse_a_database_that_holds_users,
+)
 
 # Prefix keeps test rows obvious and easy to sweep if a run aborts mid-way.
 #
@@ -37,6 +48,22 @@ TEST_PREFIX = "__pytest__" + os.environ.get("PYTEST_XDIST_WORKER", "")
 USER_A = TEST_PREFIX + "user_a"
 USER_B = TEST_PREFIX + "user_b"
 USER_ADMIN = TEST_PREFIX + "admin"
+
+
+def pytest_configure(config):
+    """Refuse a database that already holds users (#400), once per run.
+
+    ⚠️ Only in the controlling process. Under xdist each worker runs this hook
+    too, and a worker starting late would see the users its siblings' fixtures
+    had already created. The controller runs it before any worker exists; a
+    serial run has only the one process."""
+    if hasattr(config, "workerinput"):
+        return
+    _wait_for_db()
+    try:
+        refuse_a_database_that_holds_users()
+    except RuntimeError as err:
+        pytest.exit(str(err), returncode=3)
 
 
 @pytest.fixture(scope="session")
