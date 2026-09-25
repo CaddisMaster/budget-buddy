@@ -292,11 +292,12 @@ server itself — **read it before touching anything on the Droplet.**
 
 ## Current status
 
-▶️ **NEXT UP: #405, #404, #403**, the three infrastructure issues still open in **`0.12.0`**
-(pin actions to SHAs; production logging, where `app.logger` sits at WARNING and drops every
-`.info()`; a real CSP). **#36** stays date-parked. Prod runs **`0.11.0`**. `main` carries, **not
-deployed**: the test-suite audit (#395, #396), the suite's own database (#400), connection pooling
-(#401) and the **web/worker/redis split (#402)**.
+▶️ **NEXT UP: #403** (a real CSP), the last item open in **`0.12.0`**. It moves 12 inline
+scripts and 12 inline handlers, and every moved behaviour needs a real browser. **#36** stays
+date-parked. Prod runs **`0.11.0`**. `main` carries, **not deployed**: the test-suite audit (#395,
+#396), the suite's own database (#400), connection pooling (#401), the **web/worker/redis split
+(#402)**, production logging at INFO with request IDs (#404), actions and the base image pinned to
+SHAs/digest (#405) and the cross-worker sweep race (#411).
 
 🛑 **THE NEXT RELEASE NEEDS THE NEW `docker-compose.yml` SCP'D TO THE DROPLET** (#402). The
 pipeline brings the image, not the compose file. If it's forgotten, `release.yml` step 3c fails

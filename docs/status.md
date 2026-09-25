@@ -5,7 +5,7 @@
 
 ## Current Status
 
-▶️ **NEXT SESSION: #405, #404, #403** (open in `0.12.0`). **#36** stays date-parked. Prod runs
+▶️ **NEXT SESSION: #403** (a real CSP), the last item open in `0.12.0`. **#36** stays date-parked. Prod runs
 `0.11.0`. ⚠️ The `Acceptance criteria` check is **still not a required status check** (re-checked
 2026-09-25).
 
@@ -18,7 +18,28 @@
 | #406 | **#400** | the suite runs in its own `budget_test` database; both runners refuse a database that holds users |
 | #407 | **#401** | connection pooling: 10,247 → 304 connections a run, pytest ~13s → ~6s |
 | #408 | **#402** | scheduled jobs in a compose `worker`, `web` on 2 gunicorn workers, rate limits in `redis` |
-| this PR | **#409** | this record |
+| #410 | **#409** | the morning's record |
+| #412 | **#404** | logging at INFO, one format, a request ID per line + `X-Request-ID`; behave's log capture turned off |
+| #413 | **#405** | 22 action `uses:` pinned to SHAs; `FROM python:3.14.7-slim@sha256:caaf356f…` |
+| #414 | **#411** | every pytest test's daily sweep scoped to its own worker's users |
+| this PR | **#415** | this record |
+
+**The afternoon (2026-09-25), in brief.** Detail in each PR body and in `docs/testing.md`.
+
+- 🛑 **Both test runners lowered the logging level the test checked (#404).** `caplog.at_level`
+  hid the dropped audit line from the backup test for months, and behave's log capture sets the
+  root to INFO around every scenario, so #404's own scenarios survived the "logger at WARNING"
+  mutant until `run_behave.py` passed `--no-logcapture`.
+- 🛑 **#411 was found by keeping every run's output.** `test_month_read` failed 2 in 10: another
+  worker's sweep posted its bill, and only after the 16th of the real month. Reproduced
+  deterministically first. The first fix failed 3 in 30, all in its own new tests, through a
+  simulated-worker prefix that also matched the neighbouring test's victim. After: 30/30 clean.
+- ⚠️ **#405's Dependabot question was settled by reading its source**, because the CLI's proxy is
+  amd64-only. Digest pins are rewritten, but a GitHub-side experiment can suppress digest-only
+  refreshes of an unchanged versioned tag, hence `3.14.7-slim` (Sean's call). ⏳ **Unexercised
+  pins:** `docker/login-action` (next release) and `claude-code-action` (next `triage` issue).
+- ⏳ **#404 is unverified in production** until the next deploy's `docker compose logs web` /
+  `worker` show `[INFO] [<id>] app: …` lines.
 
 🛑 **Release prep must raise the compose scp (#402).** The Droplet's `docker-compose.yml` arrives
 by scp from the Mac, and the release that carries #402 needs the new one. Forgotten, step 3c
