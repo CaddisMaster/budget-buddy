@@ -10,7 +10,13 @@ from datetime import date, timedelta
 
 from app.blueprints.transfers import run_due_transfers
 from app.db import get_db_connection
-from tests.helpers import count_transfer_schedules, create_account, create_transfer_schedule, fetch_transfer_schedule
+from tests.helpers import (
+    count_transfer_schedules,
+    create_account,
+    create_transfer_schedule,
+    fetch_transfer_schedule,
+    warm_the_pool,
+)
 
 HX = {"HX-Request": "true"}
 LABEL = "seed-auto-transfer"
@@ -126,6 +132,7 @@ def test_concurrent_runs_post_exactly_one_pair(users):
     tsid = create_transfer_schedule(uid, users["a"]["account_id"], to_acct,
                                     200, "monthly", yesterday)
 
+    warm_the_pool(4)  # no thread starts behind on a fresh connection (#401)
     barrier = threading.Barrier(4)
     errors = []
 

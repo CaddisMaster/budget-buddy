@@ -18,7 +18,7 @@ import time
 import psycopg2
 
 from app import bcrypt
-from app.db import get_db_connection
+from app.db import borrow_connection, get_db_connection, return_connection
 
 PASSWORD = "test-password-123"
 
@@ -45,6 +45,45 @@ def _wait_for_db(attempts=10, delay=1.0):
             last_err = err
             time.sleep(delay)
     raise RuntimeError(f"Database not reachable for tests: {last_err}")
+
+
+class _PooledConnection:
+    """A pooled connection whose `close()` hands it back to the pool (#401).
+
+    Every helper below opens a connection, commits, and closes it — about 6,800
+    connections a serial run, 96% of everything the suite opened. Borrowing
+    from `app.db`'s pool instead needed no change to their shape: this object
+    passes everything through to the real connection except `close()`, which
+    returns it (rolled back, so a helper that did not commit leaks nothing)."""
+
+    def __init__(self):
+        self._conn = borrow_connection()
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def close(self):
+        return_connection(self._conn)
+
+
+def _connection():
+    return _PooledConnection()
+
+
+def warm_the_pool(n):
+    """Leave `n` idle connections in this process's pool — call before a race.
+
+    ⚠️ A race test needs every thread to reach the database at the same moment.
+    With the pool (#401), a thread that finds a warm connection runs at once
+    while one that has to open a fresh connection is milliseconds behind, so
+    the threads end up serialized by timing and the race never happens. Measured
+    with FOR UPDATE removed: the page-load race scenario went red 20/20 without
+    the pool and 0/20 with it. Borrowing `n` at once and returning them all
+    means every thread then starts from a warm connection. `n` above
+    `app.db.POOL_IDLE_MAX` cannot all be kept."""
+    held = [borrow_connection() for _ in range(n)]
+    for conn in held:
+        return_connection(conn)
 
 
 def refuse_a_database_that_holds_users():
@@ -75,7 +114,7 @@ def refuse_a_database_that_holds_users():
 
 
 def _create_user(username, password, is_admin=False):
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     pw_hash = bcrypt.generate_password_hash(password, rounds=TEST_BCRYPT_ROUNDS).decode("utf-8")
     cur.execute(
@@ -93,7 +132,7 @@ def _create_user(username, password, is_admin=False):
 def _seed_basic_data(user_id, label):
     """Give a user one category, one account, and one transaction, all tagged
     with `label` so a listing can be checked for the right owner's rows."""
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO categories (name, user_id) VALUES (%s, %s) RETURNING id",
@@ -125,7 +164,7 @@ def _seed_basic_data(user_id, label):
 
 def _delete_user(username):
     """Remove a test user and all of its data in FK-safe order."""
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute("SELECT id FROM users WHERE username = %s", (username,))
     row = cur.fetchone()
@@ -160,7 +199,7 @@ def _login(client, username, password=PASSWORD):
 def fetch_transaction(transaction_id):
     """Read a transaction straight from the DB (bypassing the app) so isolation
     tests can confirm what actually changed."""
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "SELECT amount, description, user_id FROM transactions WHERE id = %s",
@@ -174,7 +213,7 @@ def fetch_transaction(transaction_id):
 
 def fetch_category(category_id):
     """Return (name, description, user_id) for a category, or None."""
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "SELECT name, description, user_id FROM categories WHERE id = %s",
@@ -188,7 +227,7 @@ def fetch_category(category_id):
 
 def fetch_account(account_id):
     """Return (account_name, type, user_id) for an account, or None."""
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "SELECT account_name, type, user_id FROM account WHERE account_id = %s",
@@ -202,7 +241,7 @@ def fetch_account(account_id):
 
 def fetch_budget(budget_id):
     """Return (category_id, amount, user_id) for a budget, or None."""
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "SELECT category_id, amount, user_id FROM budgets WHERE id = %s",
@@ -216,7 +255,7 @@ def fetch_budget(budget_id):
 
 def fetch_category_kind(category_id):
     """Return a category's kind straight from the DB, or None if missing."""
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute("SELECT kind FROM categories WHERE id = %s", (category_id,))
     row = cur.fetchone()
@@ -228,7 +267,7 @@ def fetch_category_kind(category_id):
 def find_category_id(user_id, name):
     """Look up a user's category id by name (CRUD tests create via the app,
     then need the generated id to verify/clean up)."""
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "SELECT id FROM categories WHERE user_id = %s AND name = %s",
@@ -241,7 +280,7 @@ def find_category_id(user_id, name):
 
 
 def create_category(user_id, name, kind="expense"):
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO categories (name, kind, user_id) VALUES (%s, %s, %s) RETURNING id",
@@ -256,7 +295,7 @@ def create_category(user_id, name, kind="expense"):
 
 def create_budget(user_id, category_id, amount):
     """Insert a monthly budget override (one row per user+category)."""
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO budgets (category_id, amount, user_id) "
@@ -273,7 +312,7 @@ def create_budget(user_id, category_id, amount):
 def fetch_budget_history(user_id, category_id):
     """Return [(amount, changed_at), ...] oldest-first from the v10.9
     append-only budget_history log (amount None = a recorded clear)."""
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "SELECT amount, changed_at FROM budget_history "
@@ -288,7 +327,7 @@ def fetch_budget_history(user_id, category_id):
 
 def fetch_budget_by_category(user_id, category_id):
     """Return (id, amount) for a user's budget in a category, or None."""
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "SELECT id, amount FROM budgets WHERE user_id = %s AND category_id = %s",
@@ -303,7 +342,7 @@ def fetch_budget_by_category(user_id, category_id):
 def create_transaction(user_id, account_id, amount, transaction_date,
                        transaction_type="expense", category_id=None,
                        is_adjustment=False):
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO transactions "
@@ -322,7 +361,7 @@ def create_transaction(user_id, account_id, amount, transaction_date,
 
 def create_account(user_id, name, account_type="Bank Account",
                    credit_limit=None, apr=None):
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO account (account_name, type, credit_limit, apr, user_id) "
@@ -339,7 +378,7 @@ def create_account(user_id, name, account_type="Bank Account",
 def create_transfer(user_id, from_account, to_account, amount, transfer_date):
     """Insert a transfer the same way the app does: a linked expense/income pair
     sharing a transfer_group_id. Returns the group id."""
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute("SELECT nextval('transfer_group_seq')")
     gid = cur.fetchone()[0]
@@ -363,7 +402,7 @@ def create_transfer(user_id, from_account, to_account, amount, transfer_date):
 
 def create_goal(user_id, account_id, target_amount, target_date=None, baseline=0,
                 goal_type="save"):
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO goals (name, target_amount, target_date, account_id, "
@@ -390,7 +429,7 @@ def create_schedule(user_id, account_id, amount, frequency, next_due,
     asserting on the payload needs a name of its own rather than the shared
     'seed-schedule' every other test counts.
     """
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO schedules (amount, description, category_id, account_id, "
@@ -411,7 +450,7 @@ def create_schedule(user_id, account_id, amount, frequency, next_due,
 
 def fetch_schedule(schedule_id):
     """Return (amount, frequency, next_due, user_id) for a schedule, or None."""
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "SELECT amount, frequency, next_due, user_id FROM schedules WHERE id = %s",
@@ -428,7 +467,7 @@ def create_transfer_schedule(user_id, from_account, to_account, amount, frequenc
                              is_active=True, description="seed-auto-transfer",
                              end_date=None):
     """Insert a recurring-transfer template directly (bypassing the form)."""
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO transfer_schedules (amount, description, from_account_id, "
@@ -448,7 +487,7 @@ def create_transfer_schedule(user_id, from_account, to_account, amount, frequenc
 def fetch_transfer_schedule(schedule_id):
     """Return (amount, frequency, next_due, from_account_id, to_account_id,
     user_id) for a recurring transfer, or None."""
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "SELECT amount, frequency, next_due, from_account_id, to_account_id, "
@@ -462,7 +501,7 @@ def fetch_transfer_schedule(schedule_id):
 
 
 def count_transfer_schedules(user_id):
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "SELECT COUNT(*) FROM transfer_schedules WHERE user_id = %s", (user_id,)
@@ -476,7 +515,7 @@ def count_transfer_schedules(user_id):
 def count_transactions_like(user_id, description):
     """Count a user's transactions with the given description (to verify
     schedule-generated rows)."""
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "SELECT COUNT(*) FROM transactions WHERE user_id = %s AND description = %s",
@@ -497,7 +536,7 @@ def count_posted_from_schedules(owner_id):
     posts one user's schedule under another user's id: the owner's count
     stays 0, which is exactly what "never posts another user's schedule"
     expects (#395). `owned` keeps the check `count_transactions_like` made."""
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "SELECT COUNT(*), COUNT(*) FILTER (WHERE t.user_id = s.user_id) "
@@ -513,7 +552,7 @@ def count_posted_from_schedules(owner_id):
 
 def account_balance(account_id):
     """Net income − expense for an account, straight from the DB (for asserts)."""
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "SELECT COALESCE(SUM(CASE WHEN transaction_type = 'income' "
@@ -528,7 +567,7 @@ def account_balance(account_id):
 
 
 def count_transfer_legs(group_id):
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "SELECT COUNT(*) FROM transactions WHERE transfer_group_id = %s",
@@ -543,7 +582,7 @@ def count_transfer_legs(group_id):
 def create_insight(user_id, year, month, content, model="claude-haiku-4-5"):
     """Insert a cached insight row directly (bypassing the model/route)."""
     import json
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO insights (user_id, year, month, content, model) "
@@ -559,7 +598,7 @@ def create_insight(user_id, year, month, content, model="claude-haiku-4-5"):
 
 def fetch_insight(user_id, year, month):
     """Return (content, model, user_id) for a cached insight, or None."""
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "SELECT content, model, user_id FROM insights "
@@ -575,7 +614,7 @@ def fetch_insight(user_id, year, month):
 def create_agent_run(user_id, period_start, content, model="claude-sonnet-4-6"):
     """Insert a cached money-agent run directly (bypassing the model/route)."""
     import json
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO agent_runs (user_id, period_start, content, model) "
@@ -592,7 +631,7 @@ def create_agent_run(user_id, period_start, content, model="claude-sonnet-4-6"):
 def fetch_agent_runs(user_id):
     """Return [(period_start, content, model), ...] for a user's cached runs,
     oldest week first."""
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "SELECT period_start, content, model FROM agent_runs "
@@ -608,7 +647,7 @@ def fetch_agent_runs(user_id):
 def fetch_goal(goal_id):
     """Return (name, target_amount, account_id, user_id, goal_type,
     baseline_amount, target_date) for a goal, or None."""
-    conn = get_db_connection()
+    conn = _connection()
     cur = conn.cursor()
     cur.execute(
         "SELECT name, target_amount, account_id, user_id, goal_type, "

@@ -98,6 +98,22 @@ A bcrypt hash takes 0.183s at cost 12 and 0.001s at cost 4. Test users were hash
 #384, and every `users` fixture and every scenario creates two. That was most of the suite's time,
 not just behave's. `tests/test_bcrypt_cost.py` holds both sides: test users at 4, the app at 12.
 
+⚠️ **Connections are pooled since #401, and a run now opens ~300, not ~10,000.** Measured on
+`budget_test`'s `pg_stat_database.sessions`: **10,247 → 304**, and pytest went from ~13s to ~6s.
+The ports problem below was the symptom. An instrumented serial run showed where they came from:
+3,174 from the app's `db_cursor()`, and **6,793 (96% of the rest) from `tests/helpers.py`**, mostly
+`_delete_user`/`_create_user`/`_seed_basic_data` around every test. Both now borrow from
+`app.db`'s pool. The helpers go through `_PooledConnection`, whose `close()` returns the connection,
+so none of them changed shape.
+
+🛑 **A race test must warm the pool first: `helpers.warm_the_pool(n)` before the barrier.** A
+thread that finds a warm connection runs at once, and one that must open a fresh connection starts
+milliseconds late, so the threads serialize and the race never happens. Measured with `FOR UPDATE`
+removed, 20 runs each: the page-load race scenario went red **20/20 without the pool and 0/20 with
+it**, and the transfer race **0/20**. Every run stayed green while the tests had stopped checking
+the lock. With the warm-up, all three are 20/20 again. `n` above `POOL_IDLE_MAX` (4) cannot all
+stay warm.
+
 ⚠️ **A fast suite ran out of ports, and the dev container now reuses them.** Every
 `get_db_connection()` opens a fresh TCP connection, and a full run opens **~9,000**. Each one
 holds its local port in TIME_WAIT for 60s against a range of 28,232 (32768–60999). At 63s a run
