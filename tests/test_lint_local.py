@@ -38,7 +38,9 @@ _NOT_IN_IMAGE = "not present in the shipped image — .dockerignore excludes it"
 _REQ_PIN = re.compile(r"^ruff==(?P<version>\S+)\s*$", re.M)
 # The `version:` input of the ruff action, which is the only pinned version in
 # ci.yml's lint job.
-_ACTION_PIN = re.compile(r"astral-sh/ruff-action@v\d+\s*\n\s*with:\s*\n(?:\s*#.*\n)*\s*version:\s*(?P<version>\S+)")
+# Any ref, and an optional trailing comment: since #405 the action is pinned
+# `@<sha> # v3.6.1`, and test_pinned_dependencies.py owns whether it is pinned.
+_ACTION_PIN = re.compile(r"astral-sh/ruff-action@\S+[ \t]*(?:#[^\n]*)?\n\s*with:\s*\n(?:\s*#.*\n)*\s*version:\s*(?P<version>\S+)")
 # The `rev:` of the ruff-pre-commit repo. Tagged `vX.Y.Z` against the bare
 # `X.Y.Z` the other two use, so the leading `v` is stripped before comparing.
 _PRE_COMMIT_PIN = re.compile(
