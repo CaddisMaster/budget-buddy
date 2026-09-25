@@ -18,7 +18,7 @@ from app.blueprints.schedules import run_due_schedules
 from app.blueprints.transactions import VALID_FREQUENCIES
 from app.db import get_db_connection
 from tests.features.support import HX, _pattern, _user
-from tests.helpers import count_posted_from_schedules, create_schedule, fetch_schedule
+from tests.helpers import count_posted_from_schedules, create_schedule, fetch_schedule, warm_the_pool
 
 # ⚠️ Constrained types, not bare `{}`. parse's default field is a lazy `.+?`
 # that happily spans spaces, so "has a paused monthly expense schedule" also
@@ -74,9 +74,11 @@ def when_due_schedules_run(context, who):
 def _race(context, workers):
     """Start every worker on one barrier so they hit the same window together.
 
-    Each call opens its own connection, so this is real interleaving against
-    the `FOR UPDATE` row lock — the property the two scenarios exist for.
+    Each call holds its own connection, so this is real interleaving against
+    the `FOR UPDATE` row lock — the property the two scenarios exist for. The
+    pool is warmed first so no thread starts behind the others (#401).
     """
+    warm_the_pool(len(workers))
     barrier = threading.Barrier(len(workers))
     context.errors = []
 

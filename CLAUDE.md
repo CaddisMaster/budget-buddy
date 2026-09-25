@@ -44,7 +44,7 @@ Full detail — every module's responsibilities and its traps — is in
 ```
 app/
   __init__.py      # app + extensions; registers the 18 blueprints; security headers; scheduler; |money filter; css_v/brand_svg globals
-  db.py            # get_db_connection() + db_cursor() context manager (NamedTupleCursor)
+  db.py            # the connection pool (#401) + db_cursor() context manager (NamedTupleCursor)
   helpers.py       # is_htmx/hx_toast/ai_enabled; THE param + amount validators; GENERIC_ERROR
   models.py        # User (UserMixin)
   ai.py            # ALL model calls, one isolated _call_*_model() seam each. NEVER touches the DB

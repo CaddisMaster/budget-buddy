@@ -10,6 +10,12 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The app reuses its database connections instead of opening a new one for
+  every query.** Each page load used to connect to the database several times
+  over. Now each process keeps a few connections open and hands them out,
+  always rolled back first, so no request can see another's unfinished work.
+  The test suite borrows from the same pool: a full run now opens about 300
+  connections instead of about 10,000, and takes half the time. (#401)
 - **The test suite has its own database, and refuses anyone else's.**
   `./test.sh` now builds a fresh test database from the schema before each run.
   Before, the tests ran against the development database, and anything that
