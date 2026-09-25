@@ -10,6 +10,15 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **Scheduled jobs now run in their own process, so the web server can use more
+  than one worker.** The daily bill reminders and recurring transactions, and
+  the weekly digest, used to run inside the web server. That is why it was
+  limited to one worker process. They now run in a separate `worker` service,
+  the web server runs two, and rate limits (such as 10 login attempts a minute)
+  are kept in a small Redis service so they hold across both. ⚠️ **Deploying
+  this needs the new `docker-compose.yml` copied to the server**; the release
+  fails and says so if it is missing. See RUNBOOK §5, including rolling back
+  across this change. (#402)
 - **The app reuses its database connections instead of opening a new one for
   every query.** Each page load used to connect to the database several times
   over. Now each process keeps a few connections open and hands them out,

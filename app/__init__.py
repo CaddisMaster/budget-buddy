@@ -89,11 +89,19 @@ def money_filter(value):
 
 csrf = CSRFProtect(app)
 
+# Rate-limit counters (#402). With several gunicorn workers, memory storage
+# counts per worker, so the real login limit would be 10/min × workers. The
+# production compose file points this at its `redis` service. The URI names a
+# compose-internal host, so it lives in docker-compose.yml, not .env: nothing
+# to forget at deploy time. Unset (dev, tests, CI, the smoke job) it stays in
+# memory. If Redis is unreachable, the limiter falls back to memory rather than
+# failing requests: limits weaken to per-worker, and the app stays up.
 limiter = Limiter(
   get_remote_address,
   app=app,
   default_limits=["60 per minute"],
-  storage_uri="memory://"
+  storage_uri=os.getenv('RATELIMIT_STORAGE_URI', 'memory://'),
+  in_memory_fallback_enabled=True,
 )
 
 login_manager = LoginManager()
@@ -199,38 +207,14 @@ app.cli.add_command(digests.send_digests_command)
 app.cli.add_command(reminders.run_daily_command)
 app.cli.add_command(announce.announce_release_command)
 
-# In-process scheduler. ENABLE_DIGEST_SCHEDULER is the master switch, so it runs
-# ONLY in prod (never under pytest, and locally only if deliberately enabled).
-# gunicorn runs a single worker (no --preload), so exactly one scheduler instance
-# exists — no double-fire. NEVER add workers.
-#
-# ⚠️ The scheduler itself is NOT gated on mail_enabled() any more (#33). It used
-# to be, which was fine while its only job was email. The daily job now also
-# materializes due schedules for every user — the invariant that used to depend
-# on someone logging in — and hanging that off a Resend key would mean a missing
-# third-party credential silently stops the ledger updating. Each JOB carries its
-# own gate instead:
-#   • weekly digest  → registered only when mail_enabled()
-#   • daily tasks    → always registered; push_enabled() gates only the reminder
-#                      half, inside the job, so materialization always runs.
-from app.mailer import mail_enabled
+# The scheduled jobs (#402). Production runs them in the `worker` compose
+# service (`flask run-scheduler`) and turns this switch off for `web`; the
+# in-process thread below is the pre-#402 path, kept so that a new image on an
+# old compose file behaves exactly as before. It is only ever safe with ONE
+# gunicorn worker — the image's default — because each worker would start its
+# own scheduler. app/scheduler.py has the full matrix.
+from app import scheduler as _jobs
 
-if os.getenv('ENABLE_DIGEST_SCHEDULER') == '1':
-    from apscheduler.schedulers.background import BackgroundScheduler
-
-    from app.blueprints.digests import send_weekly_digests
-    from app.blueprints.reminders import run_daily_tasks
-
-    _scheduler = BackgroundScheduler(timezone='America/New_York', daemon=True)
-    if mail_enabled():
-        # The users.last_digest_sent_on guard + misfire_grace_time make it safe
-        # across restarts. Sunday 18:00 America/New_York.
-        _scheduler.add_job(send_weekly_digests, 'cron', day_of_week='sun', hour=18,
-                           id='weekly_digest', replace_existing=True,
-                           misfire_grace_time=3600)
-    # Daily 18:00 — the evening before a bill is due. reminder_log makes the
-    # send idempotent per occurrence across restarts and re-runs.
-    _scheduler.add_job(run_daily_tasks, 'cron', hour=18,
-                       id='daily_tasks', replace_existing=True,
-                       misfire_grace_time=3600)
-    _scheduler.start()
+app.cli.add_command(_jobs.run_scheduler_command)
+if _jobs.runs_in_this_process():
+    _scheduler = _jobs.start_in_process()

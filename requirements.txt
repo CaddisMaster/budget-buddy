@@ -17,6 +17,8 @@ psycopg2-binary==2.9.13
 pydantic==2.13.5
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.3
+# The rate limiter's shared store in production (#402); `limits` imports it.
+redis==8.1.0
 # Web Push for the installed PWA (#33). Pulls py-vapid + cryptography, both of
 # which ship manylinux wheels — no compiler is added to the image.
 pywebpush==2.5.0

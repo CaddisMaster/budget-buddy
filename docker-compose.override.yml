@@ -44,3 +44,13 @@ services:
     # obvious this is the production command with one flag added.
     command: ["gunicorn", "--workers", "1", "--threads", "4", "--timeout", "120",
               "--reload", "--bind", "0.0.0.0:5000", "app:app"]
+  # #402 — the worker runs from local source too, or compose would try to pull
+  # the ghcr image. With ENABLE_DIGEST_SCHEDULER unset in a local .env it idles.
+  worker:
+    build:
+      context: .
+      target: dev
+    image: ""
+    volumes:
+      - .:/app
+      - /app/.venv

@@ -43,7 +43,8 @@ Full detail — every module's responsibilities and its traps — is in
 
 ```
 app/
-  __init__.py      # app + extensions; registers the 18 blueprints; security headers; scheduler; |money filter; css_v/brand_svg globals
+  __init__.py      # app + extensions; registers the 18 blueprints; security headers; |money filter; css_v/brand_svg globals
+  scheduler.py     # the scheduled jobs; `flask run-scheduler` runs them in the compose `worker` service (#402)
   db.py            # the connection pool (#401) + db_cursor() context manager (NamedTupleCursor)
   helpers.py       # is_htmx/hx_toast/ai_enabled; THE param + amount validators; GENERIC_ERROR
   models.py        # User (UserMixin)
