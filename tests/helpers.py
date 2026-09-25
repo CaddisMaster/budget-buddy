@@ -86,6 +86,36 @@ def warm_the_pool(n):
         return_connection(conn)
 
 
+def only_users_prefixed(prefix, users_with_schedules):
+    """Wrap the daily sweep's user query so it returns only `prefix`'s users (#411).
+
+    `materialize_all_users()` posts every due schedule of EVERY user, against
+    the real clock. Under xdist that includes the users other workers' tests
+    are in the middle of using, so an unscoped sweep in one worker posted
+    another worker's schedule and failed its test, but only on days when the
+    real clock made that schedule overdue. conftest applies this to every
+    pytest test, so a new test that sweeps is covered without anyone having
+    to remember it.
+
+    The real query still runs; only its result is narrowed. ⚠️ A name matches
+    only when the character after the prefix is NOT a digit, because xdist ids
+    are `gw1`, `gw10`, … and `__pytest__gw1` is a prefix of `__pytest__gw10…`.
+    """
+    def scoped(cursor):
+        ids = users_with_schedules(cursor)
+        if not ids:
+            return ids
+        cursor.execute("SELECT id, username FROM users WHERE id = ANY(%s)", (ids,))
+        mine = {
+            row[0] for row in cursor.fetchall()
+            if row[1].startswith(prefix) and not row[1][len(prefix):][:1].isdigit()
+        }
+        return [user_id for user_id in ids if user_id in mine]
+    # The unscoped query, so a test can scope a sweep as ANOTHER worker would.
+    scoped.__wrapped__ = users_with_schedules
+    return scoped
+
+
 def refuse_a_database_that_holds_users():
     """Raise unless the `users` table is empty — call once, before any test runs.
 
