@@ -5,11 +5,42 @@
 
 ## Current Status
 
-▶️ **NEXT SESSION: nothing filed.** ✅ **`0.11.0` shipped and verified 2026-09-24.** Milestone
-`0.11.0` closed at 30/30 on ship day; `0.12.0` is open and empty. **#36** stays date-parked.
-Candidates, unfiled: a third behave area (goals), which triggers #357's re-decision, or reusing DB
-connections. ⚠️ The `Acceptance criteria` check is **still not a required status check** (checked
-at the end of the session).
+▶️ **NEXT SESSION: #405, #404, #403** (open in `0.12.0`). **#36** stays date-parked. Prod runs
+`0.11.0`. ⚠️ The `Acceptance criteria` check is **still not a required status check** (re-checked
+2026-09-25).
+
+### On `main`, not yet deployed (2026-09-25)
+
+| PR | Issue | |
+|---|---|---|
+| #397 | **#395** | schedules pytest twins deleted after a mutation pass; the posted-count step now counts by schedule |
+| #398, #399 | **#396** | the suite audit: two isolation blind spots fixed, two tombstone files and three duplicates deleted, and the #64 warning-position check that had **never run** now runs. Every file classified in #399's body |
+| #406 | **#400** | the suite runs in its own `budget_test` database; both runners refuse a database that holds users |
+| #407 | **#401** | connection pooling: 10,247 → 304 connections a run, pytest ~13s → ~6s |
+| #408 | **#402** | scheduled jobs in a compose `worker`, `web` on 2 gunicorn workers, rate limits in `redis` |
+| this PR | **#409** | this record |
+
+🛑 **Release prep must raise the compose scp (#402).** The Droplet's `docker-compose.yml` arrives
+by scp from the Mac, and the release that carries #402 needs the new one. Forgotten, step 3c
+fails ("The worker reports ''") while the new image serves the old path safely. After deploy,
+check `docker compose ps` (worker + redis), `docker compose logs worker` ("Scheduler running:
+…") and `/settings` → Scheduled jobs. **Unverified in production until then.** No new `.env`
+variable: the Redis URI and `SCHEDULER_IN_PROCESS` live in compose.
+
+- 🛑 **#401's pool silently blinded two of three race tests.** With `FOR UPDATE` removed, the
+  page-load race went red 20/20 without the pool and **0/20** with it, and the transfer race
+  **0/20**, green throughout. `helpers.warm_the_pool()` restores 20/20. `docs/testing.md` has the rule.
+- ⚠️ **#402's first cut hid a dead worker.** Overriding `ENABLE_DIGEST_SCHEDULER` to 0 on web made
+  `/settings` report every job unscheduled. It's now two variables, with a test. `app/scheduler.py`
+  carries the old/new image × compose matrix.
+- ⚠️ **The same blind spot, three times:** isolation tests counted the owner's ledger by
+  `user_id`, so an unscoped runner posting under the *wrong* id passed them. Now they count by
+  schedule or account.
+- **#404 was filed with a finding:** `app.logger` is at WARNING, so the admin backup's audit line
+  never reaches the log.
+- The mutation passes wrote stray rows into the dev database's real users twice before #400
+  existed; each was found and deleted by id.
+
 
 ✅ **#309'S OUTPUT IS FULLY DISCHARGED as of 2026-09-16.** All twelve issues the full-repo read
 filed are closed: #326 `NOT_PLANNED` on 2026-09-11, then **#314, #328 and #333 merged on

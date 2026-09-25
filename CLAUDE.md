@@ -291,13 +291,20 @@ server itself — **read it before touching anything on the Droplet.**
 
 ## Current status
 
-▶️ **NEXT UP: nothing is filed.** ✅ **`0.11.0` shipped and was verified 2026-09-24**, and its
-milestone closed that day at 30/30. The open milestone is **`0.12.0`, empty**. The only open issue
-is **#36**, date-parked to ~Dec 2026. Candidates, none filed: a **third behave area** (goals is
-the natural one; it triggers #357's re-decision, see `docs/testing.md`), or reusing DB
-connections (a run opens ~9,000; see the TIME_WAIT note in `docs/testing.md`). ⚠️ **"Issue
-criteria are claimed by tests" is still NOT a required check**, so a red result doesn't block a
-merge. Adding it is a branch-protection setting, and it's Sean's.
+▶️ **NEXT UP: #405, #404, #403**, the three infrastructure issues still open in **`0.12.0`**
+(pin actions to SHAs; production logging, where `app.logger` sits at WARNING and drops every
+`.info()`; a real CSP). **#36** stays date-parked. Prod runs **`0.11.0`**. `main` carries, **not
+deployed**: the test-suite audit (#395, #396), the suite's own database (#400), connection pooling
+(#401) and the **web/worker/redis split (#402)**.
+
+🛑 **THE NEXT RELEASE NEEDS THE NEW `docker-compose.yml` SCP'D TO THE DROPLET** (#402). The
+pipeline brings the image, not the compose file. If it's forgotten, `release.yml` step 3c fails
+naming the fix, while the new image safely serves the old single-worker path. Rolling back past
+#402 needs the pre-#402 compose file restored first. RUNBOOK §5 has both.
+
+⚠️ **"Issue criteria are claimed by tests" is still NOT a required check** (re-checked
+2026-09-25 against branch protection), so a red result doesn't block a merge. It's Sean's
+setting.
 
 🛑 **AN ISSUE BEING OPEN IS NOT EVIDENCE THAT IT IS OPEN WORK.** Kept as a standing rule now that
 its examples are closed. On 2026-09-04 "#326 and #314, the two migrations" was proposed as the next
