@@ -64,6 +64,21 @@ services:
     restart: always
     env_file:
       - .env
+    # #402 — web serves, the `worker` service below runs the scheduled jobs.
+    # The worker count lives HERE, beside SCHEDULER_IN_PROCESS below, and not in
+    # the image: the image's own default is ONE worker with the
+    # in-process scheduler, so a new image on the pre-#402 compose file behaves
+    # exactly as before. Two schedulers would run every job twice — see
+    # app/scheduler.py for the whole old/new matrix.
+    command: ["gunicorn", "--workers", "2", "--threads", "4", "--timeout", "120",
+              "--bind", "0.0.0.0:5000", "app:app"]
+    environment:
+      # The worker hosts the jobs, so web must not (#402). NOT an override of
+      # .env's ENABLE_DIGEST_SCHEDULER: /settings reads that in this process to
+      # tell a dead worker from a switched-off one (#151).
+      SCHEDULER_IN_PROCESS: "0"
+      # Compose-internal, so it belongs here rather than in .env (#402).
+      RATELIMIT_STORAGE_URI: redis://redis:6379
     ports:
       # Localhost only — Nginx reverse-proxies to 127.0.0.1:5001. A bare "5001:5000"
       # publishes to 0.0.0.0 and (Docker bypasses ufw) exposes the app over plain
@@ -81,10 +96,37 @@ services:
       start_period: 20s
     depends_on:
       - db
+      - redis
     # Belt and braces (#150). `web` already resets its log on every deploy, so
     # this caps the one window that matters: a crash loop between releases.
     # Unlike the db block above, changing this is free — a release recreates
     # this container anyway.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+  worker:
+    # #402 — the scheduled jobs (daily materialize + reminders, weekly digest),
+    # once, in their own process. The SAME image and tag as web: release.yml's
+    # `pull web` fetches it for both, and its version check asks both.
+    image: ghcr.io/caddismaster/budget-buddy:${TAG:?TAG is not set — pass TAG=<version>, or see RUNBOOK §5}
+    restart: always
+    env_file:
+      - .env
+    command: ["flask", "run-scheduler"]
+    depends_on:
+      - db
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+  redis:
+    # Rate-limit counters only (#402). No volume: they are disposable, and a
+    # restart simply resets every limit. No published port: only web talks to it.
+    image: redis:7-alpine
+    restart: always
     logging:
       driver: json-file
       options:

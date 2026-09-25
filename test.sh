@@ -197,6 +197,9 @@ web_has_dev_deps() {
 # (`refuse_a_database_that_holds_users` in tests/helpers.py). That is the net
 # under this block: drop the `-e`, and the run stops at the dev database's
 # users instead of sweeping them.
+#
+# RATELIMIT_STORAGE_URI=memory:// on the runner too (#402): the web container's
+# own env points the limiter at Redis, whose counters xdist workers would share.
 TEST_DB=budget_test
 
 fresh_test_db() {
@@ -224,7 +227,7 @@ fresh_test_db() {
 
 if web_is_running && web_has_dev_deps; then
   echo "→ Using the running web container."
-  RUNNER="docker compose exec -T -e DB_NAME=$TEST_DB web"
+  RUNNER="docker compose exec -T -e DB_NAME=$TEST_DB -e RATELIMIT_STORAGE_URI=memory:// web"
 else
   if web_is_running; then
     echo "→ The running web container predates the dev image; using a throwaway one."
@@ -232,7 +235,7 @@ else
   else
     echo "→ No running stack; building a throwaway container."
   fi
-  RUNNER="docker compose run --rm --build -e DB_NAME=$TEST_DB web"
+  RUNNER="docker compose run --rm --build -e DB_NAME=$TEST_DB -e RATELIMIT_STORAGE_URI=memory:// web"
 fi
 
 # ─── Lint before tests (#264) ────────────────────────────────────────────────

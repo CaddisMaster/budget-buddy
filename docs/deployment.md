@@ -40,12 +40,14 @@
   `git show v0.1.0:deploy.sh`.
 - **Env vars:** `ANTHROPIC_API_KEY` gates every AI surface via `ai_enabled()` (optional — app runs
   fine without it). `RESEND_API_KEY` gates email (`mail_enabled()`), `ENABLE_DIGEST_SCHEDULER=1`
-  starts the digest scheduler — both **Droplet-only** (unset locally/CI so nothing auto-sends).
+  switches the scheduled jobs on (since #402 they run in the compose `worker` service, and
+  `SCHEDULER_IN_PROCESS` / `RATELIMIT_STORAGE_URI` live in `docker-compose.yml`, not `.env`, so a
+  deploy has no new variable to forget) — both **Droplet-only** (unset locally/CI so nothing auto-sends).
   `COOKIE_SECURE=1` (Secure cookies + HSTS) — Droplet-only; must stay unset locally/tests.
   `FEEDBACK_GITHUB_TOKEN` gates in-app feedback (`feedback_enabled()`, #64) — Droplet-only, a
   **fine-grained PAT scoped to this repo with `issues: write` and nothing else**, so a leak means
   issue spam rather than code access. ⚠️ Deliberately NOT named `GITHUB_TOKEN` — that is a magic
-  name in GitHub Actions. After editing `.env`, `docker compose up -d --force-recreate web`.
+  name in GitHub Actions. After editing `.env`, `docker compose up -d --force-recreate web worker` (the worker reads it too, #402).
   `.env` is gitignored + never baked into the image. ⚠️ **A missing env var is the one deploy
   failure with NO signal** — nothing in `release.yml` writes or validates `.env`, and a gated
   feature whose variable is unset is indistinguishable from that feature working as designed.

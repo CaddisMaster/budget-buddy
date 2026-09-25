@@ -276,6 +276,21 @@ jobs:
                fi
                echo \"running version \$RUNNING (matches ${VERSION})\"
 
+               # 3c. The worker runs the scheduled jobs (#402) from the same
+               #    image, so it must be this release too, and for the same
+               #    reason as 3b: an old worker still SELECTing a table step 4
+               #    drops is #277's outage. If the Droplet still has the
+               #    pre-#402 compose file there is no worker service at all.
+               #    Then this fails the release, naming the fix. The new image
+               #    is already serving by then, on the pre-#402 path (one
+               #    gunicorn worker, scheduler in-process), which is safe.
+               WORKER=\"\$(docker compose exec -T worker printenv APP_VERSION | tr -d '\r')\"
+               if [ \"\$WORKER\" != '${VERSION}' ]; then
+                 echo \"::error::The worker reports '\$WORKER', not ${VERSION}. If it is empty, the Droplet's docker-compose.yml predates #402: scp the current one up (RUNBOOK §5) and re-run.\"
+                 exit 1
+               fi
+               echo \"worker version \$WORKER (matches ${VERSION})\"
+
                # 4. And only now the DROPs — the old container has stopped, so
                #    nothing is still SELECTing what is about to disappear.
                #

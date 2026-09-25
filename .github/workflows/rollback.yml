@@ -112,6 +112,16 @@ jobs:
                  echo \"running version \$RUNNING (matches ${VERSION})\"
                fi
 
+               # The worker (#402) is WARNED about, never failed on. Rolling back
+               # to an image older than #402 leaves it crash-looping, because that
+               # image has no \`run-scheduler\`, and then no scheduled job runs.
+               # RUNBOOK §5: restore the pre-#402 compose file for such a rollback.
+               # Failing here mid-incident would help nobody.
+               WORKER=\"\$(docker compose exec -T worker printenv APP_VERSION | tr -d '\r')\"
+               if [ \"\$WORKER\" != \"\$RUNNING\" ]; then
+                 echo \"::warning::The worker reports '\$WORKER' while web reports '\$RUNNING'. Scheduled jobs may not be running: see RUNBOOK §5 on rolling back across #402.\"
+               fi
+
                docker compose ps"
 
       - name: Verify the rolled-back app is healthy

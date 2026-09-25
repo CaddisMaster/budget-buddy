@@ -266,6 +266,11 @@ services:
     restart: always
     env_file:
       - .env
+    command: ["gunicorn", "--workers", "2", "--threads", "4", "--timeout", "120",
+              "--bind", "0.0.0.0:5000", "app:app"]
+    environment:
+      SCHEDULER_IN_PROCESS: "0"
+      RATELIMIT_STORAGE_URI: redis://redis:6379
     ports:
       - "127.0.0.1:5001:5000"
     healthcheck:
@@ -277,6 +282,24 @@ services:
       start_period: 20s
     depends_on:
       - db
+      - redis
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+  worker:
+    image: ghcr.io/caddismaster/budget-buddy:${TAG:?TAG is not set — pass TAG=<version>, or see RUNBOOK §5}
+    restart: always
+    env_file:
+      - .env
+    command: ["flask", "run-scheduler"]
+    depends_on:
+      - db
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+  redis:
+    image: redis:7-alpine
+    restart: always
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
@@ -292,6 +315,35 @@ for reading, so check it with `diff`, not by eye:
 # from a clone on the Mac
 ssh <droplet> 'cat /opt/budget-buddy/docker-compose.yml' | diff - docker-compose.yml
 ```
+
+### Three services from one image, plus Redis (#402)
+
+`web` serves on **2 gunicorn workers** and runs **no** scheduler: its `environment:` sets
+`SCHEDULER_IN_PROCESS: "0"`. **`worker`** runs the scheduled jobs (`flask run-scheduler`: the
+daily materialize + reminders, the weekly digest) from the **same image and tag**.
+`.env`'s `ENABLE_DIGEST_SCHEDULER=1` stays the deployment's switch for both: the worker obeys
+it, and `/settings` reads it in `web` to tell a dead worker from a switched-off one (#151). **`redis`** holds the
+rate-limit counters so limits hold across web workers. It has no volume and no port, and
+restarting it just resets the limits.
+
+- ⚠️ **Exactly one process may run the scheduler.** Two would run every job twice. That's
+  why the worker count lives in this file beside the switch, and not in the image: the image's
+  own default is still **one** worker with the scheduler in-process.
+- **Rolling out #402:** `scp` this file up. Order against the release doesn't matter.
+  - New image + old file: identical to before (1 worker, in-process scheduler). But
+    `release.yml` step 3c **fails** the release ("the worker reports ''"), because there's no
+    worker service. `scp` the file and re-run.
+  - Old image + new file: see the rollback note below.
+  - After it's up: `docker compose ps` shows `worker` and `redis`, and
+    `docker compose logs worker` says `Scheduler running: weekly_digest, daily_tasks` (or
+    only `daily_tasks` without a Resend key). "A live thread beats a set env var" now means
+    **a running `worker` container**. `/settings` → Scheduled jobs still reports each job's
+    last run from `job_runs`.
+- 🛑 **Rolling back to a release older than #402 needs the pre-#402 compose file.** An old
+  image ignores `SCHEDULER_IN_PROCESS`, so **each of `web`'s 2 gunicorn workers starts a
+  scheduler** (duplicate digests and reminders), and `worker` crash-loops because the old image
+  has no `run-scheduler`. `rollback.yml` only warns. Restore the old file first:
+  `git show v0.11.0:docker-compose.yml > docker-compose.yml`, then `scp` it, then roll back.
 
 ### ⚠️ `TAG` has no default, deliberately (#190)
 
@@ -439,22 +491,25 @@ values below. ⚠️ **`.env.example` is not deployed to the Droplet** — it li
 in the repository, so this list is the operative one for the server.
 
 - `COOKIE_SECURE=1` — Secure cookies and HSTS
-- `ENABLE_DIGEST_SCHEDULER=1` — starts the weekly digest scheduler
+- `ENABLE_DIGEST_SCHEDULER=1` — the scheduled jobs' switch. Since #402 they run in the
+  `worker` service; `web` still reads it so `/settings` can report the jobs (#151)
 - `FEEDBACK_GITHUB_TOKEN` — enables in-app bug reports and feature suggestions
   (#64). A **fine-grained PAT scoped to this one repository, with `issues: write`
   and nothing else** — so a leak means issue spam, not code access. Deliberately
   *not* named `GITHUB_TOKEN`, which is a magic name in GitHub Actions.
 
-> **`ENABLE_DIGEST_SCHEDULER=1` is only safe under single-worker Gunicorn.** The
-> image runs `--workers 1 --threads 4`. With multiple *workers*, APScheduler
-> would start once per worker and mail duplicate digests, and Flask-Limiter's
-> in-memory store would fragment. **If you ever touch the Gunicorn command,
-> `--workers 1` stays.** Use threads for concurrency, never workers.
+> **The scheduler must run in exactly one process (#402).** It used to be a thread
+> inside gunicorn, which is why this note once read "`--workers 1` stays, never
+> workers". Since #402 it runs in the `worker` service, `web` runs 2 gunicorn
+> workers with `SCHEDULER_IN_PROCESS: "0"`, and rate limits live in `redis`. **If
+> you touch `web`'s command, keep `SCHEDULER_IN_PROCESS: "0"` beside it**:
+> without it, every gunicorn worker starts a scheduler and mails duplicate
+> digests. `tests/test_scheduler_split.py` holds that rule.
 
 After editing `.env`:
 
 ```bash
-docker compose up -d --force-recreate web
+docker compose up -d --force-recreate web worker
 ```
 
 There are also two dead variables, `APP_USERNAME` and `APP_PASSWORD`, read by no
@@ -512,7 +567,7 @@ docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" \
 #    Nothing has changed for the app until this step, so you can pause here.
 echo 'DB_APP_USER=budget_app'            >> .env
 echo 'DB_APP_PASSWORD=the-same-password' >> .env
-docker compose up -d --force-recreate web
+docker compose up -d --force-recreate web worker
 
 # 5. Verify.
 curl -s localhost:5001/healthz     # {"database":"ok","status":"ok"}
@@ -567,7 +622,7 @@ If it names anything new, set it on the Droplet **before** approving the deploy:
 # on the Droplet, as deploy
 cd /opt/budget-buddy
 vi .env                                   # add the variable
-docker compose up -d --force-recreate web
+docker compose up -d --force-recreate web worker
 ```
 
 ⚠️ **Order matters.** The deploy job's `up -d` will *not* pick up an `.env` edit
@@ -891,7 +946,7 @@ transaction is present.
     cd /opt/budget-buddy
     docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" \
       -c "ALTER ROLE budget_app PASSWORD 'the-value-of-DB_APP_PASSWORD-in-.env';"
-    docker compose up -d --force-recreate web
+    docker compose up -d --force-recreate web worker
     ```
 
     Use the password already in the restored `.env` rather than generating a new
