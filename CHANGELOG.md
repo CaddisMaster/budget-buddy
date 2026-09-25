@@ -19,6 +19,14 @@ this project uses the `0.x` versioning scheme described in
   count stayed at zero, which is exactly what "never posts another user's
   schedule" expected. The scenario now counts the rows posted from the owner's
   schedules, whoever they were posted for, and the twins are deleted. (#395)
+- **Two more "other users' data" tests can now fail, and two tests of long-gone
+  features are deleted.** The recurring-transfer test and the daily-job test
+  had the same blind spot #395 found. When the runner was allowed to reach
+  another user's schedules, it posted them under the wrong person, and both
+  tests still passed. Each now checks where the money actually went. The tests
+  guarding the Goal Coach's removal and two dropped database tables are gone:
+  every part that still mattered was shown to be caught by another test
+  first. (#396)
 
 ## [0.11.0] - 2026-09-24
 

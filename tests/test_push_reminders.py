@@ -44,7 +44,13 @@ from app.blueprints.reminders import (
 )
 from app.db import get_db_connection
 from tests.conftest import TEST_PREFIX
-from tests.helpers import count_transactions_like, create_account, create_schedule, create_transfer_schedule
+from tests.helpers import (
+    count_posted_from_schedules,
+    count_transactions_like,
+    create_account,
+    create_schedule,
+    create_transfer_schedule,
+)
 
 TODAY = date.today()
 TOMORROW = TODAY + timedelta(days=1)
@@ -462,4 +468,7 @@ def test_materialize_is_isolated_per_user(users):
     create_schedule(b, acct_b, 30, "monthly", TODAY - timedelta(days=1))
     materialize_all_users()
     assert count_transactions_like(a, "seed-schedule") == 0
-    assert count_transactions_like(b, "seed-schedule") == 1
+    # By schedule, not by ledger: an unscoped runner posts B's schedule under
+    # whichever user it is running for, and B's ledger alone cannot see that
+    # it was posted at all (#396). (posted, landed in B's own ledger).
+    assert count_posted_from_schedules(b) == (1, 1)

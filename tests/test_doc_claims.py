@@ -212,11 +212,10 @@ def test_the_vendored_htmx_is_the_version_the_docs_claim():
 # Names deliberately referenced while absent. Each entry is a seam that was
 # REMOVED, named by a test asserting it stayed removed — so the reference is the
 # point, not a mistake. Adding to this list should be a deliberate act.
-DELIBERATELY_ABSENT_SEAMS = {
-    # Removed with the Goal Coach (#262); tests/test_goal_coach_removed.py
-    # asserts app.ai no longer defines it.
-    "_call_coach_model",
-}
+#
+# Empty since #396, which deleted the Goal Coach's tombstone test, the only
+# thing that ever named a removed seam on purpose.
+DELIBERATELY_ABSENT_SEAMS: set[str] = set()
 
 # Whole-identifier match. The negative lookbehind stops a longer identifier
 # that merely CONTAINS the prefix — the sdk-call-shape test module's own name is
