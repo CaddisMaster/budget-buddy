@@ -23,7 +23,6 @@ from behave import given, then, when
 
 from app import logs
 from tests.features.support import _user
-from tests.helpers import _connection
 
 # The prefix app.logs.FORMAT writes: [time] [pid] [LEVEL] [request id] name: …
 # Traceback lines carry no prefix and are skipped when checking IDs.
@@ -88,17 +87,6 @@ def _assert_all_carry(visit, at_least):
 
 
 # ── Given ───────────────────────────────────────────────────────────────────
-
-@given("user {who:Who} is an admin and signed in")
-def given_admin_signed_in(context, who):
-    # The scenario's own user, promoted — after_scenario deletes it as usual.
-    conn = _connection()
-    cur = conn.cursor()
-    cur.execute("UPDATE users SET is_admin = true WHERE id = %s", (_user(context, who)["id"],))
-    conn.commit()
-    cur.close()
-    conn.close()
-    context.execute_steps(f"Given user {who} is signed in")
 
 
 @given("the dashboard logs two lines of its own while it renders")

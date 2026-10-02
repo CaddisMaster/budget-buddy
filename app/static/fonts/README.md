@@ -1,9 +1,9 @@
 # Vendored fonts
 
 Both faces ship in the image and are served from `/static/fonts/` — **never from a CDN.**
-`app/__init__.py` sends `Content-Security-Policy: frame-ancestors 'none'` today, but the
-no-CDN rule is about the app being self-contained (and about not handing every page view to
-a third party), not about what the current CSP happens to block.
+Since #403 `app/__init__.py` sends a full Content-Security-Policy whose `default-src 'self'`
+would refuse a font CDN anyway, but the no-CDN rule predates that and does not rest on it: it
+is about the app being self-contained, and about not handing every page view to a third party.
 
 | File | Family | Style | Source |
 |---|---|---|---|

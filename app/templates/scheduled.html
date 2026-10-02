@@ -43,7 +43,7 @@
   <summary>Add a schedule</summary>
   <div class="add-panel-body">
     <form hx-post="{{ url_for('schedules.scheduled') }}" hx-target="#schedule-rows" hx-swap="afterbegin"
-          hx-on::after-request="if(event.detail.successful){this.reset();toggleSchedFields();document.getElementById('sched-empty')?.remove();}">
+          id="schedForm" data-reset-on-success data-remove-after="#sched-empty">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label>Type</label>
         <select name="transaction_type" required>
@@ -67,7 +67,7 @@
             {% endfor %}
         </select>
         <label>Frequency</label>
-        <select name="frequency" id="schedFreq" onchange="toggleSchedFields()">
+        <select name="frequency" id="schedFreq">
             <option value="weekly">Weekly (every week)</option>
             <option value="biweekly">Bi-weekly (every 2 weeks)</option>
             <option value="semimonthly">Semi-monthly (twice a month)</option>
@@ -117,7 +117,7 @@
   </div>
 </details>
 
-<script>
+<script nonce="{{ csp_nonce() }}">
 // Single form on the page, so plain ids are fine. Show pay-day inputs for
 // semi-monthly, the Next-date picker for every other frequency.
 window.toggleSchedFields = function () {
@@ -126,5 +126,7 @@ window.toggleSchedFields = function () {
     document.getElementById('schedDateDiv').style.display = semi ? 'none' : 'block';
 };
 toggleSchedFields();
+document.getElementById('schedFreq').addEventListener('change', toggleSchedFields);
+document.getElementById('schedForm').addEventListener('bb:reset', toggleSchedFields);
 </script>
 {% endblock %}

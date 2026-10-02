@@ -17,14 +17,14 @@
 </head>
 <body hx-headers='{"X-CSRFToken": "{{ csrf_token() }}"}'>
 <div class="app-wrapper">
-  <div class="sidebar-overlay" id="overlay" onclick="closeSidebar()"></div>
+  <div class="sidebar-overlay" id="overlay"></div>
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <span class="brand">
         <span class="brand-mark" aria-hidden="true">{{ brand_svg | safe }}</span>
         <span>Budget Buddy</span>
       </span>
-      <button class="hamburger" onclick="toggleSidebar()" aria-label="Close menu">☰</button>
+      <button class="hamburger" data-sidebar-toggle aria-label="Close menu">☰</button>
     </div>
     <nav>
       <a href="{{ url_for('main.index') }}" {% if request.path == '/' %}class="active"{% endif %}>
@@ -60,7 +60,7 @@
          With JS disabled the form still submits and logs out; there is simply
          no prompt, which is the same behaviour as before this change. #}
       <form method="post" action="{{ url_for('auth.logout') }}" class="nav-logout"
-            onsubmit="return confirm('Log out of Budget Buddy?')">
+            data-confirm="Log out of Budget Buddy?">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Logout</button>
@@ -78,7 +78,7 @@
        ⚠️ The ☰ is CSS-hidden above 768px, not omitted — the server cannot
        know the viewport. See the .hamburger rules in style.css. #}
     <header class="page-header">
-      <button class="hamburger" onclick="toggleSidebar()" aria-label="Open menu">☰</button>
+      <button class="hamburger" data-sidebar-toggle aria-label="Open menu">☰</button>
       <div class="page-heading">{% block page_heading %}{% endblock %}</div>
       <div class="page-actions">
         {% block page_actions %}{% endblock %}
@@ -97,7 +97,7 @@
 </div>
 <div id="toast-host" aria-live="polite"></div>
 <script src="{{ url_for('static', filename='htmx.min.js') }}"></script>
-<script>
+<script nonce="{{ csp_nonce() }}">
 const sidebar = document.getElementById('sidebar');
 const overlay = document.getElementById('overlay');
 
@@ -115,6 +115,55 @@ function closeSidebar() {
   sidebar.classList.remove('open');
   overlay.classList.remove('active');
 }
+document.querySelectorAll('[data-sidebar-toggle]').forEach(
+  (b) => b.addEventListener('click', toggleSidebar));
+overlay.addEventListener('click', closeSidebar);
+
+// #403 — the page-wide behaviours that used to be inline on…= handlers and
+// hx-on attributes. The Content-Security-Policy refuses both, so markup asks
+// for a behaviour with a data- attribute and these delegated listeners supply
+// it. Delegated from document, so a fragment htmx swaps in later is covered
+// with no re-binding. tests/test_csp.py keeps the handlers from coming back.
+
+// <select data-autosubmit>: a filter that applies as soon as it changes.
+document.addEventListener('change', (e) => {
+  if (e.target.matches('select[data-autosubmit]')) e.target.form.submit();
+});
+
+// <form data-confirm="…">: ask first. With JS off the form simply submits.
+document.addEventListener('submit', (e) => {
+  const msg = e.target.dataset.confirm;
+  if (msg && !confirm(msg)) e.preventDefault();
+});
+
+// <button data-clear="#panel">: empty a panel, e.g. a review's Cancel.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-clear]');
+  if (!btn) return;
+  const panel = document.querySelector(btn.dataset.clear);
+  if (panel) panel.innerHTML = '';
+});
+
+// <input data-enter-trigger hx-trigger="enterkey">: htmx's own
+// keyup[key=='Enter'] filter is compiled with Function(), which the policy
+// refuses, so the key is matched here and htmx is handed a plain event.
+document.addEventListener('keyup', (e) => {
+  if (e.key === 'Enter' && e.target.matches('[data-enter-trigger]'))
+    htmx.trigger(e.target, 'enterkey');
+});
+
+// <form data-reset-on-success>: an add form that clears itself once the row
+// is saved. Optional data-focus-after (a selector inside the form) and
+// data-remove-after (a page-level empty state). It then fires `bb:reset` on
+// the form, so a page whose fields depend on a <select> can re-sync them.
+document.body.addEventListener('htmx:afterRequest', (e) => {
+  const form = e.target;
+  if (!e.detail.successful || !form.matches('form[data-reset-on-success]')) return;
+  form.reset();
+  form.dispatchEvent(new Event('bb:reset'));
+  if (form.dataset.removeAfter) document.querySelector(form.dataset.removeAfter)?.remove();
+  if (form.dataset.focusAfter) form.querySelector(form.dataset.focusAfter)?.focus();
+});
 
 // HTMX toasts: servers fire `HX-Trigger: {"showToast": {...}}` to surface
 // success/error feedback, since flash() doesn't render on a partial swap.

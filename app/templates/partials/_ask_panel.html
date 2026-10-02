@@ -54,7 +54,7 @@
       <input type="text" id="ask-question" name="question" maxlength="1000"
              placeholder="how much did I spend on groceries last month?"
              hx-post="{{ url_for('ask.ask') }}" hx-target="#ask-answer" hx-swap="innerHTML"
-             hx-trigger="keyup[key=='Enter']" hx-indicator="#ask-spinner">
+             hx-trigger="enterkey" data-enter-trigger hx-indicator="#ask-spinner">
       <button type="button" class="btn btn-primary"
               hx-post="{{ url_for('ask.ask') }}" hx-include="#ask-question"
               hx-target="#ask-answer" hx-swap="innerHTML" hx-indicator="#ask-spinner">

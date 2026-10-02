@@ -142,6 +142,10 @@ These apply to nearly every change, which is why they are here rather than in `d
 - **HTMX inline CRUD:** flash does not render on a partial swap — use `hx_toast()`. The transactions
   history re-renders the **whole `<tbody>`** on save/delete, because the running balance shifts
 - CSRF: one `hx-headers` on `<body>` in base.html covers every HTMX write
+- **CSP (#403): every inline `<script>` carries `nonce="{{ csp_nonce() }}"`, and no template may
+  hold an `on…=` handler, `hx-on` or an `hx-trigger` `[filter]`** — the browser refuses them, and
+  a test client cannot see that. Use a data attribute and base.html's delegated listeners
+  (`docs/gotchas.md` lists them), and check the behaviour in a real browser
 
 **Process**
 - Run **`./test.sh`** (full suite, ~20s since #384). Do not ration test runs, and do not delegate running them

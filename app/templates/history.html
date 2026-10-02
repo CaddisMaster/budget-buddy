@@ -17,7 +17,7 @@
   <form method="get" class="header-filter">
     {% if search %}<input type="hidden" name="search" value="{{ search }}">{% endif %}
     {% if selected_account %}<input type="hidden" name="account" value="{{ selected_account }}">{% endif %}
-    <select name="month" onchange="this.form.submit()" aria-label="Filter by month">
+    <select name="month" data-autosubmit aria-label="Filter by month">
       <option value="">All months</option>
       {% for m in months %}
       <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ m }}</option>
@@ -28,7 +28,7 @@
   <form method="get" class="header-filter">
     {% if search %}<input type="hidden" name="search" value="{{ search }}">{% endif %}
     {% if selected_month %}<input type="hidden" name="month" value="{{ selected_month }}">{% endif %}
-    <select name="account" onchange="this.form.submit()" aria-label="Filter by account">
+    <select name="account" data-autosubmit aria-label="Filter by account">
       <option value="">All accounts</option>
       {% for a in accounts %}
       <option value="{{ a.account_id }}" {% if a.account_id == selected_account %}selected{% endif %}>{{ a.account_name }}</option>
@@ -105,7 +105,7 @@
   {% endif %}
 </div>
 {% endif %}
-<script>
+<script nonce="{{ csp_nonce() }}">
 (function () {
   const bar = document.getElementById('bulk-bar');
   const toggle = document.getElementById('bulk-toggle');
