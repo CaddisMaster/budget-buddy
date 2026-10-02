@@ -5,11 +5,12 @@
 
 ## Current Status
 
-▶️ **NEXT SESSION: #403** (a real CSP), the last item open in `0.12.0`. **#36** stays date-parked. Prod runs
+▶️ **NEXT SESSION: release `0.12.0`.** #403 merged on 2026-10-02 and the milestone has no open
+work. Release prep must raise the compose scp (#402, below). **#36** stays date-parked. Prod runs
 `0.11.0`. ⚠️ The `Acceptance criteria` check is **still not a required status check** (re-checked
-2026-09-25).
+2026-10-02: the five required contexts are Lint, Tests, Image, Migrations and Changelog).
 
-### On `main`, not yet deployed (2026-09-25)
+### On `main`, not yet deployed (2026-09-25, extended 2026-10-02)
 
 | PR | Issue | |
 |---|---|---|
@@ -22,7 +23,38 @@
 | #412 | **#404** | logging at INFO, one format, a request ID per line + `X-Request-ID`; behave's log capture turned off |
 | #413 | **#405** | 22 action `uses:` pinned to SHAs; `FROM python:3.14.7-slim@sha256:caaf356f…` |
 | #414 | **#411** | every pytest test's daily sweep scoped to its own worker's users |
-| this PR | **#415** | this record |
+| #416 | **#415** | the afternoon's record |
+| #422 | **#421** | `test_an_old_posting_is_outside_the_window` was red every month after a 30-day month; the bill now ends after its one payment |
+| #417–#420 | — | Dependabot: `claude-code-action` 1.0.235, `ruff-action` v4.1.0, ruff 0.16.9 + `anthropic` 1.8.0, the base-image digest |
+| #423 | **#403** | a real Content-Security-Policy: nonce per response, no inline handlers |
+| this PR | **#424** | this record |
+
+**2026-10-02, in brief.** Detail in each PR body, `docs/gotchas.md` and `docs/testing.md`.
+
+- 🛑 **`main` was red from 2026-10-01 because of the calendar** (#421). A monthly schedule due
+  `TODAY - 30 days` lands on today's day of the month whenever the previous month had 30 days, so
+  the runner posted today's occurrence into the window the test asserted empty. It was red for all
+  of May, July, October and December, and green when written. Found on Dependabot #420, whose own
+  change was innocent. **A test relative to `date.today()` can still encode a calendar
+  assumption**: "30 days" and "one month" agree only sometimes.
+- ⚠️ **Branch protection is `strict`**: a PR must be up to date with `main` to merge, so a batch of
+  Dependabot PRs merges one at a time: `gh pr update-branch`, wait, merge, repeat. The refusal
+  reads "5 of 5 required status checks are expected", which looks like missing CI rather than a
+  stale branch. `update-branch` worked on #418, which edits `ci.yml`, so the gh token's
+  `workflow` scope covers it now.
+- **The ruff three-pin split caught a sixth Dependabot group** (#419: #285, #342, #366, #373,
+  #379, #419). The vault note said to file an issue past five. Not filed this session; it's Sean's call.
+- **`anthropic` 1.8.0** refactored request serialization. The outgoing body was captured offline
+  through an `httpx2.MockTransport` under 1.7.0 and 1.8.0, echoing real `TextBlock`/`ToolUseBlock`
+  objects the way `ai.py` does: identical. Still no live model call since 1.0.0.
+- ✅ **#405's unproven Dependabot-docker pin is now proven**: #420 rewrote the digest under the
+  unchanged `3.14.7-slim` tag. `claude-code-action`'s pin (#417) still waits for a `triage` issue.
+- **#403's checks.** Per #357, scenario 1 went to behave (a user's GETs, swept from `url_map`),
+  scenario 2 to pytest (a template scan) and scenario 3 to "Verified by hand". The by-hand part
+  was a Playwright pass in headless Chromium with the policy enforced: 41/41 behaviours, a
+  positive control proving injected script is refused, and every AI endpoint stubbed or aborted.
+  Push needed a second container with dummy VAPID keys, because dev has none.
+  ⏳ **Unverified until deploy:** the installed iOS PWA under the policy.
 
 **The afternoon (2026-09-25), in brief.** Detail in each PR body and in `docs/testing.md`.
 

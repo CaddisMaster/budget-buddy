@@ -296,12 +296,15 @@ server itself — **read it before touching anything on the Droplet.**
 
 ## Current status
 
-▶️ **NEXT UP: #403** (a real CSP), the last item open in **`0.12.0`**. It moves 12 inline
-scripts and 12 inline handlers, and every moved behaviour needs a real browser. **#36** stays
+▶️ **NEXT UP: release `0.12.0`.** Its milestone has **no open work** since #403 (a real CSP)
+merged on 2026-10-02, so the next step is release prep, compose scp first (below). **#36** stays
 date-parked. Prod runs **`0.11.0`**. `main` carries, **not deployed**: the test-suite audit (#395,
 #396), the suite's own database (#400), connection pooling (#401), the **web/worker/redis split
 (#402)**, production logging at INFO with request IDs (#404), actions and the base image pinned to
-SHAs/digest (#405) and the cross-worker sweep race (#411).
+SHAs/digest (#405), the cross-worker sweep race (#411), a calendar-dependent test (#421), four
+Dependabot bumps (#417–#420, incl. `anthropic` 1.8.0) and the **Content-Security-Policy (#403)**.
+⚠️ #403 is the release's one user-facing risk: every page now refuses inline script, so check the
+installed PWA on the phone after deploy.
 
 🛑 **THE NEXT RELEASE NEEDS THE NEW `docker-compose.yml` SCP'D TO THE DROPLET** (#402). The
 pipeline brings the image, not the compose file. If it's forgotten, `release.yml` step 3c fails
@@ -329,7 +332,7 @@ ported from the app layer into SQL keeps its shape and loses its meaning. `docs/
 the rule; `docs/status.md` carries the session.
 
 
-⚠️ **The open milestone is `0.11.0`.** ✅ **`0.10.0` was closed ON SHIP DAY** (2026-09-11) at
+⚠️ **The open milestone is `0.12.0`** (no open work as of 2026-10-02). ✅ **`0.10.0` was closed ON SHIP DAY** (2026-09-11) at
 `open=0, closed=25`, with its nine open items moved to `0.11.0` first — the corrective landing, and
 the shape every milestone but `0.9.0`'s has closed at. `0.9.0` was closed 2026-09-03, late: it
 shipped on 2026-09-02 but was left open to hold a backlog, so **seven commits landed after the
@@ -386,7 +389,7 @@ describes the last session rather than the current tree, and it asserts rather t
   sharing a name merge into one budget row and invent an overrun, which the AI month read then
   narrates as ground truth); **#328** is the loudest (the `scripts/` ingest pipeline cannot insert
   a row and has not been able to since the app gained users). **#36** stays date-parked to
-  ~Dec 2026 with no milestone. The open milestone is **`0.10.0`** (see the block above).
+  ~Dec 2026 with no milestone. (The open milestone at the time was `0.10.0`.)
   ⚠️ **`docs/status.md` carried the review's resume point, and it went stale THREE times** (#331,
   #337, #343) — every time because a tranche merged without touching it. **The loop ended because
   the work finished, not because the problem was solved**; the next tranche-shaped piece of work
