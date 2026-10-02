@@ -3,7 +3,7 @@ import os
 import secrets
 
 from dotenv import load_dotenv
-from flask import Flask
+from flask import Flask, g
 from flask_bcrypt import Bcrypt
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -48,14 +48,45 @@ if os.getenv('TEMPLATES_AUTO_RELOAD', '') == '1':
     app.config['TEMPLATES_AUTO_RELOAD'] = True
 
 
+def csp_nonce():
+    """This response's script nonce, made on first use and kept on `g`, so the
+    header and every `<script nonce=…>` in the page agree (#403). Templates
+    call it as `{{ csp_nonce() }}`."""
+    if 'csp_nonce' not in g:
+        g.csp_nonce = secrets.token_urlsafe(16)
+    return g.csp_nonce
+
+
+app.jinja_env.globals['csp_nonce'] = csp_nonce
+
+# #403. Scripts run only from the app's own files or from an inline block that
+# carries this response's nonce. Inline `on…=` handlers, htmx `hx-on` and htmx
+# trigger filters are refused outright: the first can never carry a nonce, and
+# htmx compiles the other two with Function(), which would need 'unsafe-eval'.
+# tests/test_csp.py keeps all three out of the templates.
+#
+# ⚠️ style-src keeps 'unsafe-inline', and that is a KNOWN GAP, not an oversight.
+# ApexCharts injects <style> elements and sets style attributes as it draws, and
+# the templates carry ~180 style="" attributes. Injected CSS can restyle a page
+# but cannot run script, which is the attack this policy exists to stop.
+_CSP = ("default-src 'self'; "
+        "script-src 'self' 'nonce-{nonce}'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "connect-src 'self'; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'; "
+        "frame-ancestors 'none'")
+
+
 @app.after_request
 def set_security_headers(response):
-    """Defense-in-depth response headers (v10.1.1). CSP is frame-ancestors only
-    — a full policy would break HTMX/Chart.js/inline styles. HSTS is sent only
-    in prod (COOKIE_SECURE=1), where TLS is terminated at Nginx."""
+    """Defense-in-depth response headers (v10.1.1, a real CSP since #403). HSTS
+    is sent only in prod (COOKIE_SECURE=1), where TLS is terminated at Nginx."""
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'DENY'
-    response.headers['Content-Security-Policy'] = "frame-ancestors 'none'"
+    response.headers['Content-Security-Policy'] = _CSP.format(nonce=csp_nonce())
     response.headers['Referrer-Policy'] = 'no-referrer'
     if _secure_cookies:
         response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'

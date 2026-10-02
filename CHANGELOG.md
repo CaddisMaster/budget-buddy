@@ -8,6 +8,20 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Security
+
+- **The browser now refuses any script the app did not ship.** Pages send a
+  full Content-Security-Policy instead of only blocking framing. Scripts run
+  only from the app's own files, or from an inline block carrying a random
+  value that changes on every page load. So if some HTML ever slipped past the
+  template escaping, a script hidden in it would not run. The twelve inline
+  `onclick`/`onchange`/`onsubmit` handlers and five htmx `hx-on` attributes
+  went to make that possible, along with the Ask box's Enter-key filter, which
+  htmx evaluated as code. Each behaviour now works through a data attribute
+  instead. Nothing should look or work differently: every one of them was
+  checked in a real browser with the policy enforced. Inline styles are still
+  allowed, because the charts need them; that gap is recorded. (#403)
+
 ### Changed
 
 - **A test that failed for four months of the year now passes all year.** It

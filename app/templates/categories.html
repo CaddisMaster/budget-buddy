@@ -29,7 +29,7 @@
     {# ⚠️ innerHTML on the whole listing, NOT afterbegin on a tbody — see the
        comment in _category_groups.html for why one row is not a safe unit. #}
     <form hx-post="{{ url_for('categories.categories') }}" hx-target="#category-rows" hx-swap="innerHTML"
-          hx-on::after-request="if(event.detail.successful){this.reset();this.querySelector('input[name=name]').focus();}">
+          data-reset-on-success data-focus-after="input[name=name]">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label>Name</label>
         <input type="text" name="name" required>

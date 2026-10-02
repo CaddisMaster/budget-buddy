@@ -141,7 +141,9 @@ def test_security_headers_present(anon_client):
     resp = anon_client.get("/login")
     assert resp.headers["X-Content-Type-Options"] == "nosniff"
     assert resp.headers["X-Frame-Options"] == "DENY"
-    assert resp.headers["Content-Security-Policy"] == "frame-ancestors 'none'"
+    # The full policy is checked page by page in content_security_policy.feature
+    # (#403); clickjacking protection is the part this test has always held.
+    assert "frame-ancestors 'none'" in resp.headers["Content-Security-Policy"].split("; ")
     assert resp.headers["Referrer-Policy"] == "no-referrer"
 
 

@@ -212,6 +212,10 @@ def test_logout_control_asks_for_confirmation(client_a):
     body = client_a.get("/").data.decode()
     form = re.search(r"<form[^>]*nav-logout[^>]*>", body)
     assert form, "logout form is missing from the nav"
-    assert "onsubmit" in form.group(0)
-    assert "confirm(" in form.group(0)
+    # Since #403 the prompt is asked for with data-confirm and supplied by
+    # base.html's delegated submit listener; an inline onsubmit is refused by
+    # the Content-Security-Policy, so the browser would skip the prompt.
+    assert 'data-confirm="Log out of Budget Buddy?"' in form.group(0)
+    assert "onsubmit" not in form.group(0)
+    assert "dataset.confirm" in body and "confirm(msg)" in body
     assert 'method="post"' in form.group(0)

@@ -21,7 +21,7 @@
 {% endblock %}
 {% block page_actions %}
   <form method="get" class="month-picker">
-    <select name="month" onchange="this.form.submit()" aria-label="Filter by month">
+    <select name="month" data-autosubmit aria-label="Filter by month">
         <option value="">All months</option>
         {% for m in months %}
         <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ m }}</option>
@@ -40,7 +40,7 @@
    body marker, so it split on THIS COMMENT instead of the strip and reported
    the strip as malformed. test_release_prep.py::test_it_parses_the_real_dashboard_strip
    is what caught it. #}
-<script>
+<script nonce="{{ csp_nonce() }}">
 (() => {
   const h = new Date().getHours();
   const part = h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening';
@@ -145,7 +145,7 @@
     </div>
   </div>
 </div>
-<script>
+<script nonce="{{ csp_nonce() }}">
 (() => {
   const el = document.getElementById('whatsnew');
   if (localStorage.getItem('whatsnew-dismissed') !== el.dataset.version) el.hidden = false;
@@ -233,7 +233,7 @@
   {% endfor %}
 </section>
 {% if category_bars | length > 1 %}
-<script>
+<script nonce="{{ csp_nonce() }}">
 (() => {
   // Both lists are already in the DOM, server-rendered; the toggle only flips
   // which one is hidden. No payload, no redraw, and it works on first paint
@@ -340,13 +340,13 @@
     </div>
 </div>
 </details>
-<script>
+<script nonce="{{ csp_nonce() }}">
 // Before first paint of the section: collapsed by default on mobile.
 if (window.matchMedia('(max-width: 768px)').matches)
     document.getElementById('charts-details').removeAttribute('open');
 </script>
 <script src="{{ url_for('static', filename='apexcharts.min.js') }}"></script>
-<script>
+<script nonce="{{ csp_nonce() }}">
 // ⚠️ These two payloads no longer draw anything — #223 replaced the doughnut
 // with server-rendered bars. They stay because they are the CONTRACT that
 // test_dashboard_merge.py asserts against: #108's fold (never more than seven

@@ -118,7 +118,7 @@
 {% endif %}
 
 {% if push_enabled %}
-<script>
+<script nonce="{{ csp_nonce() }}">
 /* #33 — Web Push opt-in. Subscription lives in the BROWSER, so the button
  * reflects this device, not the account: the server's device count can't tell
  * us whether the phone in your hand is one of them. Permission must be asked

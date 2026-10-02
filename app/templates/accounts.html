@@ -26,7 +26,7 @@
   <summary>Add an account</summary>
   <div class="add-panel-body">
     <form hx-post="{{ url_for('accounts.accounts') }}" hx-target="#account-rows" hx-swap="afterbegin"
-          hx-on::after-request="if(event.detail.successful){this.reset();this.querySelector('input[name=name]').focus();document.getElementById('acct-empty')?.remove();}">
+          data-reset-on-success data-focus-after="input[name=name]" data-remove-after="#acct-empty">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label>Name</label>
         <input type="text" name="name" required>

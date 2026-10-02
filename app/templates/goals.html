@@ -22,11 +22,11 @@
 <details class="add-panel"{% if not goals %} open{% endif %}>
   <summary>Add a goal</summary>
   <div class="add-panel-body">
-    <form hx-post="{{ url_for('goals.goals') }}" hx-target="#goal-list" hx-swap="afterbegin"
-          hx-on::after-request="if(event.detail.successful){this.reset();toggleGoalType('save');document.getElementById('goal-empty')?.remove();}">
+    <form id="goal-form" hx-post="{{ url_for('goals.goals') }}" hx-target="#goal-list" hx-swap="afterbegin"
+          data-reset-on-success data-remove-after="#goal-empty">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label>Goal type</label>
-        <select name="goal_type" onchange="toggleGoalType(this.value)">
+        <select name="goal_type" id="goal-type">
             <option value="save">Save toward a target</option>
             <option value="payoff">Pay off a balance</option>
         </select>
@@ -57,7 +57,7 @@
         </p>
         <button type="submit" class="btn btn-primary" style="margin-top:1rem">Add goal</button>
     </form>
-    <script>
+    <script nonce="{{ csp_nonce() }}">
     function toggleGoalType(v) {
       const payoff = v === 'payoff';
       document.getElementById('goal-save-fields').style.display = payoff ? 'none' : '';
@@ -67,6 +67,10 @@
       document.getElementById('goal-target').required = !payoff;
       document.getElementById('goal-account-label').textContent = payoff ? 'Account to pay off' : 'Linked account';
     }
+    const goalType = document.getElementById('goal-type');
+    goalType.addEventListener('change', () => toggleGoalType(goalType.value));
+    // After a save the form resets, and the select goes back to "save".
+    document.getElementById('goal-form').addEventListener('bb:reset', () => toggleGoalType(goalType.value));
     </script>
   </div>
 </details>
