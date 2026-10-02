@@ -132,13 +132,13 @@ def _schedule_id_of(user_id, description):
 
 
 def _variable_bill(user_id, *, description, amount=142.55, due=None,
-                   variable=True):
+                   variable=True, end_date=None):
     """A schedule due today (or the given date), materialized the way a page load
     would materialize it. Returns the schedule id."""
     account = create_account(user_id, TEST_PREFIX + "vb-acct-" + description)
     sid = create_schedule(user_id, account, amount, "monthly",
                           due or TODAY, is_variable_amount=variable,
-                          description=description)
+                          end_date=end_date, description=description)
     run_due_schedules(user_id)
     return sid
 
@@ -207,10 +207,17 @@ def test_the_window_is_a_few_days_not_just_today(users):
         == ["vb-yesterday"]
 
 
+@pytest.mark.criterion(421, "An old posting stays outside the window on any date")
 def test_an_old_posting_is_outside_the_window(users):
+    """The schedule ends on its one old occurrence. Without that, a monthly
+    schedule due 30 days ago catches up and posts TODAY whenever last month had
+    30 days, and the window rightly finds it (#421)."""
     a = users["a"]["id"]
-    _variable_bill(a, description="vb-ancient", due=TODAY - timedelta(days=30))
+    ancient = TODAY - timedelta(days=30)
+    sid = _variable_bill(a, description="vb-ancient", due=ancient,
+                         end_date=ancient)
 
+    assert _schedule_id_of(a, "vb-ancient") == [sid]   # it did post, once
     assert _posted_variable_bills(a, TODAY) == []
 
 
