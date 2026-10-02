@@ -10,6 +10,14 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **A test that failed for four months of the year now passes all year.** It
+  checks that a bill paid 30 days ago stays out of the "recently posted" alert
+  window. Its bill repeated monthly, so whenever the previous month had 30 days,
+  30 days ago fell on today's date and that month's payment was posted today,
+  inside the window. That made the test red for all of May, July, October and
+  December, and it turned `main` red on 2026-10-01. The bill now ends after its
+  one old payment, and the test also checks that the payment was really made.
+  The app was right all along. (#421)
 - **A daily-job test can no longer post another test's bill.** The test for
   the daily job posts every due recurring transaction of every user in the
   test database. Tests run in parallel, so that included users other tests
