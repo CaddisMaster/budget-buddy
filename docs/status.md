@@ -10,6 +10,39 @@
 **#36** stays date-parked. Prod runs **`0.12.0`** (2026-10-05). ⚠️ The `Acceptance criteria`
 check is **still not a required status check** (last re-checked 2026-10-02).
 
+### The 2026-10-05 afternoon: a release nobody's phone heard, and what it took to see why
+
+On `main`, **not deployed** — ships with `0.13.0`:
+
+| PR | Issue | |
+|---|---|---|
+| #439 | **#438** | `sql/39`: `push_subscriptions.device_label` + `last_seen_at`. Additive, before-pull |
+| #440 | **#437** | Profile lists every device; Home prompts a device that fell off push; `/push/seen` |
+| this PR | **#441** | this record |
+
+- 🛑 **"Announced 0.12.0 to 3 device(s)" was true and nobody's phone rang.** All three rows
+  were accepted by Apple (`201`). Sean's phone had lost its subscription on the device side
+  while its old endpoint stayed alive at Apple, so nothing ever pruned it. **A `201` from a
+  push service is not delivery**; there is no delivery receipt to check. Sean re-subscribed
+  (row 4), and the dead row (1) was deleted by hand on the Droplet.
+- **Telling his two rows apart took a tagged test push plus an Nginx access-log grep**
+  (`/?pushtest=2` from Safari on macOS). The table held nothing that names a device. That cost
+  is why #438 adds a label and a last-seen time, rather than a guess at a cleanup rule.
+- ⚠️ **The issue's own first fix was wrong.** #437 proposed re-POSTing the subscription to
+  `/push/subscribe` on every load. That would silently re-add a device the user had just
+  removed. The shipped `/push/seen` only touches, and creates nothing. Separately, "permission
+  granted, no subscription → re-subscribe" would undo an opt-out, because "Turn off" leaves
+  permission at `granted`. So nothing subscribes without a tap, and a `localStorage` flag marks
+  a deliberate no. The issue was rewritten before the code, and its criteria with it.
+- ⚠️ **Real-browser push needs full Chromium AND a persistent profile.** The headless shell
+  reports notifications `denied` whatever is granted, which by itself made the prompt correctly
+  stay hidden and looked like a bug. A normal Playwright context is incognito, where Chrome
+  disables the Push API. With both fixed, a real push-service subscription succeeds; the
+  harness is `~/.tools/bb-shots/push437.mjs`.
+- **A seed row inserted after `sql/39` gets `last_seen_at = now()`.** The check's own fake
+  "old phone" first read "Last seen today", and that was correct, not a bug. A pre-39 row has
+  to be seeded with `NULL` explicitly.
+
 ### The 2026-10-05 session: one ruff pin, and `0.12.0` shipped on the second attempt
 
 | PR | Issue | |
