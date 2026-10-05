@@ -10,6 +10,16 @@ this project uses the `0.x` versioning scheme described in
 
 ### Added
 
+- **Catch up from a bank statement.** On History, "Import statement" takes an
+  OFX, QFX or CSV export of one account and shows every line: already
+  recorded, missing, a possible match, or a pending entry the bank has now
+  posted. Missing lines come ticked with a suggested category, and nothing is
+  added until you confirm. Lines that look like a transfer between your own
+  accounts start unticked. For an OFX file it then checks your balance
+  against the statement's closing balance. It also warns if a balance check-in
+  already covered part of the gap. Importing the same statement again adds
+  nothing. The file is never kept. For a CSV, only its first few rows are sent
+  to the AI to work out the columns. (#445)
 - **The database can now remember which bank statement a transaction came
   from.** Nothing uses this yet; it prepares for filling in missing
   transactions from a statement export, where it lets a second import of the

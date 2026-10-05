@@ -1155,7 +1155,10 @@ line. Check `grep -c '^TAG=' .env` is exactly 1.
 - **#37 (the unscheduled-backlog holding pen) was closed not-planned.** Its ideas and the standing
   rejection of *net worth over time* remain readable in the closed issue; **do not re-open it as a
   bucket.** Off the list for good: net worth over time (redundant with the net-balance-trend
-  chart) and **CSV import**.
+  chart). ~~**CSV import**~~ was on this list too, and **was reversed by Sean on 2026-10-05**
+  (#445): no reason for the rejection was ever recorded, and what shipped is a
+  reconcile-and-fill tool rather than a bulk loader. It compares a statement with the ledger and
+  adds nothing that isn't shown and checked.
 - **#33's design fork was decided YES** (Sean, 2026-07-28), against a recommendation to keep it
   read-only: the daily job also runs the due-runners server-side, for every user.
 - **Three candidates checked and deliberately NOT filed** (2026-08-03): Flask-Login's 345

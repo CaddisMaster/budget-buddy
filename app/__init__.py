@@ -204,6 +204,7 @@ from app.blueprints import (
     digests,
     feedback,
     goals,
+    imports,
     insights,
     main,
     push,
@@ -223,6 +224,7 @@ app.register_blueprint(analytics.bp)
 app.register_blueprint(admin.bp)
 app.register_blueprint(transfers.bp)
 app.register_blueprint(goals.bp)
+app.register_blueprint(imports.bp)
 app.register_blueprint(schedules.bp)
 # ⚠️ blueprints/forecasts.py and blueprints/agent.py are deliberately NOT here
 # (#232): both lost their routes with Home's AI cards and are now plain function
