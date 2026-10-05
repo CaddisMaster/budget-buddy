@@ -298,10 +298,13 @@ server itself — **read it before touching anything on the Droplet.**
 
 ## Current status
 
-▶️ **NEXT UP: `0.13.0`, whose one piece of real work is #433** — make `release.yml` and
-`rollback.yml` copy `docker-compose.yml` to the Droplet themselves and check its hash, so the
-compose file always matches the image. **#36** stays date-parked. Prod runs **`0.12.0`**
-(2026-10-05). `main` carries, **not deployed**, only the runbook fix #432 and this record.
+▶️ **NEXT UP: #433** (`0.13.0`) — make `release.yml` and `rollback.yml` copy
+`docker-compose.yml` to the Droplet themselves and check its hash, so the compose file always
+matches the image. **#36** stays date-parked. Prod runs **`0.12.0`** (2026-10-05). `main`
+carries, **not deployed**: the runbook fix #432, **one migration** (`sql/39`, #438, additive,
+before-pull), the device list and Home's push prompt (#437), and two records. ⚠️ #437's first
+real check is **on Sean's phone after deploy**: the "This device" mark and the label an
+installed iPhone app actually reports.
 
 🛑 **THE MAC HAS NO CLONE OF THIS REPO** (2026-10-05). Every Droplet step runs from the Mac, and
 every line of code lives in the VM. So "scp it from your clone" copies whatever file is in the
@@ -332,7 +335,7 @@ ported from the app layer into SQL keeps its shape and loses its meaning. `docs/
 the rule; `docs/status.md` carries the session.
 
 
-⚠️ **The open milestone is `0.13.0`** (#433, plus this record). ✅ **`0.12.0` was closed on ship day** (2026-10-05, 24/24). ✅ **`0.10.0` was closed ON SHIP DAY** (2026-09-11) at
+⚠️ **The open milestone is `0.13.0`** (#433 open; #437, #438 and the records closed). ✅ **`0.12.0` was closed on ship day** (2026-10-05, 24/24). ✅ **`0.10.0` was closed ON SHIP DAY** (2026-09-11) at
 `open=0, closed=25`, with its nine open items moved to `0.11.0` first — the corrective landing, and
 the shape every milestone but `0.9.0`'s has closed at. `0.9.0` was closed 2026-09-03, late: it
 shipped on 2026-09-02 but was left open to hold a backlog, so **seven commits landed after the
