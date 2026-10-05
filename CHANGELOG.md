@@ -10,6 +10,12 @@ this project uses the `0.x` versioning scheme described in
 
 ### Added
 
+- **The database can now remember which bank statement a transaction came
+  from.** Nothing uses this yet; it prepares for filling in missing
+  transactions from a statement export, where it lets a second import of the
+  same statement recognise every line it already added. Transactions entered by
+  hand are unaffected. (#444)
+
 - **A device that stops getting notifications now says so.** If you've turned
   notifications on somewhere but the device you're holding isn't getting them,
   for example after re-adding the app to your home screen, Home now asks

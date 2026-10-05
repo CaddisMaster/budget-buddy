@@ -81,7 +81,8 @@ Full column lists and the reasoning behind each shape are in
 
 - `transactions` — the ledger. Flags: `is_adjustment` (excluded from analytics), `is_transfer` +
   `transfer_group_id` (paired legs), `is_pending` (**display only — excludes from nothing**),
-  `schedule_id` (which schedule posted it)
+  `schedule_id` (which schedule posted it), `import_ref` (statement reference, unique per
+  account, #444)
 - `schedules` / `transfer_schedules` — recurring templates, **not ledger rows**; a runner
   materializes a real transaction per due date and advances `next_due`
 - `categories` (`kind` expense|income) · `budgets` (one monthly amount each) · `budget_history`
