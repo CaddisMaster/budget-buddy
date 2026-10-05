@@ -5,12 +5,50 @@
 
 ## Current Status
 
-▶️ **NEXT SESSION: release `0.12.0`.** #403 merged on 2026-10-02 and the milestone has no open
-work. Release prep must raise the compose scp (#402, below). **#36** stays date-parked. Prod runs
-`0.11.0`. ⚠️ The `Acceptance criteria` check is **still not a required status check** (re-checked
-2026-10-02: the five required contexts are Lint, Tests, Image, Migrations and Changelog).
+▶️ **NEXT SESSION: #433** (`0.13.0`) — make the deploy and rollback workflows copy
+`docker-compose.yml` to the Droplet themselves, with a hash check that fails before the swap.
+**#36** stays date-parked. Prod runs **`0.12.0`** (2026-10-05). ⚠️ The `Acceptance criteria`
+check is **still not a required status check** (last re-checked 2026-10-02).
 
-### On `main`, not yet deployed (2026-09-25, extended 2026-10-02)
+### The 2026-10-05 session: one ruff pin, and `0.12.0` shipped on the second attempt
+
+| PR | Issue | |
+|---|---|---|
+| #429 | **#426** | `requirements-dev.txt` is the only ruff pin. CI reads it with `version-file:`, then fails unless the ruff it ran is the pin. The pre-commit ruff hook is dropped (Sean's call) |
+| #428, #427 | — | Dependabot: ruff 0.16.10, `anthropic` 1.11.0, `resend`, Werkzeug, `python-dotenv`; `claude-code-action` 1.0.240 |
+| #431 | **#430** | Cut `0.12.0`: one What's-new block (the CSP) |
+| #434 | **#432** | RUNBOOK §5's compose copy without a Mac clone |
+| this PR | **#435** | this record |
+
+- ✅ **#426 proven on a real Dependabot PR.** #428 was red on the three-pin test (the
+  **seventh** group). After `@dependabot rebase` onto #429 it went green with no further commit,
+  and CI logged `Found version for ruff in requirements-dev.txt: 0.16.10` → `ruff 0.16.10, as
+  pinned`. ⚠️ **`version-file` fails open** (a parse failure warns and installs `latest`), so the
+  Lint job's second step compares the action's `ruff-version` output with the pin. The test
+  **executes** that step's script (pin / newer / empty) rather than reading it. Pre-commit was
+  not even installed in the VM clone: the hook had been running nowhere since 2026-08-14.
+  Side finding, not acted on: `~/.local/bin/ruff` in the VM is 0.16.4, unpinned.
+- **`anthropic` 1.8.0 → 1.11.0, read rather than stamped.** The changelog's two relevant items
+  don't touch us. `parse()` stopped sending a beta header in 1.9.0, but 1.8.0 already sent none
+  on our calls. Sonnet 4.5 is deprecated, and we're on Haiku 4.5 and Sonnet 5. Both versions
+  were installed side by side and every seam was driven through an `httpx2.MockTransport`: 8
+  requests, byte-identical apart from `user-agent` and `x-stainless-package-version`. Still no
+  live call.
+- 🛑 **The first 0.12.0 deploy failed, and the cause was my instructions.** I told Sean to scp
+  `docker-compose.yml` "from your clone on the Mac" and verify with RUNBOOK §5's `diff`. **There
+  is no clone on the Mac.** The scp sent whatever file was in his shell's directory, and the diff
+  compared the Droplet with that same file: `identical`. The Droplet still held v0.11.0's file
+  (`df162302…`, no `worker:`). Step 3c caught it as designed (`service "worker" is not
+  running`), and production stayed up on 0.12.0 with the old single-worker path. Fixed by a
+  download pinned to the tag, `shasum` against a hash taken in the VM, scp, then `sha256sum` on
+  the Droplet (`60a8265f…`). After that, `gh run rerun --failed` went green. **A check that
+  compares against a local file of unknown origin proves nothing**: take the expected value from
+  the source of truth. #432 fixed the runbook, and #433 removes the step.
+- ⚠️ **Long commands broke in Sean's paste**: a wrapped `curl … -o <file>` lost its argument.
+  One short command per copy box worked first time.
+- ✅ **`0.12.0` milestone closed on ship day** (24/24), and `0.13.0` created first.
+
+### ✅ SHIPPED in `0.12.0` (2026-10-05) — was "on `main`, not yet deployed" (2026-09-25, extended 2026-10-02)
 
 | PR | Issue | |
 |---|---|---|
