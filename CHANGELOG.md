@@ -24,6 +24,14 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **A linter upgrade is now a one-line change.** The linter's version was
+  written down in three places, and the automated dependency updates only
+  change one of them, so each of the last six upgrades failed its checks until
+  someone edited the other two by hand. The version now lives in
+  `requirements-dev.txt` alone. CI reads it from there and then checks that the
+  version it actually ran matches, because the tool CI uses quietly falls back
+  to the newest version when it cannot read the file. The commit-time lint hook
+  is gone; `./test.sh` already lints before every run. (#426)
 - **A test that failed for four months of the year now passes all year.** It
   checks that a bill paid 30 days ago stays out of the "recently posted" alert
   window. Its bill repeated monthly, so whenever the previous month had 30 days,

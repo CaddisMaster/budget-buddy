@@ -17,10 +17,9 @@ behave==1.3.3
 # The linter ./test.sh runs before pytest (#264). It lives here rather than
 # being installed per run so the image's `dev` stage bakes it in.
 #
-# ⚠️ THIS VERSION IS PINNED IN TWO PLACES and they must agree: here, and the
-# `version:` input of astral-sh/ruff-action in .github/workflows/ci.yml. The
-# action defaults to whatever ruff is newest, so leaving it unpinned reopens the
-# exact hole this dependency exists to close — a newer ruff in CI flags what the
-# local one accepts, and the local run stops predicting the remote one. The two
-# are asserted equal by tests/test_lint_local.py.
+# ⚠️ THIS IS THE ONLY RUFF PIN (#426). CI's ruff-action reads it through
+# `version-file:` and then fails unless the ruff it ran is this one, and
+# tests/test_lint_local.py fails if a second copy appears anywhere. So a
+# Dependabot bump of this line is the whole change. Keep it a bare `ruff==X.Y.Z`
+# line: that is the form both the action and the CI check parse.
 ruff==0.16.9

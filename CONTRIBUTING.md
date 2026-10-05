@@ -153,14 +153,14 @@ None of this reaches production — it all lives in
 pip install pre-commit && pre-commit install
 ```
 
-Runs `ruff` plus hygiene checks — trailing whitespace, missing final newlines,
+Runs hygiene checks — trailing whitespace, missing final newlines,
 merge-conflict markers, oversized files, and **private keys** — before each
-commit.
+commit. **Not `ruff`** since #426: the hook pinned ruff a third time, which
+Dependabot cannot update, and `./test.sh` lints before every run anyway.
 
 These are **convenience, not a guarantee.** They run on your machine and any
 commit can skip them with `--no-verify`. CI is what actually enforces. The
-reason to install them anyway is speed (a lint error in two seconds rather than
-two minutes) and the private-key check, which catches a credential *before* it
+reason to install them anyway is the private-key check, which catches a credential *before* it
 enters git history — after which removing it means rewriting history.
 
 ### Run the tests

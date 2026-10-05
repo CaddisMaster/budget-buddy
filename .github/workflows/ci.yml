@@ -141,17 +141,39 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # ⚠️ `version:` is PINNED, and must equal the ruff pin in
-      # requirements-dev.txt — tests/test_lint_local.py asserts the two agree.
-      # Without it the action installs whatever ruff is newest, so a release
+      # ⚠️ The version comes from requirements-dev.txt, the ONE ruff pin (#426).
+      # Unpinned, the action installs whatever ruff is newest, so a release
       # adding a rule turns this job red against code that `./test.sh` just
-      # passed locally. Local predicting CI is the entire point of #264; an
-      # unpinned linter here quietly gives that back.
+      # passed locally — local predicting CI is the entire point of #264. This
+      # used to be a `version:` literal, which Dependabot cannot see, so six
+      # ruff bumps in a row went red here until someone hand-edited it.
       - name: Ruff
+        id: ruff
         uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89 # v4.1.0
         with:
-          version: 0.16.9
+          version-file: requirements-dev.txt
           args: check --output-format github
+
+      # ⚠️ `version-file` FAILS OPEN: if the action cannot parse the file it
+      # warns and installs `latest`, in a job that still goes green. So check
+      # what it actually installed. Runs even when lint failed, so a red job
+      # still says which ruff judged it. tests/test_lint_local.py executes this
+      # script against a matching, a newer and a missing version.
+      - name: Ruff ran the pinned version
+        if: ${{ !cancelled() }}
+        env:
+          RUFF_RAN: ${{ steps.ruff.outputs.ruff-version }}
+        run: |
+          pinned=$(sed -n 's/^ruff==\([^[:space:]]*\).*/\1/p' requirements-dev.txt)
+          if [ -z "$pinned" ]; then
+            echo "::error::requirements-dev.txt has no ruff== pin to check against"
+            exit 1
+          fi
+          if [ "$RUFF_RAN" != "$pinned" ]; then
+            echo "::error::CI ran ruff '${RUFF_RAN}', but requirements-dev.txt pins ${pinned}"
+            exit 1
+          fi
+          echo "ruff ${RUFF_RAN}, as pinned"
 
   test:
     name: Tests

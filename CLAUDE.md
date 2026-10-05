@@ -176,8 +176,8 @@ Details, including the xdist isolation rules that make `-n auto` safe, are in
   database** (#400), rebuilt from `schema.sql` before each runner, never the dev one, and both
   runners **refuse a database that already holds users**. `runtests` was retired 2026-08-17
 - It **runs `ruff check` first and stops if lint fails** (#264). `SKIP_LINT=1 ./test.sh` skips it.
-  ⚠️ The ruff version is pinned in **both** `requirements-dev.txt` and `ci.yml` and they must
-  agree — bumping it means editing both
+  The ruff version is pinned **only** in `requirements-dev.txt` (#426): CI reads it via
+  `version-file:` and fails unless it ran that version, and a test fails on any second pin
 - Then it runs the **behave scenarios** in `tests/features/` (the BDD pilot, #356), then pytest.
   **Only on a no-argument run** — `./test.sh <args>` is aimed at pytest and skips them;
   `SKIP_BDD=1` skips them too. ⚠️ Always via `python -m tests.run_behave`, never bare `behave`,
