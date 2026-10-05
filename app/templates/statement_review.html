@@ -3,6 +3,8 @@
 {% block page_heading %}<h1>Review statement</h1>{% endblock %}
 {% block content %}
 {# #445 — one row per statement line, marked by what the ledger already holds.
+   #447 — a line read off a screenshot that the model flagged as hard to read
+   (or whose direction it could not name) is marked and never pre-ticked.
    #446 — every missing or possible line's select also offers "Record as a
    transfer" with each other account. A transfer-looking line whose other leg
    already sits in another account as a plain row comes preselected and ticked,
@@ -50,7 +52,7 @@
         {% if r.status != 'recorded' %}
         <input type="checkbox" name="apply" value="{{ i }}" id="apply-{{ i }}"
                aria-label="{{ 'Mark posted' if r.status == 'pending' else 'Add' }}: {{ r.line.description }}"
-               {% if r.status == 'pending' or (r.status == 'missing' and (not r.transfer_like or i in pairings)) %}checked{% endif %}>
+               {% if not r.line.uncertain and (r.status == 'pending' or (r.status == 'missing' and (not r.transfer_like or i in pairings))) %}checked{% endif %}>
         <input type="hidden" name="date_{{ i }}" value="{{ r.line.date.isoformat() }}">
         <input type="hidden" name="amount_{{ i }}" value="{{ r.line.amount }}">
         <input type="hidden" name="direction_{{ i }}" value="{{ r.line.direction }}">
@@ -60,7 +62,7 @@
         {% endif %}
       </td>
       <td>{{ r.line.date.strftime('%b %d') }}</td>
-      <td>{{ r.line.description }}</td>
+      <td>{{ r.line.description }}{% if r.line.uncertain %} <span class="pending-badge" data-uncertain>hard to read: check it</span>{% endif %}</td>
       <td>{{ '+' if r.line.direction == 'in' else '−' }}${{ r.line.amount|money }}</td>
       <td>
         {% if r.status == 'recorded' %}Already recorded

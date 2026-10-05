@@ -78,7 +78,8 @@ class Line:
     amount: Decimal          # always > 0
     direction: str           # 'in' | 'out'
     description: str
-    ref: str | None          # OFX FITID, or a derived CSV reference
+    ref: str | None          # OFX FITID, or a derived CSV/screenshot reference
+    uncertain: bool = False  # #447: the model could not read it cleanly
 
 
 @dataclass(frozen=True)
@@ -303,12 +304,13 @@ def validate_mapping(raw, rows):
     )
 
 
-def csv_ref(when, amount, direction, description, occurrence):
-    """A stable reference for a CSV line, which has no bank-issued id. The
-    occurrence count separates identical lines on the same day (two $4.50
-    coffees), so re-importing the same file gives every line the same ref."""
+def csv_ref(when, amount, direction, description, occurrence, prefix="csv"):
+    """A stable reference for a line with no bank-issued id (a CSV row, or a
+    line read from a screenshot). The occurrence count separates identical
+    lines on the same day (two $4.50 coffees), so re-importing the same file
+    gives every line the same ref."""
     key = f"{when.isoformat()}|{amount}|{direction}|{description.lower()}|{occurrence}"
-    return "csv:" + hashlib.sha256(key.encode()).hexdigest()[:40]
+    return f"{prefix}:" + hashlib.sha256(key.encode()).hexdigest()[:40]
 
 
 def parse_csv(rows, mapping):
@@ -461,3 +463,87 @@ def find_counterpart(line, rows, used=()):
                   and _days(line, r) <= MATCH_DAYS]
     candidates.sort(key=lambda r: (_days(line, r), r.id))
     return candidates[0] if candidates else None
+
+
+# ── Screenshots (#447) ───────────────────────────────────────────────────────
+#
+# A screenshot of a banking app is read by the model (ai.read_screenshots), and
+# everything it returns is untrusted: lines_from_screenshots() re-checks every
+# field, resolves a missing year, and marks anything doubtful as uncertain, so
+# the review shows it unticked rather than guessing.
+
+MAX_IMAGES = 5
+MAX_IMAGE_BYTES = 5_000_000
+MAX_UPLOAD_BYTES = 15_000_000    # the whole request; see RUNBOOK §3 for Nginx
+
+_IMAGE_MAGIC = (
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
+)
+
+
+def image_type(raw):
+    """The media type of an image the model can read, from its first bytes
+    (never the filename or the browser's claim), or None."""
+    for magic, media_type in _IMAGE_MAGIC:
+        if raw.startswith(magic):
+            return media_type
+    if raw[:4] == b"RIFF" and raw[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def resolve_date(month, day, year, today):
+    """A screenshot line's date. Most banking apps show "Dec 30" with no year;
+    then the year is the one that puts the date on or before today, never in
+    the future (on Jan 5, "Dec 30" is last year). Returns None for an
+    impossible date."""
+    if year is not None:
+        try:
+            return date(year, month, day)
+        except (TypeError, ValueError):
+            return None
+    # The most recent year in which that day exists and is not after today.
+    # Four years back covers Feb 29: on Jan 1 2029, "Feb 29" is 2028's.
+    for candidate in range(today.year, today.year - 5, -1):
+        try:
+            when = date(candidate, month, day)
+        except (TypeError, ValueError):
+            continue
+        if when <= today:
+            return when
+    return None
+
+
+def lines_from_screenshots(raw_lines, today):
+    """The model's lines, re-checked. A line with no readable date or amount
+    cannot be shown at all and is counted as skipped; one the model flagged as
+    hard to read, or with a direction it could not name, is kept but marked
+    uncertain."""
+    lines, skipped, seen = [], 0, {}
+    for raw in raw_lines:
+        when = resolve_date(raw.get("month"), raw.get("day"), raw.get("year"), today)
+        amount = money(str(raw.get("amount") or ""))
+        if when is None or amount is None or amount == 0:
+            skipped += 1
+            continue
+        direction = raw.get("direction")
+        uncertain = not raw.get("legible", False) or direction not in ("in", "out")
+        if direction not in ("in", "out"):
+            direction = "out" if amount < 0 else "in"
+        amount = abs(amount)
+        description = _clean_description(str(raw.get("description") or ""))
+        key = (when, amount, direction, description.lower())
+        seen[key] = seen.get(key, 0) + 1
+        lines.append(Line(when, amount, direction, description,
+                          csv_ref(when, amount, direction, description, seen[key], "img"),
+                          uncertain))
+    if not lines:
+        raise StatementError("These screenshots could not be read: no transactions "
+                             "were found in them.")
+    if len(lines) > MAX_LINES:
+        raise StatementError(f"These screenshots show more than {MAX_LINES} lines.")
+    start, end = _period(lines)
+    return Statement(tuple(lines), start, end, None, skipped)

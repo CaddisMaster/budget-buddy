@@ -38,7 +38,7 @@ from flask import (
 from flask_login import current_user, login_required
 
 from app import limiter
-from app.ai import ParseError, classify_transactions, map_csv_columns
+from app.ai import ParseError, classify_transactions, map_csv_columns, read_screenshots
 from app.blueprints.transactions import validate_category_account
 from app.db import db_cursor
 from app.helpers import GENERIC_ERROR, ai_enabled, parse_int_param, parse_positive_amount
@@ -47,6 +47,9 @@ from app.statements import (
     DESCRIPTION_MAX,
     MATCH_DAYS,
     MAX_FILE_BYTES,
+    MAX_IMAGE_BYTES,
+    MAX_IMAGES,
+    MAX_UPLOAD_BYTES,
     REF_MAX,
     Line,
     StatementError,
@@ -54,6 +57,8 @@ from app.statements import (
     csv_rows,
     decode,
     find_counterpart,
+    image_type,
+    lines_from_screenshots,
     looks_binary,
     looks_like_ofx,
     match_lines,
@@ -66,7 +71,10 @@ from app.statements import (
 bp = Blueprint('imports', __name__)
 
 UNREADABLE = ("This file could not be read. Upload an OFX, QFX or CSV export of one "
-              "account.")
+              "account, or screenshots of its transactions.")
+TOO_LARGE = "That upload is too large. Export a shorter date range, or send fewer screenshots."
+ONE_KIND = (f"Upload one statement file, or up to {MAX_IMAGES} screenshots, "
+            "not a mix of the two.")
 
 
 def _accounts(user_id):
@@ -114,6 +122,23 @@ def _read_statement(raw):
     except ParseError as e:
         raise StatementError("This file could not be read right now. Try again.") from e
     return parse_csv(rows, validate_mapping(raw_mapping, rows))
+
+
+def _read_screenshots(images):
+    """Screenshots to a Statement (#447). The model reads; the app re-checks."""
+    try:
+        raw_lines = read_screenshots(images)
+    except ParseError as e:
+        raise StatementError("These screenshots could not be read right now. "
+                             "Try again.") from e
+    return lines_from_screenshots(raw_lines, date.today())
+
+
+def _uploads():
+    """The uploaded files' bytes, each read to one byte past its own cap so an
+    oversized one is detected without holding more of it."""
+    return [f.read(MAX_IMAGE_BYTES + 1) for f in request.files.getlist('statement')
+            if f and f.filename]
 
 
 def _ledger(account_id, start, end):
@@ -212,19 +237,31 @@ def import_scan():
     account = _owned_account(parse_int_param(request.form.get('account_id')))
 
     # Refuse an oversized body before Werkzeug is asked to hold it all.
-    if (request.content_length or 0) > MAX_FILE_BYTES + 64_000:
-        return _upload_form("That file is too large. Export a shorter date range.",
-                            413, account.account_id)
-    upload = request.files.get('statement')
-    raw = upload.read(MAX_FILE_BYTES + 1) if upload else b''
-    if not raw:
-        return _upload_form("Choose a statement file to upload.", 400, account.account_id)
-    if len(raw) > MAX_FILE_BYTES:
-        return _upload_form("That file is too large. Export a shorter date range.",
-                            413, account.account_id)
+    # (Werkzeug spools a large part to a temporary file that is deleted when
+    # the request ends; nothing here writes the upload anywhere.)
+    if (request.content_length or 0) > MAX_UPLOAD_BYTES + 64_000:
+        return _upload_form(TOO_LARGE, 413, account.account_id)
+    raws = _uploads()
+    if not raws or not all(raws):
+        return _upload_form("Choose a statement file or screenshots to upload.", 400,
+                            account.account_id)
 
+    kinds = [image_type(raw) for raw in raws]
     try:
-        statement = _read_statement(raw)
+        if all(kinds):
+            # #447: screenshots, read by the model.
+            if len(raws) > MAX_IMAGES:
+                return _upload_form(f"Send at most {MAX_IMAGES} screenshots at a time.",
+                                    400, account.account_id)
+            if any(len(raw) > MAX_IMAGE_BYTES for raw in raws):
+                return _upload_form(TOO_LARGE, 413, account.account_id)
+            statement = _read_screenshots(list(zip(kinds, raws, strict=True)))
+        elif len(raws) == 1:
+            if len(raws[0]) > MAX_FILE_BYTES:
+                return _upload_form(TOO_LARGE, 413, account.account_id)
+            statement = _read_statement(raws[0])
+        else:
+            return _upload_form(ONE_KIND, 400, account.account_id)
     except StatementError as e:
         return _upload_form(str(e), 400, account.account_id)
 
