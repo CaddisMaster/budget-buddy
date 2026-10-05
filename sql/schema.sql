@@ -317,7 +317,12 @@ CREATE TABLE public.push_subscriptions (
     endpoint text NOT NULL UNIQUE,
     p256dh text NOT NULL,
     auth text NOT NULL,
-    created_at timestamp without time zone DEFAULT now()
+    created_at timestamp without time zone DEFAULT now(),
+    -- sql/39 (#438): a server-derived name for the device, and the last time
+    -- it re-sent its subscription from Home. Rows that predate sql/39 hold
+    -- NULL in both — nothing is known about them, so nothing is invented.
+    device_label character varying(64),
+    last_seen_at timestamp without time zone DEFAULT now()
 );
 
 CREATE INDEX push_subscriptions_user_idx ON public.push_subscriptions (user_id);

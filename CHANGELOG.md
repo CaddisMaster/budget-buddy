@@ -8,6 +8,14 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Added
+
+- **The database can now record which device each notification subscription
+  belongs to, and when that device was last seen.** Nothing uses this yet; it
+  prepares for a list of your devices on the Profile page. Subscriptions that
+  existed before this change are left blank rather than given a made-up date.
+  (#438)
+
 ### Changed
 
 - **The instructions for copying the compose file to the server no longer
