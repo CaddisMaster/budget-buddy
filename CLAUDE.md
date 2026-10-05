@@ -292,7 +292,9 @@ server itself — **read it before touching anything on the Droplet.**
   manual path at 0.8.0 prep), then described the DROP hazard as a rule to remember
   rather than a thing the pipeline handles
 - **Droplet access** is maintainer-only and lives in the gitignored `CLAUDE.local.md`.
-  `/opt/budget-buddy` is a **pure deploy dir — no git, no source**; `scp` changes up
+  `/opt/budget-buddy` is a **pure deploy dir — no git, no source**; `scp` changes up.
+  ⚠️ **The Mac has no clone either**: the compose file goes through RUNBOOK §5's tag-pinned,
+  hash-checked recipe (#432)
 
 ## Current status
 
