@@ -55,7 +55,8 @@ firewall notwithstanding. Keep the loopback prefix on every port mapping.
 ```
 
 To change compose or add a migration you `scp` the file up. `git pull` does not
-work there and never has.
+work there and never has. ⚠️ The Mac has **no clone** to scp from. For the compose file,
+follow §5's recipe, which downloads the file pinned to a tag and checks it by hash.
 
 The directory is owned by **`deploy`**, an unprivileged user that exists so CI
 never needs a root key. It is in the `docker` group and owns nothing else on the
@@ -309,12 +310,44 @@ volumes:
 
 The deployed file **is** the repository's tracked `docker-compose.yml`, `scp`-ed up — that is
 what makes copying it safe. The block above is that file with its (long) comments stripped
-for reading, so check it with `diff`, not by eye:
+for reading, so check it by hash, not by eye.
+
+### Copying the compose file up (#432)
+
+🛑 **There is no clone on the Mac.** Development happens in the `jupiter` VM, and the Droplet is
+unreachable from there, so the file goes VM → GitHub → Mac → Droplet. At the 0.12.0 deploy an
+older recipe said "from a clone on the Mac": the `scp` sent whatever `docker-compose.yml` was in
+the Mac shell's directory, and the `diff` compared the Droplet with that same file and printed
+`identical`. The Droplet still held the old file, and `release.yml` step 3c caught it.
+
+**The expected hash comes from the repo, never from a file on the Mac.** In the VM:
 
 ```bash
-# from a clone on the Mac
-ssh <droplet> 'cat /opt/budget-buddy/docker-compose.yml' | diff - docker-compose.yml
+git show v0.12.0:docker-compose.yml | sha256sum      # the hash every check below must print
 ```
+
+Then on the Mac, one command at a time (replace `v0.12.0` with the tag you are deploying or
+rolling back to):
+
+```bash
+curl -fsSLo /tmp/dc.yml https://raw.githubusercontent.com/CaddisMaster/budget-buddy/v0.12.0/docker-compose.yml
+```
+```bash
+shasum -a 256 /tmp/dc.yml
+```
+```bash
+scp /tmp/dc.yml root@<droplet>:/opt/budget-buddy/docker-compose.yml
+```
+```bash
+ssh root@<droplet> sha256sum /opt/budget-buddy/docker-compose.yml
+```
+
+Both hashes must equal the VM's. **Stop at the first mismatch**, and don't run a `docker compose`
+command on the box: the release or rollback workflow's own `up -d` uses the file.
+
+- **Pin the URL to a tag, never `main`.** The file must match the image you're deploying.
+- **Never copy `docker-compose.override.yml`** (see below).
+- #433 would make the pipeline copy the file itself. Until then, this is the only path.
 
 ### Three services from one image, plus Redis (#402)
 
@@ -329,10 +362,11 @@ restarting it just resets the limits.
 - ⚠️ **Exactly one process may run the scheduler.** Two would run every job twice. That's
   why the worker count lives in this file beside the switch, and not in the image: the image's
   own default is still **one** worker with the scheduler in-process.
-- **Rolling out #402:** `scp` this file up. Order against the release doesn't matter.
+- **Rolling out #402:** copy this file up (recipe above). Order against the release doesn't matter.
   - New image + old file: identical to before (1 worker, in-process scheduler). But
     `release.yml` step 3c **fails** the release ("the worker reports ''"), because there's no
-    worker service. `scp` the file and re-run.
+    worker service. Copy the file up and re-run the failed job. ✅ That's what happened at
+    0.12.0, and the re-run went green.
   - Old image + new file: see the rollback note below.
   - After it's up: `docker compose ps` shows `worker` and `redis`, and
     `docker compose logs worker` says `Scheduler running: weekly_digest, daily_tasks` (or
@@ -342,8 +376,9 @@ restarting it just resets the limits.
 - 🛑 **Rolling back to a release older than #402 needs the pre-#402 compose file.** An old
   image ignores `SCHEDULER_IN_PROCESS`, so **each of `web`'s 2 gunicorn workers starts a
   scheduler** (duplicate digests and reminders), and `worker` crash-loops because the old image
-  has no `run-scheduler`. `rollback.yml` only warns. Restore the old file first:
-  `git show v0.11.0:docker-compose.yml > docker-compose.yml`, then `scp` it, then roll back.
+  has no `run-scheduler`. `rollback.yml` only warns. **Restore the old file first** using the
+  recipe above with the **rollback target's tag** (for example `v0.11.0`, whose file hashes to
+  `df162302…`), then dispatch the rollback. There's no `git show` on the Mac: it has no clone.
 
 ### ⚠️ `TAG` has no default, deliberately (#190)
 
@@ -431,7 +466,7 @@ docker compose ps --format '{{.Service}} {{.Image}}'   # note the web VERSION
 # 3. Apply. ⚠️ ALWAYS pass TAG — see the warning below; a bare `up -d` silently
 #    reverts the app. NEVER `docker compose pull` here either: the image is
 #    pinned and already local, and a bare pull is what issue #22 exists to
-#    prevent. (scp docker-compose.yml up first)
+#    prevent. (copy docker-compose.yml up first: §5's recipe, no Mac clone)
 TAG=<the version currently running> docker compose up -d
 
 # 4. Verify.

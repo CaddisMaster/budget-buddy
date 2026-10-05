@@ -8,6 +8,16 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Changed
+
+- **The instructions for copying the compose file to the server no longer
+  assume a copy of the code on the Mac.** There isn't one. At the 0.12.0
+  deploy, the old steps copied an outdated file up and then "verified" it
+  against itself. The deploy's own check caught it, and the site stayed up
+  throughout. The runbook now downloads the file pinned to the release and
+  checks its fingerprint against the repository at both ends. The same applies
+  to the rollback steps. (#432)
+
 ## [0.12.0] - 2026-10-05
 
 ### Security
