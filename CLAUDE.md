@@ -298,20 +298,18 @@ server itself — **read it before touching anything on the Droplet.**
 
 ## Current status
 
-▶️ **NEXT UP: release `0.12.0`.** Its milestone has **no open work** since #403 (a real CSP)
-merged on 2026-10-02, so the next step is release prep, compose scp first (below). **#36** stays
-date-parked. Prod runs **`0.11.0`**. `main` carries, **not deployed**: the test-suite audit (#395,
-#396), the suite's own database (#400), connection pooling (#401), the **web/worker/redis split
-(#402)**, production logging at INFO with request IDs (#404), actions and the base image pinned to
-SHAs/digest (#405), the cross-worker sweep race (#411), a calendar-dependent test (#421), four
-Dependabot bumps (#417–#420, incl. `anthropic` 1.8.0) and the **Content-Security-Policy (#403)**.
-⚠️ #403 is the release's one user-facing risk: every page now refuses inline script, so check the
-installed PWA on the phone after deploy.
+▶️ **NEXT UP: `0.13.0`, whose one piece of real work is #433** — make `release.yml` and
+`rollback.yml` copy `docker-compose.yml` to the Droplet themselves and check its hash, so the
+compose file always matches the image. **#36** stays date-parked. Prod runs **`0.12.0`**
+(2026-10-05). `main` carries, **not deployed**, only the runbook fix #432 and this record.
 
-🛑 **THE NEXT RELEASE NEEDS THE NEW `docker-compose.yml` SCP'D TO THE DROPLET** (#402). The
-pipeline brings the image, not the compose file. If it's forgotten, `release.yml` step 3c fails
-naming the fix, while the new image safely serves the old single-worker path. Rolling back past
-#402 needs the pre-#402 compose file restored first. RUNBOOK §5 has both.
+🛑 **THE MAC HAS NO CLONE OF THIS REPO** (2026-10-05). Every Droplet step runs from the Mac, and
+every line of code lives in the VM. So "scp it from your clone" copies whatever file is in the
+Mac shell's directory. A `diff` against that file is then vacuous, and at 0.12.0 it printed
+`identical` over the stale v0.11.0 compose file. Until #433 lands, use RUNBOOK §5's recipe: a
+download pinned to a tag, checked against a hash taken from the repo at both ends. **Before
+handing Sean commands for the Mac, check what exists there**, and give one command per copy box.
+Rolling back past #402 still needs the old compose file first (RUNBOOK §5).
 
 ⚠️ **"Issue criteria are claimed by tests" is still NOT a required check** (re-checked
 2026-09-25 against branch protection), so a red result doesn't block a merge. It's Sean's
@@ -334,7 +332,7 @@ ported from the app layer into SQL keeps its shape and loses its meaning. `docs/
 the rule; `docs/status.md` carries the session.
 
 
-⚠️ **The open milestone is `0.12.0`** (no open work as of 2026-10-02). ✅ **`0.10.0` was closed ON SHIP DAY** (2026-09-11) at
+⚠️ **The open milestone is `0.13.0`** (#433, plus this record). ✅ **`0.12.0` was closed on ship day** (2026-10-05, 24/24). ✅ **`0.10.0` was closed ON SHIP DAY** (2026-09-11) at
 `open=0, closed=25`, with its nine open items moved to `0.11.0` first — the corrective landing, and
 the shape every milestone but `0.9.0`'s has closed at. `0.9.0` was closed 2026-09-03, late: it
 shipped on 2026-09-02 but was left open to hold a backlog, so **seven commits landed after the
@@ -348,7 +346,18 @@ easy to get wrong.
 describes the last session rather than the current tree, and it asserts rather than going quiet.
 **Reconcile against `git log` and `gh issue list` at the start of every session.**
 
-- ✅ **Prod runs `0.11.0`, shipped and verified 2026-09-24** (16 PRs, no new env vars, **one
+- ✅ **Prod runs `0.12.0`, shipped 2026-10-05** (23 PRs, no new env vars, no migrations, **the
+  compose file changed**). The **first** deploy failed at step 3c (`service "worker" is not
+  running`), because the Droplet still held the v0.11.0 compose file. Production stayed up on
+  0.12.0 with the safe single-worker path. After a tag-pinned, hash-checked copy, the failed job
+  re-ran green: `redis:7-alpine` pulled, `worker-1` and `redis-1` started, `running version
+  0.12.0` → `worker version 0.12.0 (matches 0.12.0)` → `Nothing to apply for phase after-pull`
+  → `Announced 0.12.0 to 3 device(s).` Live `/healthz` 200, and the CSP header is served.
+  ⏳ **Not yet checked by Sean:** the installed PWA under the CSP, `docker compose logs worker`
+  showing `Scheduler running`, the `[INFO] [<id>]` lines (#404), and the first live model call on
+  **`anthropic` 1.11.0** (request shape compared offline against 1.8.0: identical apart from the
+  version strings).
+- ✅ **`0.11.0`, shipped and verified 2026-09-24** (16 PRs, no new env vars, **one
   migration**). The deploy log read, in order: `backup ok` → `applying 38_money_is_finite.sql ...
   ok` → `running version 0.11.0 (matches 0.11.0)` → `Nothing to apply for phase after-pull` →
   `Announced 0.11.0 to 3 device(s).`, and live `/healthz` returned 200. `sql/38` was rehearsed
