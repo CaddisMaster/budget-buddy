@@ -28,6 +28,14 @@ this project uses the `0.x` versioning scheme described in
   payment" in checking, that entry becomes the other side instead of being
   added twice. A payment line whose other side already exists comes pre-set
   and ticked, and the review names the entry it will pair with. (#446)
+- **No export? Import screenshots instead.** The statement import also takes up
+  to five screenshots of your banking app's transaction list. The AI reads
+  the lines and they go through the same review: already recorded, missing,
+  possible match. A line the AI found hard to read, for example cut off at the
+  edge of the screen, is marked and left unticked, so you can check it. Dates
+  shown without a year are placed in the most recent matching year, never in
+  the future. Screenshots aren't kept, and there's no balance check, because a
+  screenshot doesn't carry a statement balance. (#447)
 - **The database can now remember which bank statement a transaction came
   from.** Nothing uses this yet; it prepares for filling in missing
   transactions from a statement export, where it lets a second import of the

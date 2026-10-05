@@ -38,7 +38,7 @@ def test_the_haiku_beats_are_untouched():
 
 def test_no_beat_still_names_the_superseded_sonnet():
     """A catch-all: the move is only done if the old id is gone from ai.py."""
-    for name in ("MODEL", "ASK_MODEL", "CATEGORIZE_MODEL", "AGENT_MODEL"):
+    for name in ("MODEL", "ASK_MODEL", "CATEGORIZE_MODEL", "AGENT_MODEL", "SCREENSHOT_MODEL"):
         assert getattr(ai, name) != "claude-sonnet-4-6"
 
 
@@ -147,3 +147,29 @@ def test_a_seam_failure_still_degrades_to_parse_error(monkeypatch):
             rows=[], category_names=[],
             today=date(2026, 8, 3), api_key="k",
         )
+
+
+
+def test_the_screenshot_beat_reads_on_sonnet_with_room_to_think(monkeypatch):
+    """#447 — Sean's call: Sonnet 5, because a misread digit is a wrong ledger
+    row. Same thinking coupling as the categoriser, and the images go as
+    base64 blocks BEFORE the instruction, each with the media type it was
+    sniffed as."""
+    import anthropic
+
+    recorder = _Recorder(SimpleNamespace(parsed_output=SimpleNamespace(lines=[])))
+    monkeypatch.setattr(anthropic, "Anthropic", lambda **kw: recorder)
+
+    ai._call_screenshot_model(
+        images=[("image/png", b"\x89PNG-one"), ("image/jpeg", b"\xff\xd8\xff-two")],
+        today=date(2026, 10, 5), api_key="test-key")
+
+    (sent,) = recorder.calls
+    assert sent["model"] == ai.SCREENSHOT_MODEL == "claude-sonnet-5"
+    assert sent["max_tokens"] >= 4096, "thinking + every line's JSON share this budget"
+    assert sent["output_config"]["effort"] == "medium"
+    content = sent["messages"][0]["content"]
+    assert [b["type"] for b in content] == ["image", "image", "text"]
+    assert [b["source"]["media_type"] for b in content[:2]] == ["image/png", "image/jpeg"]
+    import base64
+    assert base64.b64decode(content[0]["source"]["data"]) == b"\x89PNG-one"

@@ -140,6 +140,20 @@ server {
     proxy_set_header X-Forwarded-Proto $scheme;
   }
 
+  # #447 — statement import takes up to 5 screenshots (5 MB each, 15 MB a
+  # request; app/statements.py MAX_UPLOAD_BYTES). Nginx's default body limit is
+  # 1 MB, so WITHOUT this block every phone screenshot is refused by Nginx with
+  # its own bare 413 page before the app sees it. Scoped to the one route: the
+  # rest of the site keeps the 1 MB default.
+  location = /transactions/import {
+    client_max_body_size 16m;
+    proxy_pass http://127.0.0.1:5001;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+
   listen 443 ssl;                                                   # managed by Certbot
   # Unversioned, and stable: this lineage covers exactly one name, so certbot
   # has never had cause to mint a `-000N` alongside it. Still worth confirming

@@ -50,7 +50,7 @@ app/
   logs.py          # logging: INFO, one format, a request ID per line + X-Request-ID (#404)
   models.py        # User (UserMixin)
   ai.py            # ALL model calls, one isolated _call_*_model() seam each. NEVER touches the DB
-  statements.py    # statement import (#445): parse OFX/CSV + decide what's missing. PURE — no DB, no model
+  statements.py    # statement import (#445-447): parse OFX/CSV/screenshot lines + decide what's missing. PURE — no DB, no model
   mailer.py        # outbound email seam (Resend)          — single _call_resend() seam
   pusher.py        # outbound Web Push seam                — single _call_webpush() seam
   github.py        # outbound GitHub issue seam (stdlib urllib, NOT requests)

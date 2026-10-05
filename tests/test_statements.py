@@ -19,12 +19,15 @@ from app.statements import (
     csv_rows,
     decode,
     find_counterpart,
+    image_type,
+    lines_from_screenshots,
     looks_binary,
     looks_like_ofx,
     match_lines,
     money,
     parse_csv,
     parse_ofx,
+    resolve_date,
     sample_rows,
     validate_mapping,
 )
@@ -386,3 +389,79 @@ def test_a_counterpart_is_never_a_transfer_leg_an_adjustment_or_already_used():
     assert find_counterpart(line, [_other(1, D, "500", transfer=True)]) is None
     assert find_counterpart(line, [_other(1, D, "500", adjustment=True)]) is None
     assert find_counterpart(line, [_other(1, D, "500")], used={1}) is None
+
+
+
+# ── Screenshots (#447) ──────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("raw, expected", [
+    (b"\x89PNG\r\n\x1a\n....", "image/png"),
+    (b"\xff\xd8\xff\xe0....", "image/jpeg"),
+    (b"GIF89a....", "image/gif"),
+    (b"RIFF\x00\x00\x00\x00WEBPVP8 ", "image/webp"),
+    (b"%PDF-1.7\n", None),
+    (b"Date,Description,Amount\n", None),
+    (b"\x00\x00\x00\x18ftypheic", None),     # HEIC: the API cannot read it
+])
+def test_an_image_is_known_by_its_bytes_not_its_name(raw, expected):
+    assert image_type(raw) == expected
+
+
+def test_a_date_without_a_year_is_never_in_the_future():
+    jan5 = date(2026, 1, 5)
+    assert resolve_date(12, 30, None, jan5) == date(2025, 12, 30)
+    assert resolve_date(1, 5, None, jan5) == date(2026, 1, 5), "today is not the future"
+    assert resolve_date(1, 2, None, jan5) == date(2026, 1, 2)
+
+
+def test_a_shown_year_is_kept_and_an_impossible_date_is_refused():
+    today = date(2026, 10, 5)
+    assert resolve_date(12, 30, 2026, today) == date(2026, 12, 30)
+    assert resolve_date(2, 30, None, today) is None
+    assert resolve_date(13, 1, None, today) is None
+    assert resolve_date(None, 1, None, today) is None
+    assert resolve_date(2, 29, None, date(2028, 3, 1)) == date(2028, 2, 29)
+
+
+def test_feb_29_without_a_year_is_the_most_recent_one():
+    """Found writing the test above: the first version tried THIS year's Feb 29,
+    failed to construct it, and gave up, so on Jan 1 2029 a real 2028-02-29
+    line was dropped."""
+    assert resolve_date(2, 29, None, date(2029, 1, 1)) == date(2028, 2, 29)
+    assert resolve_date(2, 29, None, date(2028, 2, 28)) == date(2024, 2, 29)
+
+
+def _shot(**over):
+    return {"month": 10, "day": 3, "year": None, "description": "GROCERY",
+            "amount": "82.17", "direction": "out", "legible": True, **over}
+
+
+TODAY = date(2026, 10, 5)
+
+
+def test_screenshot_lines_are_rechecked_and_refed():
+    s = lines_from_screenshots([_shot(), _shot()], TODAY)
+    a, b = s.lines
+    assert (a.date, a.amount, a.direction, a.uncertain) == (
+        date(2026, 10, 3), Decimal("82.17"), "out", False)
+    assert a.ref.startswith("img:") and a.ref != b.ref, "identical lines stay distinct"
+    assert lines_from_screenshots([_shot(), _shot()], TODAY).lines[0].ref == a.ref
+
+
+def test_a_line_the_model_flagged_or_could_not_direct_is_uncertain():
+    flagged, undirected = lines_from_screenshots(
+        [_shot(legible=False), _shot(direction="sideways", amount="-5.00")], TODAY).lines
+    assert flagged.uncertain
+    assert undirected.uncertain and undirected.direction == "out", "a minus sign is a hint"
+
+
+@pytest.mark.parametrize("bad", [{"amount": "12.3?"}, {"amount": ""}, {"amount": "NaN"},
+                                 {"month": 2, "day": 30}, {"amount": "0.00"}])
+def test_a_line_with_no_readable_date_or_amount_is_skipped_and_counted(bad):
+    s = lines_from_screenshots([_shot(), _shot(**bad)], TODAY)
+    assert len(s.lines) == 1 and s.skipped == 1
+
+
+def test_no_readable_lines_is_refused():
+    with pytest.raises(StatementError, match="could not be read"):
+        lines_from_screenshots([_shot(amount="??")], TODAY)

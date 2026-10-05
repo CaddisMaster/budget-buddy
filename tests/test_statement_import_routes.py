@@ -15,7 +15,7 @@ from werkzeug.datastructures import MultiDict
 
 from app import ai
 from app.db import db_cursor
-from app.statements import MAX_FILE_BYTES
+from app.statements import MAX_FILE_BYTES, MAX_IMAGE_BYTES, MAX_IMAGES
 from tests.helpers import create_account, create_category
 
 TODAY = date.today()
@@ -24,7 +24,7 @@ TODAY = date.today()
 @pytest.fixture
 def ai_stubbed(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-    calls = {"mapping": [], "categorize": []}
+    calls = {"mapping": [], "categorize": [], "screenshots": [], "shot_lines": []}
 
     def map_columns(rows, date_formats, today, api_key):
         calls["mapping"].append(rows)
@@ -36,8 +36,13 @@ def ai_stubbed(monkeypatch):
         calls["categorize"].append(rows)
         return ai._Suggestions(suggestions=[])
 
+    def read_shots(images, today, api_key):
+        calls["screenshots"].append(images)
+        return ai._ScreenshotRead(lines=list(calls["shot_lines"]))
+
     monkeypatch.setattr(ai, "_call_csv_mapping_model", map_columns)
     monkeypatch.setattr(ai, "_call_categorize_model", categorize)
+    monkeypatch.setattr(ai, "_call_screenshot_model", read_shots)
     return calls
 
 
@@ -343,3 +348,64 @@ def test_the_review_never_pairs_two_lines_with_one_entry(client_a, users, checki
     body = _upload(client_a, visa, _csv(PAYMENT, (PAYMENT[0], "AUTOPAY PAYMENT", "500.00"))
                    ).get_data(as_text=True)
     assert body.count(f'data-pairs-with="{row_id}"') == 1
+
+
+
+# ── #447: screenshots ───────────────────────────────────────────────────────
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 32
+
+
+def _shots(client, account_id, *files):
+    return client.post("/transactions/import", content_type="multipart/form-data",
+                       data={"account_id": str(account_id),
+                             "statement": [(io.BytesIO(raw), name) for raw, name in files]})
+
+
+def _a_line(ai_stubbed):
+    ai_stubbed["shot_lines"].append(ai._ScreenshotLine(
+        month=TODAY.month, day=TODAY.day, year=TODAY.year, description="GROCERY",
+        amount="5.00", direction="out", legible=True))
+
+
+def test_every_screenshot_reaches_the_model_typed_by_its_bytes(client_a, checking, ai_stubbed):
+    """A JPEG named .png is sent as a JPEG: the filename is the user's claim,
+    the bytes are the fact, and a wrong media type is a refused API call."""
+    _a_line(ai_stubbed)
+    resp = _shots(client_a, checking, (PNG, "one.png"), (JPEG, "two.png"))
+    assert resp.status_code == 200 and 'data-status="missing"' in resp.get_data(as_text=True)
+    (images,) = ai_stubbed["screenshots"]
+    assert [t for t, _raw in images] == ["image/png", "image/jpeg"]
+    assert [raw for _t, raw in images] == [PNG, JPEG]
+
+
+def test_too_many_screenshots_are_refused_before_the_model(client_a, checking, ai_stubbed):
+    resp = _shots(client_a, checking, *[(PNG, f"{n}.png") for n in range(MAX_IMAGES + 1)])
+    assert resp.status_code == 400
+    assert ai_stubbed["screenshots"] == []
+
+
+def test_an_oversized_screenshot_is_refused_before_the_model(client_a, checking, ai_stubbed):
+    resp = _shots(client_a, checking, (PNG + b"\x00" * MAX_IMAGE_BYTES, "big.png"))
+    assert resp.status_code == 413
+    assert ai_stubbed["screenshots"] == []
+
+
+def test_a_screenshot_mixed_with_a_statement_file_is_refused(client_a, checking, ai_stubbed):
+    resp = _shots(client_a, checking, (PNG, "a.png"), (_csv((TODAY, "SHOP", "-1.00")), "s.csv"))
+    assert resp.status_code == 400
+    assert "not a mix" in resp.get_data(as_text=True)
+    assert ai_stubbed["screenshots"] == [] and ai_stubbed["mapping"] == []
+
+
+def test_two_statement_files_at_once_are_refused(client_a, checking, ai_stubbed):
+    csv = _csv((TODAY, "SHOP", "-1.00"))
+    resp = _shots(client_a, checking, (csv, "a.csv"), (csv, "b.csv"))
+    assert resp.status_code == 400 and ai_stubbed["mapping"] == []
+
+
+def test_a_screenshot_import_offers_no_balance_check(client_a, checking, ai_stubbed):
+    _a_line(ai_stubbed)
+    body = _shots(client_a, checking, (PNG, "a.png")).get_data(as_text=True)
+    assert 'name="closing_balance"' not in body

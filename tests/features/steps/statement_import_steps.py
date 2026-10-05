@@ -18,6 +18,7 @@ from transfer_steps.py, which loads after this file.
 import io
 import os
 import re
+from datetime import date, timedelta
 from html.parser import HTMLParser
 
 from behave import given, register_type, then, when
@@ -212,13 +213,19 @@ def given_ai_available(context):
                               description_col=1, amount_col=None, out_is_negative=True,
                               debit_col=2, credit_col=3)
 
+    def read_shots(images, today, api_key):
+        context.screenshot_calls.append(images)
+        return ai._ScreenshotRead(lines=list(context.screenshot_lines))
+
     for name, stub in (("_call_categorize_model", categorize),
-                       ("_call_csv_mapping_model", map_columns)):
+                       ("_call_csv_mapping_model", map_columns),
+                       ("_call_screenshot_model", read_shots)):
         original = getattr(ai, name)
         setattr(ai, name, stub)
         context.add_cleanup(setattr, ai, name, original)
 
     context.accounts, context.baseline, context.mapped_rows = {}, {}, None
+    context.screenshot_calls, context.screenshot_lines = [], []
 
 
 @given("no Anthropic API key is set")
@@ -308,7 +315,7 @@ def when_uploading_elsewhere(context, who):
 
 @when("user {who:Who} uploads a file that is not a statement to {acct:Q}")
 def when_uploading_junk(context, who, acct):
-    _upload(context, _account(context, acct), b"\x89PNG\r\n\x1a\nnot a statement", "photo.png")
+    _upload(context, _account(context, acct), b"%PDF-1.7\n\x00\x01binary", "statement.pdf")
 
 
 @when("unchecks {description:Q} and applies")
@@ -442,6 +449,7 @@ def then_unreadable(context, who):
     assert context.response.status_code == 400, context.response.status_code
     assert "This file could not be read" in _body(context)
     assert context.mapped_rows is None, "a binary file was sent to the model"
+    assert context.screenshot_calls == [], "a binary file was sent to the model"
     assert 'data-line="' not in _body(context), "a review table was rendered"
 
 
@@ -524,3 +532,90 @@ def then_converted(context, description, acct):
 def then_only_one(context, acct, amount):
     rows = _transfer_legs(_account(context, acct), amount)
     assert len(rows) == 1, rows
+
+
+# ── #447: screenshots ───────────────────────────────────────────────────────
+
+# A PNG signature is all image_type() checks; the stubbed seam never decodes it.
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+
+
+def _shot_line(description, amount, way, when, legible=True, year=True):
+    return ai._ScreenshotLine(month=when.month, day=when.day,
+                              year=when.year if year else None, description=description,
+                              amount=amount, direction=way, legible=legible)
+
+
+@given("a screenshot of {acct:Q} shows {description:Q} for ${amount:Amt} {way:Way} {when:Rel}")
+def given_screenshot(context, acct, description, amount, way, when):
+    context.shot_account = acct
+    # Banking apps rarely print the year; the scenario's dates are recent, so
+    # leaving it out exercises resolve_date() without changing the answer.
+    context.screenshot_lines.append(_shot_line(description, amount, way, when, year=False))
+
+
+@given("it shows {description:Q} for ${amount:Amt} {way:Way} {when:Rel}, cut off")
+def given_cut_off(context, description, amount, way, when):
+    context.screenshot_lines.append(
+        _shot_line(description, amount, way, when, legible=False, year=False))
+
+
+@given("a screenshot of {acct:Q} shows {description:Q} dated a few days from now, with no year")
+def given_future_day(context, acct, description):
+    # ⚠️ Never Feb 29: the year before has none, so resolve_date() would
+    # correctly refuse it and this scenario would fail one day in four years.
+    day = date.today() + timedelta(days=3)
+    if (day.month, day.day) == (2, 29):
+        day += timedelta(days=1)
+    context.shot_account, context.future_day = acct, day
+    context.screenshot_lines.append(_shot_line(description, "9.99", "out", day, year=False))
+
+
+@given("reading screenshots fails")
+def given_reading_fails(context):
+    def broken(images, today, api_key):
+        context.screenshot_calls.append(images)
+        raise ai.ParseError("model unavailable")
+    original = ai._call_screenshot_model
+    ai._call_screenshot_model = broken
+    context.add_cleanup(setattr, ai, "_call_screenshot_model", original)
+
+
+@when("user {who:Who} uploads the screenshot")
+def when_uploading_screenshot(context, who):
+    _upload(context, _account(context, context.shot_account), PNG, "shot.png")
+
+
+@when("user {who:Who} uploads a screenshot to {acct:Q}")
+def when_uploading_a_screenshot(context, who, acct):
+    _upload(context, _account(context, acct), PNG, "shot.png")
+
+
+@then("{description:Q} is shown flagged and unchecked")
+def then_flagged(context, description):
+    _i, status, html = _row_for(context, description)
+    assert "data-uncertain" in html, f"{description!r} is not flagged"
+    assert 'name="apply"' in html, "it can still be ticked by hand"
+    assert not re.search(r'name="apply"[^>]*\bchecked\b', html)
+
+
+@then("{description:Q} is dated a year before that day")
+def then_last_year(context, description):
+    i, _status, html = _row_for(context, description)
+    day = context.future_day
+    expected = day.replace(year=day.year - 1)
+    assert f'name="date_{i}" value="{expected.isoformat()}"' in html, html
+
+
+@then("no balance comparison is shown")
+def then_no_balance(context):
+    body = _body(context)
+    assert "Added 1 transaction" in body, "the apply did not land"
+    assert "closing balance" not in body
+
+
+@then("user {who:Who} is told the screenshots could not be read")
+def then_shots_unreadable(context, who):
+    assert context.response.status_code == 400, context.response.status_code
+    assert "These screenshots could not be read" in _body(context)
+    assert len(context.screenshot_calls) == 1, "the model was asked once"
