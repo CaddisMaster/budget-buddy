@@ -25,7 +25,7 @@ from werkzeug.datastructures import MultiDict
 
 from app import ai
 from tests.features.support import _pattern, _user
-from tests.helpers import _connection, create_account
+from tests.helpers import _connection, create_account, create_transfer
 
 
 @_pattern(r"\d+(?:\.\d{2})?")
@@ -167,11 +167,18 @@ class _ReviewForm(HTMLParser):
             self._select = None
 
 
-def _apply(context, uncheck=()):
+def _apply(context, uncheck=(), choose=None):
+    """Submit the review as rendered, optionally unticking lines, or setting
+    one line's category select to `choose` = (description, value) and ticking it."""
     form = _ReviewForm()
     form.feed(_body(context))
     skip = {str(_row_for(context, d)[0]) for d in uncheck}
     data = [(k, v) for k, v in form.fields if not (k == "apply" and v in skip)]
+    if choose:
+        i = str(_row_for(context, choose[0])[0])
+        data = [(k, v) for k, v in data
+                if k != f"category_{i}" and not (k == "apply" and v == i)]
+        data += [(f"category_{i}", choose[1]), ("apply", i)]
     context.response = context.client.post("/transactions/import/apply", data=MultiDict(data),
                                            follow_redirects=True)
 
@@ -450,3 +457,70 @@ def then_import_404(context):
     status = context.client.get("/transactions/import").status_code
     assert status == 404, status
 
+
+
+# ── #446: transfers ─────────────────────────────────────────────────────────
+
+def _transfer_legs(account_id, amount):
+    return _sql("SELECT id, transaction_type, transaction_date, is_transfer, transfer_group_id, "
+                "description FROM transactions WHERE account_id = %s AND amount = %s",
+                (account_id, amount))
+
+
+@given("{acct:Q} has nothing for ${amount:Amt}")
+def given_nothing_for(context, acct, amount):
+    assert _transfer_legs(_account(context, acct), amount) == []
+
+
+@given("a transfer of ${amount:Amt} from {src:Q} to {dst:Q} {when:Rel} exists")
+def given_existing_transfer(context, amount, src, dst, when):
+    create_transfer(_user(context, "A")["id"], _account(context, src),
+                    _account(context, dst), amount, when)
+
+
+@when("user {who:Who} records {description:Q} as a transfer from {acct:Q}")
+def when_recording_transfer(context, who, description, acct):
+    context.execute_steps(f"When user {who} uploads it")
+    _apply(context, choose=(description, f"xfer:{_account(context, acct)}"))
+
+
+@when("user {who:Who} records {description:Q} as a transfer from user B's main account")
+def when_recording_foreign_transfer(context, who, description):
+    context.execute_steps(f"When user {who} uploads it")
+    _apply(context, choose=(description, f"xfer:{context.users['b']['account_id']}"))
+
+
+@then("a transfer of ${amount:Amt} from {src:Q} to {dst:Q} {when:Rel} has been added")
+def then_transfer_added(context, amount, src, dst, when):
+    out = _transfer_legs(_account(context, src), amount)
+    into = _transfer_legs(_account(context, dst), amount)
+    assert len(out) == 1 and len(into) == 1, (out, into)
+    assert out[0][1] == "expense" and into[0][1] == "income"
+    assert out[0][2] == into[0][2] == when
+    assert out[0][4] is not None and out[0][4] == into[0][4], "the legs are not linked"
+    context.transfer_group = into[0][4]
+
+
+@then("neither leg counts as spending or income")
+def then_neither_counts(context):
+    flags = _sql("SELECT is_transfer FROM transactions WHERE transfer_group_id = %s",
+                 (context.transfer_group,))
+    assert flags == [(True,), (True,)], flags
+
+
+@then("{description:Q} has become the {acct:Q} leg of that transfer")
+def then_converted(context, description, acct):
+    rows = _sql("SELECT is_transfer, transfer_group_id, category_id FROM transactions "
+                "WHERE account_id = %s AND description = %s",
+                (_account(context, acct), description))
+    assert len(rows) == 1, rows
+    is_transfer, group, category = rows[0]
+    assert is_transfer and group is not None, rows
+    legs = _sql("SELECT account_id FROM transactions WHERE transfer_group_id = %s", (group,))
+    assert sorted(a for (a,) in legs) == sorted(context.accounts.values()), legs
+
+
+@then("{acct:Q} holds only one ${amount:Amt} row")
+def then_only_one(context, acct, amount):
+    rows = _transfer_legs(_account(context, acct), amount)
+    assert len(rows) == 1, rows

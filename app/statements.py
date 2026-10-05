@@ -442,3 +442,22 @@ def adjustments_within(ledger, start, end):
     lines would count it twice. Shown as a warning, never acted on."""
     return [r for r in ledger
             if r.is_adjustment and start <= r.transaction_date <= end]
+
+
+def find_counterpart(line, rows, used=()):
+    """The other account's existing plain row that a transfer line should pair
+    with (#446), or None. Same amount, OPPOSITE direction (money into the card
+    is money out of checking), within ±MATCH_DAYS, closest date first; never a
+    row that is already a transfer leg or an adjustment, nor one in `used`.
+
+    The ONE place this rule lives: the review calls it to show the pairing, and
+    apply calls it again inside its write transaction to perform it, so what
+    is shown and what is done cannot drift apart."""
+    opposite = "in" if line.direction == "out" else "out"
+    candidates = [r for r in rows
+                  if not r.is_transfer and not r.is_adjustment and r.id not in used
+                  and _direction(r) == opposite
+                  and Decimal(r.amount) == line.amount
+                  and _days(line, r) <= MATCH_DAYS]
+    candidates.sort(key=lambda r: (_days(line, r), r.id))
+    return candidates[0] if candidates else None

@@ -18,6 +18,7 @@ from app.statements import (
     csv_ref,
     csv_rows,
     decode,
+    find_counterpart,
     looks_binary,
     looks_like_ofx,
     match_lines,
@@ -351,3 +352,37 @@ def test_a_binary_file_is_recognised_before_anything_reads_it():
     assert looks_binary(decode(b"%PDF-1.7\n\x00binary"))
     assert not looks_binary("Date,Description,Amount\r\n2026-09-01,x\t1,-1\n")
     assert not looks_binary(OFX_SGML)
+
+
+# ── find_counterpart (#446) ─────────────────────────────────────────────────
+
+Other = namedtuple("Other", "id account_id transaction_date amount transaction_type "
+                            "is_transfer is_adjustment description")
+
+
+def _other(id, when, amount, kind="expense", transfer=False, adjustment=False):
+    return Other(id, 99, when, Decimal(amount), kind, transfer, adjustment, "x")
+
+
+def test_a_counterpart_runs_the_opposite_way_for_the_same_amount():
+    """Money INTO the card is money OUT of checking."""
+    line = _line(D, "500", "in")
+    assert find_counterpart(line, [_other(1, D, "500", "expense")]).id == 1
+    assert find_counterpart(line, [_other(1, D, "500", "income")]) is None
+    assert find_counterpart(line, [_other(1, D, "499.99", "expense")]) is None
+
+
+def test_a_counterpart_is_within_three_days_and_the_closest_wins():
+    line = _line(_on(10), "500", "in")
+    # The closest row has the MIDDLE id, so neither id order can pick it by
+    # accident (the first version of this test let a reverse-id sort pass).
+    rows = [_other(1, _on(7), "500"), _other(2, _on(11), "500"), _other(3, _on(13), "500")]
+    assert find_counterpart(line, rows).id == 2
+    assert find_counterpart(line, [_other(3, _on(14), "500")]) is None
+
+
+def test_a_counterpart_is_never_a_transfer_leg_an_adjustment_or_already_used():
+    line = _line(D, "500", "in")
+    assert find_counterpart(line, [_other(1, D, "500", transfer=True)]) is None
+    assert find_counterpart(line, [_other(1, D, "500", adjustment=True)]) is None
+    assert find_counterpart(line, [_other(1, D, "500")], used={1}) is None
