@@ -136,8 +136,11 @@
   **PURE DEPLOY DIR — NO git, NO source**, just `docker-compose.yml`, `.env` and `sql/`.
   (`landing/` was here until #299 moved the page to its own repo and its own web root under
   `/var/www`.) To change compose or add a migration, `scp` it up — `git pull` doesn't work there.
-  ⚠️ **The Mac has no clone**, so the compose file goes through RUNBOOK §5's recipe: a download pinned to a
-  tag, checked against a hash taken from the repo at both ends (#432). #433 would automate it.
+  ✅ **Since #433 `release.yml` and `rollback.yml` ship `docker-compose.yml` themselves**, hash-checked
+  by `scripts/install_compose.sh`, before their first compose command. A release whose file would
+  **recreate the `db` container fails before the swap** (RUNBOOK §5 has the guard and what to do).
+  Hand copies are break-glass only. ⚠️ **The Mac has no clone**, so a hand copy uses RUNBOOK §5's
+  tag-pinned, hash-checked recipe (#432).
   It is owned by an unprivileged **`deploy`** user (docker group, no sudo) that CI authenticates
   as. It moved from `/root/budget-buddy` on 2026-07-27 — a non-root user cannot own or traverse
   `/root`, and serving the landing page from in there had forced `/root` to `0755`, leaving the

@@ -36,6 +36,15 @@ this project uses the `0.x` versioning scheme described in
   throughout. The runbook now downloads the file pinned to the release and
   checks its fingerprint against the repository at both ends. The same applies
   to the rollback steps. (#432)
+- **Deploys and rollbacks now copy the compose file to the server
+  themselves**, so it always matches the version being run. The copy is checked
+  by fingerprint before anything is swapped, and a mismatch stops the deploy.
+  A rollback brings the older version's file, which makes rolling back past
+  the 0.12.0 scheduler split safe without a manual step first. Two
+  safeguards come with it. A release that would restart the database
+  container stops before the swap, because changing the database is a planned
+  job and should never be a side effect. And a service removed from the file
+  is now actually stopped, where it used to keep running. (#433)
 
 ## [0.12.0] - 2026-10-05
 

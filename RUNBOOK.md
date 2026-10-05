@@ -49,8 +49,8 @@ firewall notwithstanding. Keep the loopback prefix on every port mapping.
 ```
 /opt/budget-buddy/
 ├── .env                  # secrets; never in git; captured by the nightly backup
-├── docker-compose.yml    # identical to the repo's tracked compose
-├── sql/                  # migrations, copied up by hand when one is needed
+├── docker-compose.yml    # the deployed tag's tracked file; release.yml/rollback.yml ship it (#433)
+├── sql/                  # only schema.sql matters (fresh-volume init); migrations run from the image
 └── backups/              # ad-hoc pre-migration dumps
 ```
 
@@ -308,11 +308,37 @@ volumes:
   postgres_data:
 ```
 
-The deployed file **is** the repository's tracked `docker-compose.yml`, `scp`-ed up — that is
-what makes copying it safe. The block above is that file with its (long) comments stripped
-for reading, so check it by hash, not by eye.
+The deployed file **is** the repository's tracked `docker-compose.yml` at the deployed tag. The
+block above is that file with its (long) comments stripped for reading, so check it by hash,
+not by eye.
 
-### Copying the compose file up (#432)
+### The pipeline ships it (#433)
+
+**`release.yml` and `rollback.yml` copy the file themselves**, before their first compose
+command. Release takes it from the tagged checkout it builds from; rollback reads the
+**target** tag's file with `git show`, so a rollback brings the compose file that matched that
+image. Both stream it to `.docker-compose.yml.new` and pipe in `scripts/install_compose.sh`,
+which:
+
+1. refuses the file unless its sha256 equals the runner's (`hash mismatch`), and installs nothing;
+2. **refuses a release that would recreate the `db` container**: it compares the config hash
+   compose would compute for `db` under the new file with the `com.docker.compose.config-hash`
+   label on the running container. That label is the exact thing `up -d` compares, so a mismatch
+   there means a recreate here. A rollback only **warns**, and its `up` skips `db`
+   (`--no-deps`, every service but `db`);
+3. renames it over `docker-compose.yml`, so a dropped connection leaves only a stray `.new`.
+
+Both deploys also pass `--remove-orphans`. A service dropped from the file (rolling back past
+#402 drops `worker`) would otherwise keep its container running. Verified 2026-10-05.
+
+**When a release changes `db`**, the deploy fails before anything swaps. Apply the change as the
+scheduled operation in "changing the `db` service at all" below, using the manual copy that
+follows for the file, then re-run the failed job. The guard then passes, because the running
+`db` now matches.
+
+### Copying the compose file up by hand (#432) — break-glass
+
+Only for the scheduled db change above, or when Actions is unavailable.
 
 🛑 **There is no clone on the Mac.** Development happens in the `jupiter` VM, and the Droplet is
 unreachable from there, so the file goes VM → GitHub → Mac → Droplet. At the 0.12.0 deploy an
@@ -347,7 +373,7 @@ command on the box: the release or rollback workflow's own `up -d` uses the file
 
 - **Pin the URL to a tag, never `main`.** The file must match the image you're deploying.
 - **Never copy `docker-compose.override.yml`** (see below).
-- #433 would make the pipeline copy the file itself. Until then, this is the only path.
+- Since #433 this is the break-glass path, not the normal one.
 
 ### Three services from one image, plus Redis (#402)
 
@@ -362,23 +388,22 @@ restarting it just resets the limits.
 - ⚠️ **Exactly one process may run the scheduler.** Two would run every job twice. That's
   why the worker count lives in this file beside the switch, and not in the image: the image's
   own default is still **one** worker with the scheduler in-process.
-- **Rolling out #402:** copy this file up (recipe above). Order against the release doesn't matter.
-  - New image + old file: identical to before (1 worker, in-process scheduler). But
-    `release.yml` step 3c **fails** the release ("the worker reports ''"), because there's no
-    worker service. Copy the file up and re-run the failed job. ✅ That's what happened at
-    0.12.0, and the re-run went green.
-  - Old image + new file: see the rollback note below.
+- **Rolling out #402** (history: 0.12.0, before #433). The file was copied up by hand, and the
+  first deploy failed at step 3c ("the worker reports ''") because the Droplet still held the
+  old file. After the copy, re-running the failed job went green. Since #433 the release ships
+  the file, so this can't recur.
   - After it's up: `docker compose ps` shows `worker` and `redis`, and
     `docker compose logs worker` says `Scheduler running: weekly_digest, daily_tasks` (or
     only `daily_tasks` without a Resend key). "A live thread beats a set env var" now means
     **a running `worker` container**. `/settings` → Scheduled jobs still reports each job's
     last run from `job_runs`.
-- 🛑 **Rolling back to a release older than #402 needs the pre-#402 compose file.** An old
-  image ignores `SCHEDULER_IN_PROCESS`, so **each of `web`'s 2 gunicorn workers starts a
-  scheduler** (duplicate digests and reminders), and `worker` crash-loops because the old image
-  has no `run-scheduler`. `rollback.yml` only warns. **Restore the old file first** using the
-  recipe above with the **rollback target's tag** (for example `v0.11.0`, whose file hashes to
-  `df162302…`), then dispatch the rollback. There's no `git show` on the Mac: it has no clone.
+- ✅ **Rolling back to a release older than #402 needs the pre-#402 compose file, and since
+  #433 the rollback brings it.** With the new file, an old image ignores `SCHEDULER_IN_PROCESS`,
+  so **each of `web`'s 2 gunicorn workers starts a scheduler** (duplicate digests and
+  reminders). `rollback.yml` now installs the target tag's file, which runs one worker. Its
+  `--remove-orphans` removes the new `worker` container, which a plain `up -d` would have
+  left scheduling beside it. **Untested against production**: the first real rollback past
+  #402 is the check. Afterwards, `docker compose ps` should show no `worker` and no `redis`.
 
 ### ⚠️ `TAG` has no default, deliberately (#190)
 
@@ -466,7 +491,7 @@ docker compose ps --format '{{.Service}} {{.Image}}'   # note the web VERSION
 # 3. Apply. ⚠️ ALWAYS pass TAG — see the warning below; a bare `up -d` silently
 #    reverts the app. NEVER `docker compose pull` here either: the image is
 #    pinned and already local, and a bare pull is what issue #22 exists to
-#    prevent. (copy docker-compose.yml up first: §5's recipe, no Mac clone)
+#    prevent. (copy docker-compose.yml up first: §5's break-glass recipe, no Mac clone)
 TAG=<the version currently running> docker compose up -d
 
 # 4. Verify.

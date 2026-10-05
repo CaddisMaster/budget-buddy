@@ -46,13 +46,31 @@ jobs:
           fi
           echo "Found ghcr.io/caddismaster/budget-buddy:${VERSION}"
 
-      - name: Deploy that version
+      # #433 — the rollback brings the TARGET version's docker-compose.yml, so
+      # the file always matches the image. Before this, rolling back past #402
+      # meant restoring the old file by hand first, or every gunicorn worker in
+      # the old image started its own scheduler (RUNBOOK §5).
+      #
+      # The checkout is this workflow's own ref, for scripts/install_compose.sh
+      # (an older tag predates it). The compose file comes from the target tag,
+      # read with `git show`, hence the full history.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Read the target version's docker-compose.yml
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          # Fails, before anything touches the Droplet, if the version has no tag.
+          git show "v${VERSION}:docker-compose.yml" > "$RUNNER_TEMP/docker-compose.yml"
+          echo "v${VERSION}'s docker-compose.yml is $(sha256sum "$RUNNER_TEMP/docker-compose.yml" | cut -d' ' -f1)"
+
+      - name: Install the deploy key
         env:
           SSH_KEY: ${{ secrets.DROPLET_SSH_KEY }}
           KNOWN_HOSTS: ${{ secrets.DROPLET_KNOWN_HOSTS }}
-          HOST: ${{ secrets.DROPLET_HOST }}
-          USER_NAME: ${{ vars.DROPLET_USER }}
-          VERSION: ${{ inputs.version }}
         run: |
           install -d -m 700 ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
@@ -60,6 +78,31 @@ jobs:
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
+      # Before the deploy step, which is the first to run a compose command.
+      # Rollback mode only WARNS if the target defines db differently, because
+      # the deploy step below never touches db.
+      - name: Ship that version's docker-compose.yml
+        env:
+          HOST: ${{ secrets.DROPLET_HOST }}
+          USER_NAME: ${{ vars.DROPLET_USER }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          EXPECTED="$(sha256sum "$RUNNER_TEMP/docker-compose.yml" | cut -d' ' -f1)"
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+              "${USER_NAME}@${HOST}" \
+              "umask 022 && cat > /opt/budget-buddy/.docker-compose.yml.new" \
+              < "$RUNNER_TEMP/docker-compose.yml"
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+              "${USER_NAME}@${HOST}" \
+              "cd /opt/budget-buddy && sh -s -- '${EXPECTED}' '${VERSION}' rollback" \
+              < scripts/install_compose.sh
+
+      - name: Deploy that version
+        env:
+          HOST: ${{ secrets.DROPLET_HOST }}
+          USER_NAME: ${{ vars.DROPLET_USER }}
+          VERSION: ${{ inputs.version }}
+        run: |
           # `pull web` only — a rollback must not drag the database engine along
           # with it. See release.yml.
           #
@@ -79,7 +122,15 @@ jobs:
                mv .env.tmp .env
                echo \"pinned \$(grep '^TAG=' .env)\"
                TAG='${VERSION}' docker compose pull web
-               TAG='${VERSION}' docker compose up -d
+
+               # #433 — every service EXCEPT db, with --no-deps so db is never
+               # recreated even when the target defines it differently (the ship
+               # step warned if so). --remove-orphans is load-bearing for a
+               # rollback past #402: the target's file has no worker, and an
+               # orphaned new-image worker left running would schedule every job
+               # alongside the old image's in-process scheduler.
+               SERVICES=\"\$(TAG='${VERSION}' docker compose config --services | grep -vx db | tr '\\n' ' ')\"
+               TAG='${VERSION}' docker compose up -d --no-deps --remove-orphans \$SERVICES
 
                # #305 — confirm the container that came up IS the version asked
                # for. A rollback is the case where guessing is least acceptable,
@@ -112,14 +163,15 @@ jobs:
                  echo \"running version \$RUNNING (matches ${VERSION})\"
                fi
 
-               # The worker (#402) is WARNED about, never failed on. Rolling back
-               # to an image older than #402 leaves it crash-looping, because that
-               # image has no \`run-scheduler\`, and then no scheduled job runs.
-               # RUNBOOK §5: restore the pre-#402 compose file for such a rollback.
-               # Failing here mid-incident would help nobody.
-               WORKER=\"\$(docker compose exec -T worker printenv APP_VERSION | tr -d '\r')\"
-               if [ \"\$WORKER\" != \"\$RUNNING\" ]; then
-                 echo \"::warning::The worker reports '\$WORKER' while web reports '\$RUNNING'. Scheduled jobs may not be running: see RUNBOOK §5 on rolling back across #402.\"
+               # The worker (#402) is WARNED about, never failed on: failing
+               # mid-incident would help nobody. A target older than #402 has no
+               # worker service at all (its image schedules in-process), so there
+               # is nothing to compare; since #433 its own compose file says so.
+               if TAG='${VERSION}' docker compose config --services | grep -qx worker; then
+                 WORKER=\"\$(docker compose exec -T worker printenv APP_VERSION | tr -d '\r')\"
+                 if [ \"\$WORKER\" != \"\$RUNNING\" ]; then
+                   echo \"::warning::The worker reports '\$WORKER' while web reports '\$RUNNING'. Scheduled jobs may not be running.\"
+                 fi
                fi
 
                docker compose ps"
