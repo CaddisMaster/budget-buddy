@@ -5,10 +5,48 @@
 
 ## Current Status
 
-▶️ **NEXT SESSION: #433** (`0.13.0`) — make the deploy and rollback workflows copy
-`docker-compose.yml` to the Droplet themselves, with a hash check that fails before the swap.
-**#36** stays date-parked. Prod runs **`0.12.0`** (2026-10-05). ⚠️ The `Acceptance criteria`
-check is **still not a required status check** (last re-checked 2026-10-02).
+▶️ **NEXT SESSION: release `0.13.0`** (milestone 18/0). 🛑 **Before or at the deploy, add RUNBOOK
+§3's Nginx `location = /transactions/import { client_max_body_size 16m; }` block on the Droplet**,
+or screenshot import fails with a 413. **#36** stays date-parked. Prod runs **`0.12.0`**
+(2026-10-05). ⚠️ The `Acceptance criteria` check is **still not a required status check** (last
+re-checked 2026-10-02).
+
+### The 2026-10-05 evening: the compose file ships itself, and statement import
+
+On `main`, **not deployed**. Ships with `0.13.0`:
+
+| PR | Issue | |
+|---|---|---|
+| #443 | **#433** | release/rollback copy `docker-compose.yml` themselves (`scripts/install_compose.sh`), hash-checked, refusing a release that would recreate `db`; `--remove-orphans` |
+| #448 | **#444** | `sql/40`: `transactions.import_ref` + partial unique `(account_id, import_ref)`. Additive, before-pull |
+| #449 | **#445** | statement import: OFX/QFX/CSV → review → apply. Reverses the standing "CSV import" rejection |
+| #450 | **#446** | statement transfer lines → transfer pairs, converting an existing plain row into the second leg |
+| #451 | **#447** | statement import from screenshots (Sonnet 5, Sean's call) |
+| this PR | **#452** | this record |
+
+- 🛑 **#433 found two compose behaviours the issue hadn't considered**, both checked in a scratch
+  project. `up -d web` **recreates a changed dependency**, so an automated copy could recreate
+  `db` as a side effect. The guard compares `config --hash db` with the running container's
+  `com.docker.compose.config-hash` label, which is exactly what `up -d` compares. And **a service
+  removed from the file keeps running**: on a rollback past #402 the new `worker` would have
+  scheduled beside the old image. Hence `--remove-orphans`. Sean chose fail-the-release for `db`.
+- **Statement import was Sean's idea**, from how he catches up: pasting statements into a session.
+  The design rule is *the model reads, the app decides, the person confirms*. `statements.py` is
+  pure and holds every decision. Lines go through `match_lines`, and the second leg of a transfer
+  through `find_counterpart`, the one rule called by both the review and apply. ⚠️ **"CSV import"
+  was on the do-not-build list** with no recorded reason; Sean reversed it explicitly (Standing
+  decisions, below).
+- ⚠️ **About 65 mutants across #444–#447, each run against both runners.** Four survivors were
+  **duplicate guards**, and they were deleted, not tested, `user_id` in #444's index among them.
+  One "closest wins" fixture was vacuous twice. The real gaps got tests. Writing a Feb 29 test
+  found a real bug: a yearless "Feb 29" seen on Jan 1 2029 was dropped.
+- ⚠️ **The dev container carries a real `ANTHROPIC_API_KEY`.** Adding a third seam left one
+  scenario unstubbed, and it attempted a real call. Every import stub now covers all three seams.
+- **Real-model checks** (cents): Haiku mapped a Discover-style CSV with a preamble and positive
+  purchases correctly. Sonnet 5 read a mock banking-app screenshot exactly in 6.4 s, `+$2,150.00`
+  included, and the line already in the ledger matched.
+- 🛑 **Nginx's 1 MB default** (no `client_max_body_size` in prod) refuses phone screenshots before
+  the app sees them. RUNBOOK §3's scoped block is a **manual 0.13.0 deploy step**, not yet done.
 
 ### The 2026-10-05 afternoon: a release nobody's phone heard, and what it took to see why
 
