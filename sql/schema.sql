@@ -125,6 +125,9 @@ CREATE TABLE public.transactions (
     -- is declared further down, since `schedules` is created after this table.
     schedule_id integer,
     transfer_group_id integer,
+    -- The statement reference a row was imported from, e.g. an OFX FITID
+    -- (#444, sql/40). NULL for hand-entered rows and everything predating it.
+    import_ref character varying(255),
     user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT valid_transaction_type CHECK (transaction_type IN ('expense', 'income'))
 );
@@ -141,6 +144,11 @@ CREATE INDEX idx_transactions_transfer_group_id ON transactions (transfer_group_
 -- The daily variable-bill pass looks rows up BY schedule (#191, sql/35), and the
 -- FK's ON DELETE SET NULL scans this column too.
 CREATE INDEX transactions_schedule_idx ON transactions (schedule_id);
+-- A statement reference is imported at most once per account (#444, sql/40).
+-- Partial: only imported rows carry one.
+CREATE UNIQUE INDEX transactions_import_ref_uniq
+    ON transactions (account_id, import_ref)
+    WHERE import_ref IS NOT NULL;
 
 -- ------------------------------------------------------------
 -- Budgets
