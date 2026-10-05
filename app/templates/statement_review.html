@@ -3,6 +3,10 @@
 {% block page_heading %}<h1>Review statement</h1>{% endblock %}
 {% block content %}
 {# #445 — one row per statement line, marked by what the ledger already holds.
+   #446 — every missing or possible line's select also offers "Record as a
+   transfer" with each other account. A transfer-looking line whose other leg
+   already sits in another account as a plain row comes preselected and ticked,
+   naming that row; apply re-finds it by the same rule (find_counterpart).
    Only lines that need a decision carry hidden fields; apply re-validates every
    one of them. Recorded lines carry nothing, so they cannot be added. #}
 <p>
@@ -46,7 +50,7 @@
         {% if r.status != 'recorded' %}
         <input type="checkbox" name="apply" value="{{ i }}" id="apply-{{ i }}"
                aria-label="{{ 'Mark posted' if r.status == 'pending' else 'Add' }}: {{ r.line.description }}"
-               {% if r.status == 'pending' or (r.status == 'missing' and not r.transfer_like) %}checked{% endif %}>
+               {% if r.status == 'pending' or (r.status == 'missing' and (not r.transfer_like or i in pairings)) %}checked{% endif %}>
         <input type="hidden" name="date_{{ i }}" value="{{ r.line.date.isoformat() }}">
         <input type="hidden" name="amount_{{ i }}" value="{{ r.line.amount }}">
         <input type="hidden" name="direction_{{ i }}" value="{{ r.line.direction }}">
@@ -63,6 +67,7 @@
         {% elif r.status == 'pending' %}Pending in the ledger: tick to mark it posted
         {% elif r.status == 'possible' %}Possible match: {{ r.match.description or 'untitled' }}, ${{ r.match.amount|money }} on {{ r.match.transaction_date.strftime('%b %d') }}
         {% else %}Missing{% if r.transfer_like %} <span class="recurring-badge" data-transfer-like>looks like a transfer</span>{% endif %}
+        {% if i in pairings %}{% set p = pairings[i] %}<br><span class="field-hint" data-pairs-with="{{ p.id }}">Pairs with {{ p.description or 'an entry' }} in {{ account_names[p.account_id] }} on {{ p.transaction_date.strftime('%b %d') }}</span>{% endif %}
         {% endif %}
       </td>
       <td>
@@ -71,8 +76,16 @@
         <select name="category_{{ i }}" aria-label="Category for {{ r.line.description }}">
           <option value="">-- no category --</option>
           {% for c in cats %}
-          <option value="{{ c.id }}" {% if suggested.get(i) == c.id %}selected{% endif %}>{{ c.name }}</option>
+          <option value="{{ c.id }}" {% if suggested.get(i) == c.id and i not in pairings %}selected{% endif %}>{{ c.name }}</option>
           {% endfor %}
+          {% if other_accounts %}
+          {# #446 — choosing an account records the line as a transfer with it. #}
+          <optgroup label="Record as a transfer {{ 'from' if r.line.direction == 'in' else 'to' }}">
+            {% for a in other_accounts %}
+            <option value="xfer:{{ a.account_id }}" {% if i in pairings and pairings[i].account_id == a.account_id %}selected{% endif %}>{{ a.account_name }}</option>
+            {% endfor %}
+          </optgroup>
+          {% endif %}
         </select>
         {% endif %}
       </td>

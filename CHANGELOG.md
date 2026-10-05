@@ -20,6 +20,14 @@ this project uses the `0.x` versioning scheme described in
   already covered part of the gap. Importing the same statement again adds
   nothing. The file is never kept. For a CSV, only its first few rows are sent
   to the AI to work out the columns. (#445)
+- **A payment between your own accounts can be imported as a transfer.** In
+  the statement review, any line's category list now also offers "Record as a
+  transfer" with each of your other accounts. Both sides are recorded as a
+  linked transfer, so it counts as neither spending nor income. If the other
+  account already has that money as an ordinary entry, such as a "Visa
+  payment" in checking, that entry becomes the other side instead of being
+  added twice. A payment line whose other side already exists comes pre-set
+  and ticked, and the review names the entry it will pair with. (#446)
 - **The database can now remember which bank statement a transaction came
   from.** Nothing uses this yet; it prepares for filling in missing
   transactions from a statement export, where it lets a second import of the

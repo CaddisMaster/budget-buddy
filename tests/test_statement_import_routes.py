@@ -238,3 +238,108 @@ def test_the_writes_are_not_found_without_ai(client_a, checking, monkeypatch, pa
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     resp = client_a.post(path, data={"account_id": str(checking)})
     assert resp.status_code == 404
+
+
+
+# ── #446: transfers ─────────────────────────────────────────────────────────
+
+PAYMENT = (TODAY - timedelta(days=2), "PAYMENT - THANK YOU", "500.00")
+
+
+def _plain(account_id, user_id, amount, days_ago, kind="expense", description="Visa payment",
+           category_id=None):
+    with db_cursor(commit=True) as cur:
+        cur.execute("INSERT INTO transactions (amount, description, account_id, transaction_date, "
+                    "transaction_type, category_id, user_id) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id",
+                    (amount, description, account_id, TODAY - timedelta(days=days_ago), kind,
+                     category_id, user_id))
+        return cur.fetchone().id
+
+
+@pytest.fixture
+def visa(users):
+    return create_account(users["a"]["id"], "Visa", "Credit Card")
+
+
+def _line_row(body, description):
+    return re.search(r'<tr data-line="\d+" data-status="\w+">(?:(?!</tr>).)*'
+                     + re.escape(description) + r'(?:(?!</tr>).)*</tr>', body, re.S).group(0)
+
+
+def test_a_transfer_line_with_a_counterpart_comes_preselected_and_ticked(
+        client_a, users, checking, visa, ai_stubbed):
+    row_id = _plain(checking, users["a"]["id"], "500.00", 3)
+    body = _upload(client_a, visa, _csv(PAYMENT)).get_data(as_text=True)
+    line = _line_row(body, "PAYMENT - THANK YOU")
+    assert f'data-pairs-with="{row_id}"' in line
+    assert f'value="xfer:{checking}" selected' in line
+    assert re.search(r'name="apply"[^>]*\bchecked\b', line)
+
+
+def test_without_a_counterpart_a_transfer_line_waits_for_a_choice(
+        client_a, checking, visa, ai_stubbed):
+    body = _upload(client_a, visa, _csv(PAYMENT)).get_data(as_text=True)
+    line = _line_row(body, "PAYMENT - THANK YOU")
+    assert "data-pairs-with" not in line and "selected>" not in line.split("optgroup")[-1]
+    assert not re.search(r'name="apply"[^>]*\bchecked\b', line)
+    assert f'value="xfer:{checking}"' in line, "the choice is still offered"
+
+
+TRANSFER = {"date": PAYMENT[0].isoformat(), "amount": "500.00", "direction": "in",
+            "description": "PAYMENT - THANK YOU", "ref": "csv:pay"}
+
+
+def test_a_transfer_with_the_import_account_itself_is_refused(client_a, visa, ai_stubbed):
+    _apply(client_a, visa, line_0={**TRANSFER, "category": f"xfer:{visa}"})
+    assert _rows(visa) == []
+    assert "1 line could not be added" in _flashes(client_a)
+
+
+@pytest.mark.parametrize("value", ["xfer:", "xfer:abc", "xfer:1.5"])
+def test_a_malformed_transfer_choice_is_refused(client_a, visa, ai_stubbed, value):
+    _apply(client_a, visa, line_0={**TRANSFER, "category": value})
+    assert _rows(visa) == []
+
+
+def test_applying_a_transfer_twice_leaves_no_lone_leg(client_a, checking, visa, ai_stubbed):
+    for _ in range(2):
+        _apply(client_a, visa, line_0={**TRANSFER, "category": f"xfer:{checking}"})
+    assert len(_rows(visa)) == 1
+    assert len(_rows(checking)) == 1, "the second apply made a leg with no partner"
+
+
+def test_two_lines_never_claim_the_same_counterpart(client_a, users, checking, visa, ai_stubbed):
+    _plain(checking, users["a"]["id"], "500.00", 2)
+    second = {**TRANSFER, "ref": "csv:pay2"}
+    _apply(client_a, visa, line_0={**TRANSFER, "category": f"xfer:{checking}"},
+           line_1={**second, "category": f"xfer:{checking}"})
+    rows = _rows(checking)
+    assert len(rows) == 2, "one converted, one inserted"
+    with db_cursor() as cur:
+        cur.execute("SELECT count(DISTINCT transfer_group_id) AS groups FROM transactions "
+                    "WHERE account_id = %s", (checking,))
+        assert cur.fetchone().groups == 2
+
+
+def test_a_converted_row_loses_its_category(client_a, users, checking, visa, ai_stubbed):
+    """A transfer has no category, and a categorised leg would still show up
+    wherever spending is grouped by category."""
+    row_id = _plain(checking, users["a"]["id"], "500.00", 3,
+                    category_id=users["a"]["category_id"])
+    _apply(client_a, visa, line_0={**TRANSFER, "category": f"xfer:{checking}"})
+    with db_cursor() as cur:
+        cur.execute("SELECT is_transfer, category_id FROM transactions WHERE id = %s", (row_id,))
+        row = cur.fetchone()
+    assert row.is_transfer is True and row.category_id is None
+    assert "1 paired with an entry already in the other account" in _flashes(client_a)
+
+
+def test_the_review_never_pairs_two_lines_with_one_entry(client_a, users, checking, visa,
+                                                         ai_stubbed):
+    """Two $500 payments, one $500 entry in checking: only the first line can
+    claim it, or the review would promise the same entry twice."""
+    row_id = _plain(checking, users["a"]["id"], "500.00", 2)
+    body = _upload(client_a, visa, _csv(PAYMENT, (PAYMENT[0], "AUTOPAY PAYMENT", "500.00"))
+                   ).get_data(as_text=True)
+    assert body.count(f'data-pairs-with="{row_id}"') == 1

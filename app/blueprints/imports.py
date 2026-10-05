@@ -48,10 +48,12 @@ from app.statements import (
     MATCH_DAYS,
     MAX_FILE_BYTES,
     REF_MAX,
+    Line,
     StatementError,
     adjustments_within,
     csv_rows,
     decode,
+    find_counterpart,
     looks_binary,
     looks_like_ofx,
     match_lines,
@@ -130,6 +132,37 @@ def _ledger(account_id, start, end):
         return cursor.fetchall()
 
 
+def _other_rows(account_id, start, end):
+    """Every row in the user's OTHER accounts around the statement period: the
+    candidates a transfer line could pair with (#446)."""
+    with db_cursor() as cursor:
+        cursor.execute(
+            "SELECT id, account_id, transaction_date, amount, transaction_type, "
+            "description, is_transfer, is_adjustment "
+            "FROM transactions "
+            "WHERE user_id = %s AND account_id <> %s "
+            "AND transaction_date BETWEEN %s AND %s "
+            "ORDER BY transaction_date, id",
+            (current_user.id, account_id,
+             start - timedelta(days=MATCH_DAYS), end + timedelta(days=MATCH_DAYS)))
+        return cursor.fetchall()
+
+
+def _pairings(reviews, other_rows):
+    """For each missing line that looks like a transfer, the other account's
+    plain row it would pair with, keyed by line index. Each row pairs with at
+    most one line, in statement order."""
+    pairs, used = {}, set()
+    for r in reviews:
+        if r.status != 'missing' or not r.transfer_like:
+            continue
+        row = find_counterpart(r.line, other_rows, used)
+        if row is not None:
+            pairs[r.index] = row
+            used.add(row.id)
+    return pairs
+
+
 def _categories():
     with db_cursor() as cursor:
         cursor.execute(
@@ -199,6 +232,10 @@ def import_scan():
     reviews = match_lines(statement.lines, ledger)
     categories = _categories()
     suggested, suggest_failed = _suggest(reviews, categories)
+    pairings = _pairings(reviews, _other_rows(account.account_id,
+                                              statement.start, statement.end))
+    other_accounts = [a for a in _accounts(current_user.id)
+                      if a.account_id != account.account_id]
 
     counts = {s: sum(1 for r in reviews if r.status == s)
               for s in ('recorded', 'pending', 'possible', 'missing')}
@@ -210,6 +247,9 @@ def import_scan():
         counts=counts,
         suggested=suggested,
         suggest_failed=suggest_failed,
+        pairings=pairings,
+        other_accounts=other_accounts,
+        account_names={a.account_id: a.account_name for a in other_accounts},
         expense_categories=[c for c in categories if c.kind == 'expense'],
         income_categories=[c for c in categories if c.kind == 'income'],
         adjustments=adjustments_within(ledger, statement.start, statement.end),
@@ -232,14 +272,25 @@ def _posted_line(form, i):
     ref = (form.get(f'ref_{i}') or '').strip() or None
     if ref is not None and len(ref) > REF_MAX:
         return None
+    # The category select doubles as the transfer choice (#446): "xfer:<id>"
+    # records the line as a transfer with that account instead of a category.
+    choice = (form.get(f'category_{i}') or '').strip()
+    transfer_account = None
+    if choice.startswith('xfer:'):
+        transfer_account = parse_int_param(choice[5:])
+        if transfer_account is None:
+            return None
+        choice = ''
     return {
         'date': when,
         'amount': amount,
+        'direction': direction,
         'type': 'income' if direction == 'in' else 'expense',
         'description': (form.get(f'description_{i}') or '').strip()[:DESCRIPTION_MAX],
         'ref': ref,
-        'category_id': parse_int_param(form.get(f'category_{i}')),
+        'category_id': parse_int_param(choice),
         'pending_id': parse_int_param(form.get(f'pending_{i}')),
+        'transfer_account': transfer_account,
     }
 
 
@@ -270,6 +321,56 @@ def _balance_message(account_id, closing_raw, end_raw):
             f"on {when}.")
 
 
+def _record_transfer(cursor, account_id, line):
+    """Record one statement line as a transfer pair (#446). Returns
+    (transfers made, of which paired with an existing row).
+
+    The import account's leg carries the line's import_ref, so a re-import
+    recognises it. ON CONFLICT means an already-imported line makes nothing at
+    all, never a lone second leg. The other leg is the existing plain row
+    `find_counterpart()` picks (the same rule the review showed), converted in
+    place; only when there is none is a new row inserted. No `used` set is
+    needed here: a row converted for an earlier line is already a transfer leg
+    when the next line re-reads the account, and find_counterpart skips those
+    (a mutation pass showed a set here changed nothing)."""
+    other = line['transfer_account']
+    cursor.execute("SELECT nextval('transfer_group_seq') AS gid")
+    gid = cursor.fetchone().gid
+    cursor.execute(
+        "INSERT INTO transactions (amount, description, account_id, transaction_date, "
+        "transaction_type, is_transfer, transfer_group_id, import_ref, user_id) "
+        "VALUES (%s, %s, %s, %s, %s, true, %s, %s, %s) "
+        "ON CONFLICT (account_id, import_ref) WHERE import_ref IS NOT NULL DO NOTHING",
+        (line['amount'], line['description'], account_id, line['date'], line['type'],
+         gid, line['ref'], current_user.id))
+    if cursor.rowcount == 0:
+        return 0, 0
+
+    as_line = Line(line['date'], Decimal(f"{line['amount']:.2f}"), line['direction'],
+                   line['description'], line['ref'])
+    # FOR UPDATE: two applies racing must not both convert the same row.
+    cursor.execute(
+        "SELECT id, transaction_date, amount, transaction_type, is_transfer, is_adjustment "
+        "FROM transactions WHERE user_id = %s AND account_id = %s "
+        "AND transaction_date BETWEEN %s AND %s FOR UPDATE",
+        (current_user.id, other, line['date'] - timedelta(days=MATCH_DAYS),
+         line['date'] + timedelta(days=MATCH_DAYS)))
+    row = find_counterpart(as_line, cursor.fetchall())
+    if row is not None:
+        cursor.execute(
+            "UPDATE transactions SET is_transfer = true, transfer_group_id = %s, "
+            "category_id = NULL WHERE id = %s AND user_id = %s AND account_id = %s",
+            (gid, row.id, current_user.id, other))
+        return 1, 1
+    cursor.execute(
+        "INSERT INTO transactions (amount, description, account_id, transaction_date, "
+        "transaction_type, is_transfer, transfer_group_id, user_id) "
+        "VALUES (%s, %s, %s, %s, %s, true, %s, %s)",
+        (line['amount'], line['description'], other, line['date'],
+         'expense' if line['type'] == 'income' else 'income', gid, current_user.id))
+    return 1, 0
+
+
 @bp.route('/transactions/import/apply', methods=['POST'])
 @limiter.limit("10 per minute")
 @login_required
@@ -288,6 +389,20 @@ def import_apply():
         else:
             lines.append(line)
 
+    # A transfer's other account must be the user's own, checked before any
+    # write: naming someone else's account is a 404, as it is for the import
+    # account itself. Naming the import account is just an unusable line.
+    owned = {a.account_id for a in _accounts(current_user.id)}
+    for line in list(lines):
+        other = line['transfer_account']
+        if other is None:
+            continue
+        if other not in owned:
+            abort(404)
+        if other == account.account_id:
+            lines.remove(line)
+            rejected += 1
+
     # Ownership of every posted category, before any write (the IDOR guard
     # shared with the Add Transaction form).
     with db_cursor() as cursor:
@@ -296,10 +411,15 @@ def import_apply():
                     cursor, current_user.id, line['category_id'], None):
                 line['category_id'] = None
 
-    added = posted = 0
+    added = posted = transfers = paired = 0
     try:
         with db_cursor(commit=True) as cursor:
             for line in lines:
+                if line['transfer_account'] is not None:
+                    made, joined = _record_transfer(cursor, account.account_id, line)
+                    transfers += made
+                    paired += joined
+                    continue
                 if line['pending_id'] is not None:
                     # The ledger already holds it as pending: clear the flag
                     # rather than add a second row. Scoped to this user AND this
@@ -328,8 +448,14 @@ def import_apply():
         flash(GENERIC_ERROR)
         return redirect(url_for('imports.import_form', account=account.account_id))
 
-    parts = [f"Added {added} transaction{'s' if added != 1 else ''} "
-             f"to {account.account_name}."]
+    parts = []
+    if added or not (transfers or posted):
+        parts.append(f"Added {added} transaction{'s' if added != 1 else ''} "
+                     f"to {account.account_name}.")
+    if transfers:
+        parts.append(f"Recorded {transfers} transfer{'s' if transfers != 1 else ''}"
+                     + (f", {paired} paired with an entry already in the other account."
+                        if paired else "."))
     if posted:
         parts.append(f"Marked {posted} pending transaction{'s' if posted != 1 else ''} posted.")
     if rejected:
