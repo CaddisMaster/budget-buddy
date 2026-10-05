@@ -960,6 +960,27 @@ body.bulk-mode td.bulk-col { cursor: pointer; } /* whole cell toggles the box */
 .whatsnew-head { display: flex; align-items: center; gap: 0.6rem; }
 .whatsnew-actions { margin-left: auto; display: flex; gap: 0.4rem; }
 .whatsnew-body { margin-top: 1rem; }
+
+/* #437 — Home's prompt for a device that has fallen off push, and Profile's
+   list of registered devices. Both lean on the `hidden` attribute, which push.js
+   flips; an element given `display` here must restate [hidden] or it wins. */
+.push-nudge { padding: 0.8rem 1rem; margin-bottom: 1.25rem; border-left: 3px solid var(--accent); }
+.push-nudge[hidden] { display: none; }
+.push-nudge-text { font-size: 14px; margin: 0 0 0.7rem; }
+.push-nudge-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.push-nudge-status { font-size: 12px; color: var(--text-muted); margin: 0.5rem 0 0; }
+.push-nudge-status:empty { display: none; }
+.push-devices-head { font-size: 13px; font-weight: 600; margin: 1.2rem 0 0.4rem; }
+.push-devices { list-style: none; margin: 0; padding: 0; }
+.push-device { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.5rem 0; border-top: 1px solid var(--border); }
+.push-device-text { display: flex; flex-direction: column; min-width: 0; font-size: 14px; }
+.push-device-name { font-weight: 500; overflow-wrap: anywhere; }
+.push-device-this { font-size: 12px; color: var(--accent); }
+.push-device-this[hidden] { display: none; }
+.push-device-seen { font-size: 12px; color: var(--text-muted); }
+.push-device form { margin: 0; }
+.push-device form[hidden] { display: none; }
+.push-devices-note { font-size: 12px; color: var(--text-muted); margin: 0.6rem 0 0; }
 .whatsnew-block > strong { display: block; margin-bottom: 0.35rem; }
 .whatsnew-block + .whatsnew-block { border-top: 1px solid var(--border); margin-top: 1rem; padding-top: 1rem; }
 .whatsnew-list { margin: 0; padding-left: 1.2rem; color: var(--text-muted); font-size: 14px; line-height: 1.7; }

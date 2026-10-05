@@ -1,0 +1,8 @@
+{# #437 — what push.js needs, as data rather than inline script (CSP, #403).
+   Included by Profile and by Home; push.js does nothing on a page without it. #}
+<div id="push-config" hidden
+     data-key="{{ push_public_key }}"
+     data-subscribe-url="{{ url_for('push.subscribe') }}"
+     data-unsubscribe-url="{{ url_for('push.unsubscribe') }}"
+     data-seen-url="{{ url_for('push.seen') }}"></div>
+<script src="{{ url_for('static', filename='push.js') }}" defer></script>
