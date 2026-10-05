@@ -272,13 +272,18 @@ escape hatch when you already know a stray import is there and want the test sig
 Fail-fast was chosen over warn-and-continue deliberately: a warning you can ignore is a
 warning you *will* ignore, which is how this reached CI to begin with.
 
-- ⚠️ **The ruff version is pinned in TWO files and they must agree** —
-  `requirements-dev.txt` and the `version:` input of `astral-sh/ruff-action` in
-  `ci.yml`. The action installs the *newest* ruff when given no version, so leaving CI
-  unpinned means a ruff release can turn CI red against code `./test.sh` just passed —
-  giving back the exact property this change exists to establish.
-  `tests/test_lint_local.py::test_the_two_ruff_pins_agree` asserts the equality, so
-  bumping ruff means editing both files and no test.
+- ⚠️ **The ruff version is pinned in ONE file: `requirements-dev.txt`** (#426). CI's
+  `astral-sh/ruff-action` reads it with `version-file:`; it used to carry its own
+  `version:` literal, and `.pre-commit-config.yaml` a third as ruff-pre-commit's `rev:`.
+  Dependabot edits `requirements-dev.txt` only, so six groups in a row (#285 … #419)
+  went red on the equality test and needed a hand-made commit. The action installs the
+  *newest* ruff when unpinned, and **`version-file` fails open** — on a parse failure it
+  warns and installs `latest` in a green job — so the Lint job's next step compares the
+  action's `ruff-version` output with the pin and fails otherwise.
+  `test_lint_local.py` executes that step's script (pin, newer, missing) and sweeps every
+  config file for a second pin, with the real one as its positive control. The
+  pre-commit ruff hook was dropped rather than kept in step: pre-commit was not installed
+  in the working clone, and `./test.sh` lints first.
 - ⚠️ **The `exec` and the `flock` are untouched.** Ruff runs *before* the `exec`, so the
   lock on fd 9 is held across it and inherited by pytest exactly as before — verified:
   a second run is still refused, and `kill -9` on an in-flight run still frees the lock.
@@ -482,7 +487,7 @@ anon → 302. What each file covers:
 - `test_bcrypt_cost.py` — #384: test users are hashed at bcrypt cost 4 (read from the stored hash) and the app still hashes at 12. ⚠️ **The first test is the load-bearing one**: Flask-Bcrypt reads `BCRYPT_LOG_ROUNDS` once in `init_app`, so the obvious fix, setting it in the `app` fixture, is a silent no-op. Verified: that mutant leaves the test red with `$2b$12$`. Its third test guards the override's `tcp_tw_reuse` sysctl (see "Which tests get behave") and skips in the image, where `.dockerignore` drops the override. ⚠️ Mutate it by setting the value to `0`, not by deleting the line: an empty `sysctls:` block fails compose validation, so `./test.sh` never reaches pytest and the "mutant" proves nothing
 - `test_criteria_check.py` — #358: `scripts/check_criteria.py` with no network (`run()` is handed the bodies `fetch_from_github()` would return). Carries the `criterion` markers for #358's own three scenarios, and `test_this_repos_own_claims_are_found` proves the collectors read the real tree, since every other test could pass against a scanner that finds nothing here. ⚠️ Each guard was mutated separately; two survived at first, and both were gaps in the test fixtures, not the script. The Gherkin comment in the fixture was indented, so it never looked like a heading either way. And the scenario-tagged case was the LAST scenario, so a leaking tag had nothing to leak onto. Both fixtures now make the failure observable
 - `test_behave_harness.py` — #356: the behave wiring, one acceptance criterion per test. ⚠️ **The zero-scenario guards RUN the wrapper** in a subprocess against features written into `tmp_path` (behave's step registry is process-global, so in-process runs would collide), with a positive control first. Verified red, each separately: disabling the zero guard, counting `feature.scenarios` (misses `Rule:` blocks), dropping `exit 1` or the bare-behave ban from `test.sh`, dropping CI's behave step, `set -e` or the shipped-image probe, and borrowing pytest's prefix. Two of those first survived and exposed real defects — the `set -e` check matched its own comment, and `with_rules=True` would have *overcounted* (it adds Rule objects, which have a status)
-- `test_lint_local.py` — #264: that `./test.sh` lints before it tests. The **load-bearing one is `test_the_two_ruff_pins_agree`**, which asserts `requirements-dev.txt` and `ci.yml` name the same ruff version — stated as an equality between the two files rather than as a literal, so a bump edits both files and no test. Also: ruff runs BEFORE the `exec` (asserted as two *positions*, since a `ruff check` placed after it would satisfy a substring assertion and never run), a lint failure exits non-zero, `SKIP_LINT=1` exists, the container probe covers ruff and not just pytest, and #206's `flock` is still taken before the lint. ⚠️ Every test SKIPS when its file is absent, naming `.dockerignore` — **`test.sh` is genuinely stripped from the shipped image**, and this change touches `requirements*.txt` and `tests/`, so the in-image run really happens. Verified red: all 7 fail against the pre-fix files
+- `test_lint_local.py` — #264: that `./test.sh` lints before it tests. The **load-bearing ones are the single-pin tests (#426)**: CI reads `requirements-dev.txt` through `version-file:`, the step that checks the version CI ran is executed against three cases, and a sweep fails on any second ruff pin. A bump edits one line and no test. Also: ruff runs BEFORE the `exec` (asserted as two *positions*, since a `ruff check` placed after it would satisfy a substring assertion and never run), a lint failure exits non-zero, `SKIP_LINT=1` exists, the container probe covers ruff and not just pytest, and #206's `flock` is still taken before the lint. ⚠️ Every test SKIPS when its file is absent, naming `.dockerignore` — **`test.sh` is genuinely stripped from the shipped image**, and this change touches `requirements*.txt` and `tests/`, so the in-image run really happens. Verified red: all 7 fail against the pre-fix files
 - `test_deploy_pinning.py` — #190: the compose image ref has **no `:-` default of any kind** (the property, not the string) and errors naming `TAG`; `.env.example` carries a `TAG=` line; both workflows rewrite the pin, `chmod 600` **before** the write, and the release pins **before** its first compose command. ⚠️ Every test SKIPS when the file it reads is absent, naming `.dockerignore` — `docker-compose*.yml` and `.env.*` are genuinely excluded from the shipped image (#176). Verified red against the pre-fix compose file
 - `test_model_constants.py` — #140: which model each beat runs on, **and the request
   parameters the Sonnet 5 move made load-bearing**. Beyond the two constant scenarios it

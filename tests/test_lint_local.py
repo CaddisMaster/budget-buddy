@@ -8,9 +8,10 @@ whole pipeline re-ran for a one-line fix.
 
 These are assertions about the FILES that drive the two runs, since nothing here
 can start a container or a workflow. The load-bearing one is
-`test_the_two_ruff_pins_agree`: pinning ruff locally while CI installs whatever
-is newest gives back the very property this issue exists to establish — that a
-green local run predicts a green remote one.
+`test_ci_reads_the_ruff_version_from_requirements_dev` (#426, which replaced
+the two- then three-way pin comparison): pinning ruff locally while CI installs
+whatever is newest gives back the very property this issue exists to establish —
+that a green local run predicts a green remote one.
 
 ⚠️ Every test that reads a repo file SKIPS when the file is absent, naming
 `.dockerignore`, per the #176 convention in `test_deploy_pinning.py`. **`test.sh`
@@ -21,6 +22,7 @@ change touches, so that run really happens. `requirements-dev.txt` and
 """
 import ast
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -36,15 +38,22 @@ _NOT_IN_IMAGE = "not present in the shipped image — .dockerignore excludes it"
 
 # `ruff==0.16.3`, ignoring any comment line that happens to mention ruff.
 _REQ_PIN = re.compile(r"^ruff==(?P<version>\S+)\s*$", re.M)
-# The `version:` input of the ruff action, which is the only pinned version in
-# ci.yml's lint job.
+# The `version:` input of the ruff action. Since #426 there must be NONE: CI
+# reads requirements-dev.txt instead. Kept so the test can say so.
 # Any ref, and an optional trailing comment: since #405 the action is pinned
-# `@<sha> # v3.6.1`, and test_pinned_dependencies.py owns whether it is pinned.
-_ACTION_PIN = re.compile(r"astral-sh/ruff-action@\S+[ \t]*(?:#[^\n]*)?\n\s*with:\s*\n(?:\s*#.*\n)*\s*version:\s*(?P<version>\S+)")
-# The `rev:` of the ruff-pre-commit repo. Tagged `vX.Y.Z` against the bare
-# `X.Y.Z` the other two use, so the leading `v` is stripped before comparing.
-_PRE_COMMIT_PIN = re.compile(
-    r"repo:\s*https://github\.com/astral-sh/ruff-pre-commit\s*\n(?:\s*#.*\n)*\s*rev:\s*v?(?P<version>\S+)")
+# `@<sha> # v4.1.0`, and test_pinned_dependencies.py owns whether it is pinned.
+_ACTION_WITH = re.compile(
+    r"astral-sh/ruff-action@\S+[ \t]*(?:#[^\n]*)?\n\s*with:\s*\n(?P<inputs>(?:[ \t]+\S.*\n)+)")
+# Any spelling of a ruff version pin a config file could carry: a requirement
+# specifier, or the ruff-pre-commit repo (whose `rev:` is one). A `version:`
+# input on the action is the third, matched inside its `with:` block only —
+# `version:` alone is in dependabot.yml and half the actions in ci.yml.
+_ANY_RUFF_PIN = re.compile(r"^\s*(?:ruff\s*(?:==|~=|>=|<=|!=)|.*ruff-pre-commit)", re.M)
+_ACTION_VERSION = re.compile(r"^\s*version:", re.M)
+
+# The step that proves the version CI ran is the pinned one. Its `run:` block
+# is EXECUTED below rather than read, so a test cannot agree with a broken script.
+_VERIFY_STEP = "Ruff ran the pinned version"
 
 
 def _requirements_pin():
@@ -53,19 +62,26 @@ def _requirements_pin():
     return m.group("version")
 
 
-def _action_pin():
-    m = _ACTION_PIN.search(CI_WF.read_text())
-    assert m, "ci.yml's ruff-action step no longer carries a `version:` input"
-    return m.group("version")
+def _ruff_action_inputs():
+    m = _ACTION_WITH.search(CI_WF.read_text())
+    assert m, "ci.yml no longer runs astral-sh/ruff-action with a `with:` block"
+    return m.group("inputs")
 
 
-def _pre_commit_pin():
-    m = _PRE_COMMIT_PIN.search(PRE_COMMIT.read_text())
-    assert m, ".pre-commit-config.yaml no longer pins ruff-pre-commit with a `rev:`"
-    return m.group("version")
+def _step_run_block(name):
+    """The body of a ci.yml step's `run: |` block, dedented."""
+    lines = CI_WF.read_text().splitlines()
+    at = next(i for i, line in enumerate(lines) if line.strip() == f"- name: {name}")
+    run_at = next(i for i in range(at, len(lines)) if lines[i].strip() == "run: |")
+    body = []
+    for line in lines[run_at + 1:]:
+        if line.strip() and not line.startswith(" " * 10):
+            break
+        body.append(line[10:])
+    return "\n".join(body)
 
 
-# --- The version pins ------------------------------------------------------
+# --- The version pin ---------------------------------------------------------
 
 @pytest.mark.skipif(not REQUIREMENTS_DEV.exists(), reason=_NOT_IN_IMAGE)
 def test_ruff_is_pinned_for_the_dev_container():
@@ -74,39 +90,103 @@ def test_ruff_is_pinned_for_the_dev_container():
     assert _requirements_pin()
 
 
-@pytest.mark.skipif(
-    not (REQUIREMENTS_DEV.exists() and CI_WF.exists() and PRE_COMMIT.exists()),
-    reason=_NOT_IN_IMAGE,
-)
-def test_all_three_ruff_pins_agree():
-    """⚠️ The load-bearing one.
+@pytest.mark.criterion(426, "CI lints with the version requirements-dev.txt pins")
+@pytest.mark.skipif(not CI_WF.exists(), reason=_NOT_IN_IMAGE)
+def test_ci_reads_the_ruff_version_from_requirements_dev():
+    """One pin, read — not two, compared.
 
-    `astral-sh/ruff-action` installs the LATEST ruff when given no `version:`.
-    Left that way, a ruff release that adds or tightens a rule turns CI red
-    against code the local run just passed — which is the failure #264 exists to
-    remove, reintroduced through the half nobody was looking at. Stated as an
-    equality between the files rather than as a literal version, so bumping ruff
-    means changing all of them and this test does not need editing.
-
-    ⚠️ THIS COMPARED TWO OF THREE until #309 tranche 10, and was named for it.
-    `.pre-commit-config.yaml` pins ruff a THIRD time, as the `rev:` of
-    ruff-pre-commit — and it had drifted to v0.14.5 against the other two on
-    0.16.4. That copy is the one that runs `--fix`, so the oldest ruff in the
-    project was the one EDITING code while the newest judged it.
-
-    Same shape as `seed_dev.WIPE_ORDER` (tranche 7) and `AI_SURFACES` (tranche
-    5): a guard over a hand-maintained set can only ever fail for the members
-    somebody remembered to add, so it goes quiet as the project grows rather
-    than red. Enumerated here so a fourth copy is a visible edit to this list.
+    `astral-sh/ruff-action` installs the LATEST ruff when given no version, so a
+    ruff release that tightens a rule would turn CI red against code `./test.sh`
+    just passed — the failure #264 exists to remove. Until #426 CI carried its
+    own `version:` literal, which Dependabot cannot see; six groups in a row
+    went red on it (#285 … #419) and each needed the same hand-made commit.
     """
-    pins = {
-        "requirements-dev.txt": _requirements_pin(),
-        ".github/workflows/ci.yml": _action_pin(),
-        ".pre-commit-config.yaml": _pre_commit_pin(),
-    }
-    assert len(set(pins.values())) == 1, (
-        "these pin different ruff versions, so a local run no longer predicts "
-        f"CI: {pins}"
+    inputs = _ruff_action_inputs()
+    assert re.search(r"^\s*version-file:\s*requirements-dev\.txt\s*$", inputs, re.M), (
+        "the ruff action must read its version from requirements-dev.txt"
+    )
+    assert not re.search(r"^\s*version:", inputs, re.M), (
+        "ci.yml pins ruff a second time with `version:` — a copy Dependabot "
+        "cannot update"
+    )
+    assert re.search(r"^\s*id:\s*ruff\s*$",
+                     CI_WF.read_text().split("astral-sh/ruff-action@")[0].rsplit("- name:", 1)[1],
+                     re.M), "the ruff step needs `id: ruff` so its version output can be read"
+
+
+@pytest.mark.criterion(426, "CI lints with the version requirements-dev.txt pins")
+@pytest.mark.skipif(not CI_WF.exists(), reason=_NOT_IN_IMAGE)
+@pytest.mark.parametrize("ran, passes", [
+    ("0.16.9", True),       # the pin
+    ("0.16.10", False),     # `latest`, the action's documented fallback
+    ("", False),            # the install failed and set no output
+])
+def test_ci_fails_unless_the_ruff_it_ran_is_the_pin(tmp_path, ran, passes):
+    """⚠️ `version-file` FAILS OPEN: the action's own docs say that if parsing
+    fails it "warns and falls back to `latest`". A warning in a green job is
+    exactly the silent unpin #264 closed, so the step after it compares the
+    version the action reports installing against the pin and fails otherwise.
+
+    The step's script is run here, not read. Against a fixture pin of 0.16.9,
+    so the rows do not need editing on a bump.
+    """
+    script = _step_run_block(_VERIFY_STEP)
+    assert "RUFF_RAN" in script, "the verify step no longer reads the action's output"
+    (tmp_path / "requirements-dev.txt").write_text("# a comment naming ruff==9.9.9\nruff==0.16.9\n")
+    result = subprocess.run(["bash", "-e", "-c", script], cwd=tmp_path,
+                            env={"PATH": "/usr/bin:/bin", "RUFF_RAN": ran},
+                            capture_output=True, text=True)
+    assert (result.returncode == 0) is passes, result.stdout + result.stderr
+
+
+@pytest.mark.skipif(not CI_WF.exists(), reason=_NOT_IN_IMAGE)
+def test_the_verify_step_fails_with_no_pin(tmp_path):
+    """A requirements file that stopped pinning ruff must fail the step, not
+    compare an empty string with an empty output and pass."""
+    (tmp_path / "requirements-dev.txt").write_text("pytest==9.1.1\n")
+    result = subprocess.run(["bash", "-e", "-c", _step_run_block(_VERIFY_STEP)], cwd=tmp_path,
+                            env={"PATH": "/usr/bin:/bin", "RUFF_RAN": ""},
+                            capture_output=True, text=True)
+    assert result.returncode != 0
+
+
+@pytest.mark.criterion(426, "A Dependabot ruff bump needs no hand-made follow-up")
+@pytest.mark.skipif(not REQUIREMENTS_DEV.exists(), reason=_NOT_IN_IMAGE)
+def test_requirements_dev_is_the_only_ruff_pin():
+    """Replaces `test_all_three_ruff_pins_agree` (#309 tranche 10 → #426).
+
+    That test compared three copies and was right every time it failed — the
+    mechanism was the problem, not the guard. Dependabot's pip group edits
+    `requirements-dev.txt` alone, so a bump is one edit only if nothing else
+    names a version. The ruff-pre-commit hook was the third copy; pre-commit
+    was not installed in the working clone, and `./test.sh` lints first (#264),
+    so the hook was dropped rather than kept in step.
+
+    Swept over every config file rather than the two known ones: a guard over a
+    hand-maintained list only fails for the members someone remembered to add.
+    ⚠️ The positive control is requirements-dev.txt itself — if the sweep stops
+    matching its pin, it would pass against any number of copies.
+    """
+    candidates = [REQUIREMENTS_DEV, REPO_ROOT / "requirements.txt", PRE_COMMIT,
+                  REPO_ROOT / "pyproject.toml", REPO_ROOT / "Dockerfile", TEST_SH,
+                  *sorted((REPO_ROOT / ".github").rglob("*.yml"))]
+    hits = {}
+    for path in candidates:
+        if path.exists():
+            text = "\n".join(line for line in path.read_text().splitlines()
+                              if not line.lstrip().startswith("#")) + "\n"
+            found = _ANY_RUFF_PIN.findall(text)
+            found += [f"ruff-action {v.strip()}" for block in _ACTION_WITH.finditer(text)
+                      for v in _ACTION_VERSION.findall(block.group("inputs"))]
+            if found:
+                hits[str(path.relative_to(REPO_ROOT))] = found
+    assert "requirements-dev.txt" in hits, (
+        "the sweep no longer finds the real pin — it is broken, and would pass "
+        "against any number of copies"
+    )
+    assert list(hits) == ["requirements-dev.txt"] and len(hits["requirements-dev.txt"]) == 1, (
+        f"ruff is pinned in more than one place: {hits}. Dependabot updates "
+        "requirements-dev.txt only, so every other copy goes stale on the next bump."
     )
 
 
