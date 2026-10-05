@@ -171,16 +171,16 @@ jobs:
     # so no un-gated job in this repo can read the SSH key.
     environment: production
     steps:
-      - name: Deploy over SSH
+      # #433 — the release's own docker-compose.yml travels with it. Same commit
+      # the image was built from, so the file and the image cannot disagree.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install the deploy key
         env:
           SSH_KEY: ${{ secrets.DROPLET_SSH_KEY }}
           KNOWN_HOSTS: ${{ secrets.DROPLET_KNOWN_HOSTS }}
-          HOST: ${{ secrets.DROPLET_HOST }}
-          # A variable, not a secret: the username is not sensitive, and as a
-          # secret Actions redacted the literal string "deploy" throughout the
-          # logs — including inside ordinary words ("Verify the ***ed app").
-          USER_NAME: ${{ vars.DROPLET_USER }}
-          VERSION: ${{ needs.build-push.outputs.version }}
         run: |
           install -d -m 700 ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
@@ -190,6 +190,37 @@ jobs:
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
+      # #433 — BEFORE the deploy step, because that step's first compose command
+      # (the pg_dump) already reads this file. Until now it only arrived by a hand
+      # scp from the Mac, and at 0.12.0 the Droplet still held the previous
+      # release's file (#432). scripts/install_compose.sh checks the hash, refuses
+      # a release that would recreate the db container, and renames into place.
+      - name: Ship the release's docker-compose.yml
+        env:
+          HOST: ${{ secrets.DROPLET_HOST }}
+          USER_NAME: ${{ vars.DROPLET_USER }}
+          VERSION: ${{ needs.build-push.outputs.version }}
+        run: |
+          EXPECTED="$(sha256sum docker-compose.yml | cut -d' ' -f1)"
+          echo "shipping docker-compose.yml ${EXPECTED} from $(git rev-parse --short HEAD)"
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+              "${USER_NAME}@${HOST}" \
+              "umask 022 && cat > /opt/budget-buddy/.docker-compose.yml.new" \
+              < docker-compose.yml
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+              "${USER_NAME}@${HOST}" \
+              "cd /opt/budget-buddy && sh -s -- '${EXPECTED}' '${VERSION}' release" \
+              < scripts/install_compose.sh
+
+      - name: Deploy over SSH
+        env:
+          HOST: ${{ secrets.DROPLET_HOST }}
+          # A variable, not a secret: the username is not sensitive, and as a
+          # secret Actions redacted the literal string "deploy" throughout the
+          # logs — including inside ordinary words ("Verify the ***ed app").
+          USER_NAME: ${{ vars.DROPLET_USER }}
+          VERSION: ${{ needs.build-push.outputs.version }}
+        run: |
           # Order is load-bearing and the two directions are opposites:
           #   dump -> additive migrations -> pull -> up -> destructive migrations
           # Additive changes must land BEFORE the new image, because new code
@@ -255,8 +286,10 @@ jobs:
                  -e DB_HOST=db web python scripts/migrate.py --phase before-pull
 
                # 3. Only now swap the application.
+               #    --remove-orphans: a service gone from the new file would
+               #    otherwise keep running its old container (#433).
                TAG='${VERSION}' docker compose pull web
-               TAG='${VERSION}' docker compose up -d
+               TAG='${VERSION}' docker compose up -d --remove-orphans
 
                # 3b. Assert the container that came up IS this release, before
                #    anything irreversible happens below (#305). Ordering is
@@ -281,12 +314,12 @@ jobs:
                #    reason as 3b: an old worker still SELECTing a table step 4
                #    drops is #277's outage. If the Droplet still has the
                #    pre-#402 compose file there is no worker service at all.
-               #    Then this fails the release, naming the fix. The new image
-               #    is already serving by then, on the pre-#402 path (one
-               #    gunicorn worker, scheduler in-process), which is safe.
+               #    Since #433 the deploy ships its own file, so that should no
+               #    longer happen; if it does, the ship step above did not do
+               #    its job, and this still fails before step 4.
                WORKER=\"\$(docker compose exec -T worker printenv APP_VERSION | tr -d '\r')\"
                if [ \"\$WORKER\" != '${VERSION}' ]; then
-                 echo \"::error::The worker reports '\$WORKER', not ${VERSION}. If it is empty, the Droplet's docker-compose.yml predates #402: scp the current one up (RUNBOOK §5) and re-run.\"
+                 echo \"::error::The worker reports '\$WORKER', not ${VERSION}. If it is empty, the Droplet's docker-compose.yml has no worker service: check what the ship step installed.\"
                  exit 1
                fi
                echo \"worker version \$WORKER (matches ${VERSION})\"
