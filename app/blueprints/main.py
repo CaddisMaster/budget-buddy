@@ -18,6 +18,8 @@ from app.blueprints.insights import (
 from app.blueprints.transactions import compute_next_due
 from app.db import db_cursor
 from app.helpers import ai_enabled, parse_month_param, recent_months
+from app.pusher import public_key as push_public_key
+from app.pusher import push_enabled
 
 bp = Blueprint('main', __name__)
 
@@ -635,7 +637,21 @@ def index():
                             / last_year_expenses * 100, 1),
         }
 
+    # #437 — Home carries the "this device isn't getting notifications"
+    # prompt only for an account that has turned push on SOMEWHERE. Whether
+    # THIS device is one of them only the browser knows, so the prompt is
+    # rendered hidden and push.js decides. An account that never subscribed is
+    # never nagged.
+    push_nudge = False
+    if push_enabled():
+        with db_cursor() as cursor:
+            cursor.execute("SELECT EXISTS (SELECT 1 FROM push_subscriptions "
+                           "WHERE user_id = %s) AS any_device", (current_user.id,))
+            push_nudge = cursor.fetchone().any_device
+
     return render_template('dashboard.html',
+        push_nudge=push_nudge,
+        push_public_key=push_public_key() if push_nudge else None,
         summary=summary,
         yoy=yoy,
         spending_data=spending_data,

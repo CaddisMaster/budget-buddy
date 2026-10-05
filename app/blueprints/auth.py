@@ -4,6 +4,7 @@ from flask import Blueprint, flash, redirect, render_template, request, session,
 from flask_login import current_user, login_required, login_user, logout_user
 
 from app import bcrypt, limiter
+from app.blueprints.push import UNKNOWN_DEVICE, endpoint_fingerprint
 from app.db import db_cursor
 from app.github import feedback_enabled
 from app.mailer import mail_enabled
@@ -12,6 +13,27 @@ from app.pusher import public_key as push_public_key
 from app.pusher import push_enabled
 
 bp = Blueprint('auth', __name__)
+
+
+def _seen_phrase(seen_on, today):
+    """How Profile describes a device's last_seen_at (#437). NULL is every row
+    that predates sql/39: nothing is known about it, and this says so rather
+    than inventing a date."""
+    if seen_on is None:
+        return 'Not seen since tracking began'
+    days = (today - seen_on).days
+    if days <= 0:
+        return 'Last seen today'
+    if days == 1:
+        return 'Last seen yesterday'
+    return f"Last seen {seen_on.strftime('%b')} {seen_on.day}, {seen_on.year}"
+
+
+def _push_device_row(row):
+    return {'id': row.id,
+            'label': row.device_label or UNKNOWN_DEVICE,
+            'seen': _seen_phrase(row.seen_on, row.today),
+            'fingerprint': endpoint_fingerprint(row.endpoint)}
 
 # Deliberately loose — just enough to reject obvious typos ("no @" / "no dot");
 # real validity is proven by whether Resend can deliver.
@@ -75,13 +97,20 @@ def profile():
         acct_count = cursor.fetchone()[0]
         cursor.execute("SELECT COUNT(*) FROM goals WHERE user_id = %s", (current_user.id,))
         goal_count = cursor.fetchone()[0]
-        # #33 — how many devices this user has registered for push. The browser
-        # is the real source of truth for whether THIS device is subscribed
-        # (the page asks it on load); this is just so the card can say whether
-        # anything at all is registered.
-        cursor.execute("SELECT COUNT(*) FROM push_subscriptions WHERE user_id = %s",
-                       (current_user.id,))
-        push_device_count = cursor.fetchone()[0]
+        # #437 — every device this user has registered for push, so a dead one
+        # is visible and removable. The browser is still the source of truth
+        # for whether THIS device is subscribed (the page asks it on load and
+        # marks its own row by fingerprint). The date comparison is done in
+        # SQL so "today" means the database's today, the same clock that
+        # stamped last_seen_at.
+        cursor.execute("""
+            SELECT id, endpoint, device_label,
+                   last_seen_at::date AS seen_on, CURRENT_DATE AS today
+              FROM push_subscriptions
+             WHERE user_id = %s
+             ORDER BY last_seen_at DESC NULLS LAST, id
+        """, (current_user.id,))
+        push_devices = [_push_device_row(r) for r in cursor.fetchall()]
     return render_template('profile.html', created_at=created_at,
                            txn_count=txn_count, cat_count=cat_count,
                            acct_count=acct_count, goal_count=goal_count,
@@ -89,7 +118,7 @@ def profile():
                            mail_enabled=mail_enabled(),
                            push_enabled=push_enabled(),
                            push_public_key=push_public_key(),
-                           push_device_count=push_device_count,
+                           push_devices=push_devices,
                            feedback_enabled=feedback_enabled())
 
 

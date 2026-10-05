@@ -10,6 +10,17 @@ this project uses the `0.x` versioning scheme described in
 
 ### Added
 
+- **A device that stops getting notifications now says so.** If you've turned
+  notifications on somewhere but the device you're holding isn't getting them,
+  for example after re-adding the app to your home screen, Home now asks
+  whether to turn them on there. "Not on this device" makes it stop asking.
+  Nothing is ever switched back on without a tap, so turning notifications off
+  on a device stays off. (#437)
+- **Profile lists every device registered for notifications**, with a name
+  like "iPhone · Safari" and when it last opened the app, and lets you remove
+  one you no longer use. Devices registered before this change show as
+  "Unknown device", not seen since tracking began, until they next open the
+  app. (#437)
 - **The database can now record which device each notification subscription
   belongs to, and when that device was last seen.** Nothing uses this yet; it
   prepares for a list of your devices on the Profile page. Subscriptions that

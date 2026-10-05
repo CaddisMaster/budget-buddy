@@ -109,6 +109,24 @@
   </div>
 </div><!--/hero-band-->
 {% endif %}
+{% if push_nudge %}
+{# #437 — rendered only for an account with push on SOMEWHERE, and HIDDEN:
+   whether this device is one of them only the browser knows, so push.js
+   decides. It never subscribes on its own; both ways out are a tap. The
+   three kinds named here are Profile's consent copy, condensed — a new kind
+   of notification belongs in both. #}
+<div class="card push-nudge" id="push-nudge" hidden>
+  <p class="push-nudge-text"><strong>This device isn't getting notifications.</strong>
+    Bill reminders, changed-bill nudges and update notes are going to your other
+    devices only.</p>
+  <div class="push-nudge-actions">
+    <button type="button" class="btn btn-primary" data-push-on>Turn on here</button>
+    <button type="button" class="btn" data-push-decline>Not on this device</button>
+  </div>
+  <p class="push-nudge-status" data-push-status></p>
+</div>
+{% include 'partials/_push_config.html' %}
+{% endif %}
 {# ── What's new — ONE strip per release (released whenever Sean calls it). On the
    first feature commit after a release ships, REPLACE the strip's contents with
    the CURRENT release: the RELEASE VERSION in the heading + data-version, the
