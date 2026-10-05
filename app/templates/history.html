@@ -61,6 +61,7 @@
 {% endif %}
 <div class="table-actions">
   <a href="{{ url_for('transactions.export_transactions') }}{% if export_qs %}?{{ export_qs }}{% endif %}" class="btn">Export CSV</a>
+  {% if cleanup_enabled %}<a href="{{ url_for('imports.import_form') }}{% if selected_account %}?account={{ selected_account }}{% endif %}" class="btn">Import statement</a>{% endif %}
   <button type="button" id="bulk-toggle" class="btn">Bulk edit</button>
 </div>
 <p style="font-size:13px;color:var(--text-muted);margin-bottom:0.75rem">{{ total }} transaction{{ 's' if total != 1 else '' }}</p>

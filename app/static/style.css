@@ -1168,3 +1168,9 @@ tr:hover td.report-miss { background: var(--danger-soft); }
     transform: none !important;
   }
 }
+
+/* Statement import (#445). A refused file and the check-in adjustment warning
+   reuse .flash with the warning accent; lines the ledger already holds are
+   muted so the eye goes to the ones that need a decision. */
+.flash.is-warning { border-left-color: var(--warning); }
+.statement-review tr[data-status="recorded"] td { color: var(--text-muted); }

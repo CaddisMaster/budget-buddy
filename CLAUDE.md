@@ -43,13 +43,14 @@ Full detail — every module's responsibilities and its traps — is in
 
 ```
 app/
-  __init__.py      # app + extensions; registers the 18 blueprints; security headers; |money filter; css_v/brand_svg globals
+  __init__.py      # app + extensions; registers every blueprint; security headers; |money filter; css_v/brand_svg globals
   scheduler.py     # the scheduled jobs; `flask run-scheduler` runs them in the compose `worker` service (#402)
   db.py            # the connection pool (#401) + db_cursor() context manager (NamedTupleCursor)
   helpers.py       # is_htmx/hx_toast/ai_enabled; THE param + amount validators; GENERIC_ERROR
   logs.py          # logging: INFO, one format, a request ID per line + X-Request-ID (#404)
   models.py        # User (UserMixin)
   ai.py            # ALL model calls, one isolated _call_*_model() seam each. NEVER touches the DB
+  statements.py    # statement import (#445): parse OFX/CSV + decide what's missing. PURE — no DB, no model
   mailer.py        # outbound email seam (Resend)          — single _call_resend() seam
   pusher.py        # outbound Web Push seam                — single _call_webpush() seam
   github.py        # outbound GitHub issue seam (stdlib urllib, NOT requests)
@@ -67,7 +68,7 @@ docs/              # the reference detail this file points at
 dashboard), `transactions`, `categories`, `accounts`, `budgets`, `analytics` (redirect stub),
 `admin`, `transfers`, `goals`, `push`, `feedback`, `announce`, `reminders` (the daily job),
 `schedules`, `insights` (the month read behind Home's one AI panel), `ask` (the tool-use
-security boundary), `digests`.
+security boundary), `digests`, `imports` (statement import, #445).
 
 ⚠️ `blueprints/forecasts.py` and `blueprints/agent.py` are in that directory but define **no
 blueprint** and are registered nowhere (#232): both lost their routes when Home's four AI
