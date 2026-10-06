@@ -13,17 +13,20 @@ from app.statements import (
     MAX_LINES,
     CsvMapping,
     Line,
+    Review,
     StatementError,
     adjustments_within,
     csv_ref,
     csv_rows,
     decode,
     find_counterpart,
+    history_categories,
     image_type,
     lines_from_screenshots,
     looks_binary,
     looks_like_ofx,
     match_lines,
+    merchant_key,
     money,
     parse_csv,
     parse_ofx,
@@ -465,3 +468,107 @@ def test_a_line_with_no_readable_date_or_amount_is_skipped_and_counted(bad):
 def test_no_readable_lines_is_refused():
     with pytest.raises(StatementError, match="could not be read"):
         lines_from_screenshots([_shot(amount="??")], TODAY)
+
+
+# ── #454: merchant keys and categories from history ─────────────────────────
+
+@pytest.mark.parametrize("a, b", [
+    ("SQ *BLUE BOTTLE 0423", "SQ *BLUE BOTTLE 0611"),      # a processor prefix, a store no.
+    ("KROGER #123", "KROGER #456"),
+    ("COFFEE SHOP #123", "Coffee Shop"),                    # the bank's text vs mine
+    ("TST* JOES PIZZA", "TST*JOE'S PIZZA 00123"),
+    ("PAYPAL *NETFLIX", "NETFLIX"),
+    ("AMZN Mktp US*2K4AB1CD3", "AMZN MKTP US*9ZZ1QQ8"),     # an order reference after `*`
+    ("WAL-MART #5432", "WALMART 0042"),
+])
+def test_the_banks_variations_of_one_merchant_share_a_key(a, b):
+    assert merchant_key(a) == merchant_key(b) != ""
+
+
+@pytest.mark.parametrize("a, b", [
+    ("KROGER #123", "TARGET #123"),
+    ("SQ *BLUE BOTTLE", "SQ *RED BARN"),
+    ("7-ELEVEN 1234", "ELEVEN 1234"),                       # 7eleven is a name, not a number
+])
+def test_different_merchants_do_not(a, b):
+    assert merchant_key(a) != merchant_key(b)
+
+
+def test_a_bare_processor_prefix_is_the_merchant():
+    # `AMAZON*AB12CD`: nothing usable after the `*`, so the prefix names the shop.
+    assert merchant_key("AMAZON*AB12CD") == "amazon"
+
+
+@pytest.mark.parametrize("text", ["", None, "#1234", "0423 09/14", "*", "  "])
+def test_a_description_with_no_name_has_no_key(text):
+    assert merchant_key(text) == ""
+
+
+HistRow = namedtuple("HistRow", "id transaction_date description category_id")
+KINDS = {1: "expense", 2: "expense", 3: "income"}
+
+
+def _review(i, description, status="missing", direction="out", match=None, transfer=False):
+    return Review(index=i, line=_line(D, "5.00", direction, description), status=status,
+                  match=match, transfer_like=transfer)
+
+
+def test_an_earlier_row_of_the_same_merchant_gives_its_category():
+    reviews = [_review(0, "KROGER #456")]
+    rows = [HistRow(10, _on(1), "KROGER #123", 1)]
+    assert history_categories(reviews, rows, KINDS) == {0: 1}
+
+
+def test_a_recorded_match_teaches_by_the_lines_text_not_the_rows():
+    # I typed "Coffee"; the bank says BLUE BOTTLE. The pairing is what links them.
+    matched = HistRow(10, _on(1), "Coffee", 2)
+    reviews = [_review(0, "SQ *BLUE BOTTLE 0423", status="recorded", match=matched),
+               _review(1, "SQ *BLUE BOTTLE 0611")]
+    assert history_categories(reviews, [], KINDS) == {1: 2}
+
+
+def test_a_pending_match_teaches_too_and_a_possible_one_does_not():
+    matched = HistRow(10, _on(1), "Coffee", 2)
+    for status, expected in (("pending", {1: 2}), ("possible", {})):
+        reviews = [_review(0, "SQ *BLUE BOTTLE 0423", status=status, match=matched),
+                   _review(1, "SQ *BLUE BOTTLE 0611")]
+        assert history_categories(reviews, [], KINDS) == expected, status
+
+
+def test_the_most_recent_filing_wins_then_the_higher_id():
+    reviews = [_review(0, "TARGET")]
+    rows = [HistRow(30, _on(1), "TARGET", 1), HistRow(10, _on(5), "TARGET", 2),
+            HistRow(20, _on(3), "TARGET", 1)]
+    assert history_categories(reviews, rows, KINDS) == {0: 2}
+    same_day = [HistRow(10, _on(5), "TARGET", 2), HistRow(11, _on(5), "TARGET", 1)]
+    assert history_categories(reviews, same_day, KINDS) == {0: 1}
+    assert history_categories(reviews, list(reversed(same_day)), KINDS) == {0: 1}
+
+
+def test_a_category_of_the_wrong_kind_is_passed_over_for_one_of_the_right_kind():
+    rows = [HistRow(10, _on(1), "AMAZON MKTP", 3),          # older, income
+            HistRow(11, _on(5), "AMAZON MKTP", 1)]          # newer, expense
+    refund = [_review(0, "AMAZON MKTP", direction="in")]
+    assert history_categories(refund, rows, KINDS) == {0: 3}
+    only_expense = rows[1:]
+    assert history_categories(refund, only_expense, KINDS) == {}
+
+
+def test_a_category_not_in_the_users_list_is_never_used():
+    rows = [HistRow(10, _on(1), "KROGER", 99)]
+    assert history_categories([_review(0, "KROGER #1")], rows, KINDS) == {}
+
+
+def test_only_missing_non_transfer_lines_are_answered():
+    rows = [HistRow(10, _on(1), "ACME PAYMENTS", 1)]
+    reviews = [_review(0, "ACME PAYMENTS", status="recorded", match=HistRow(11, _on(2), "x", None)),
+               _review(1, "ACME PAYMENTS", status="possible", match=HistRow(12, _on(2), "x", None)),
+               _review(2, "ACME PAYMENTS", transfer=True),
+               _review(3, "ACME PAYMENTS")]
+    assert history_categories(reviews, rows, KINDS) == {3: 1}
+
+
+def test_an_uncategorised_row_and_a_nameless_line_teach_nothing():
+    rows = [HistRow(10, _on(1), "KROGER", None), HistRow(11, _on(1), "#1234", 1)]
+    reviews = [_review(0, "KROGER #9"), _review(1, "#5678")]
+    assert history_categories(reviews, rows, KINDS) == {}

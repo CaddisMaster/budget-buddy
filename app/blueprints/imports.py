@@ -16,7 +16,8 @@ hand-edited review form gains nothing the ordinary form does not already allow.
 
 ⚠️ WHO DECIDES WHAT. `statements.py` parses and matches (pure, no model);
 `ai.map_csv_columns()` names a CSV's columns and `ai.classify_transactions()`
-suggests categories. The model never decides what is missing.
+suggests categories for merchants the user's own history does not answer
+(#454). The model never decides what is missing.
 
 Gated on `ai_enabled()` like every AI surface, even though an OFX upload needs
 the model only for categories: one gate, one place the feature appears.
@@ -57,6 +58,7 @@ from app.statements import (
     csv_rows,
     decode,
     find_counterpart,
+    history_categories,
     image_type,
     lines_from_screenshots,
     looks_binary,
@@ -147,7 +149,7 @@ def _ledger(account_id, start, end):
     with db_cursor() as cursor:
         cursor.execute(
             "SELECT id, transaction_date, amount, transaction_type, description, "
-            "is_pending, is_adjustment, import_ref "
+            "category_id, is_pending, is_adjustment, import_ref "
             "FROM transactions "
             "WHERE user_id = %s AND account_id = %s "
             "AND transaction_date BETWEEN %s AND %s "
@@ -196,15 +198,38 @@ def _categories():
         return cursor.fetchall()
 
 
+# How far back the category history reaches: the most recent categorised rows,
+# across every account. Bounded so a years-old ledger costs one modest read.
+HISTORY_ROWS = 2000
+
+
+def _history():
+    """The user's most recent categorised rows, for history_categories() (#454).
+    A transfer leg never carries a category, so `category_id IS NOT NULL`
+    already leaves those out; an adjustment entered by hand can, and a balance
+    correction says nothing about a merchant."""
+    with db_cursor() as cursor:
+        cursor.execute(
+            "SELECT id, transaction_date, description, category_id FROM transactions "
+            "WHERE user_id = %s AND category_id IS NOT NULL AND NOT is_adjustment "
+            "ORDER BY transaction_date DESC, id DESC LIMIT %s",
+            (current_user.id, HISTORY_ROWS))
+        return cursor.fetchall()
+
+
 def _suggest(reviews, categories):
-    """Suggested category ids for the missing lines, keyed by line index. A
-    failed call degrades to no suggestions; the review still works, and says
-    so. A suggestion of the wrong kind (an expense category for money in) needs
-    no filter here: the review lists only categories of the line's own kind, so
-    it has no option to be selected."""
-    wanted = [r for r in reviews if r.status == 'missing' and not r.transfer_like]
+    """Suggested category ids for the missing lines, keyed by line index, and
+    which of them came from the user's own history (#454). Only lines history
+    cannot answer go to the model; when it answers them all, no call is made.
+    A failed call degrades to no model suggestions; the review still works,
+    and says so. A suggestion of the wrong kind (an expense category for money
+    in) needs no filter here: the review lists only categories of the line's
+    own kind, so it has no option to be selected."""
+    known = history_categories(reviews, _history(), {c.id: c.kind for c in categories})
+    wanted = [r for r in reviews
+              if r.status == 'missing' and not r.transfer_like and r.index not in known]
     if not wanted:
-        return {}, False
+        return known, set(known), False
     payload = [{
         'id': r.index,
         'description': r.line.description,
@@ -215,8 +240,9 @@ def _suggest(reviews, categories):
     try:
         suggestions = classify_transactions(payload, categories)
     except ParseError:
-        return {}, True
-    return {s['id']: s['category_id'] for s in suggestions}, False
+        return known, set(known), True
+    return ({**{s['id']: s['category_id'] for s in suggestions}, **known},
+            set(known), False)
 
 
 @bp.route('/transactions/import', methods=['GET'])
@@ -268,7 +294,7 @@ def import_scan():
     ledger = _ledger(account.account_id, statement.start, statement.end)
     reviews = match_lines(statement.lines, ledger)
     categories = _categories()
-    suggested, suggest_failed = _suggest(reviews, categories)
+    suggested, from_history, suggest_failed = _suggest(reviews, categories)
     pairings = _pairings(reviews, _other_rows(account.account_id,
                                               statement.start, statement.end))
     other_accounts = [a for a in _accounts(current_user.id)
@@ -283,6 +309,7 @@ def import_scan():
         reviews=reviews,
         counts=counts,
         suggested=suggested,
+        from_history=from_history,
         suggest_failed=suggest_failed,
         pairings=pairings,
         other_accounts=other_accounts,

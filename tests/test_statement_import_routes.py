@@ -14,6 +14,7 @@ import pytest
 from werkzeug.datastructures import MultiDict
 
 from app import ai
+from app.blueprints import imports
 from app.db import db_cursor
 from app.statements import MAX_FILE_BYTES, MAX_IMAGE_BYTES, MAX_IMAGES
 from tests.helpers import create_account, create_category
@@ -409,3 +410,75 @@ def test_a_screenshot_import_offers_no_balance_check(client_a, checking, ai_stub
     _a_line(ai_stubbed)
     body = _shots(client_a, checking, (PNG, "a.png")).get_data(as_text=True)
     assert 'name="closing_balance"' not in body
+
+
+# ── #454: categories from history ───────────────────────────────────────────
+
+def _categorised(user_id, account_id, description, category_id, adjustment=False):
+    with db_cursor(commit=True) as cur:
+        cur.execute("INSERT INTO transactions (amount, description, category_id, account_id, "
+                    "transaction_date, transaction_type, is_adjustment, user_id) "
+                    "VALUES (10, %s, %s, %s, %s, 'expense', %s, %s)",
+                    (description, category_id, account_id, TODAY - timedelta(days=30),
+                     adjustment, user_id))
+
+
+def _history_marked(resp, description):
+    row = re.search(rf'<tr data-line="\d+"[^>]*>(?:(?!</tr>).)*value="{re.escape(description)}"'
+                    r'(?:(?!</tr>).)*</tr>', resp.get_data(as_text=True), re.S)
+    assert row, f"no review row for {description!r}"
+    return "data-from-history" in row.group(0)
+
+
+def _sent(calls):
+    return [r["description"] for rows in calls["categorize"] for r in rows]
+
+
+def test_another_users_history_teaches_nothing(client_a, users, checking, ai_stubbed,
+                                              monkeypatch):
+    b = users["b"]
+    _categorised(b["id"], b["account_id"], "KROGER #123", b["category_id"])
+    # history_categories() would also drop B's row, because B's category is not
+    # in A's list. So watch what the query hands it: the outcome alone cannot
+    # tell whether the query is scoped (a mutant dropping `user_id` survived).
+    seen = []
+    real = imports.history_categories
+
+    def spy(reviews, rows, kinds):
+        seen.extend(rows)
+        return real(reviews, rows, kinds)
+    monkeypatch.setattr(imports, "history_categories", spy)
+
+    resp = _upload(client_a, checking, _csv((TODAY, "KROGER #456", "-61.10")))
+    assert resp.status_code == 200
+    assert seen, "the history query returned nothing, so this proves nothing"
+    assert "KROGER #123" not in [r.description for r in seen]
+    assert not _history_marked(resp, "KROGER #456")
+    assert "KROGER #456" in _sent(ai_stubbed)
+
+
+def test_a_balance_adjustment_teaches_nothing(client_a, users, checking, ai_stubbed):
+    groceries = create_category(users["a"]["id"], "Groceries")
+    _categorised(users["a"]["id"], checking, "KROGER", groceries, adjustment=True)
+    resp = _upload(client_a, checking, _csv((TODAY, "KROGER #456", "-61.10")))
+    assert not _history_marked(resp, "KROGER #456")
+    assert "KROGER #456" in _sent(ai_stubbed)
+
+
+def test_a_failed_category_call_keeps_what_history_found(client_a, users, checking, ai_stubbed,
+                                                         monkeypatch):
+    groceries = create_category(users["a"]["id"], "Groceries")
+    _categorised(users["a"]["id"], checking, "KROGER #123", groceries)
+
+    def broken(rows, category_names, today, api_key):
+        ai_stubbed["categorize"].append(rows)
+        raise ai.ParseError("model unavailable")
+    monkeypatch.setattr(ai, "_call_categorize_model", broken)
+
+    resp = _upload(client_a, checking, _csv((TODAY, "KROGER #456", "-61.10"),
+                                            (TODAY, "HARDWARE BARN", "-19.99")))
+    body = resp.get_data(as_text=True)
+    assert "Categories couldn't be suggested" in body
+    assert _history_marked(resp, "KROGER #456")
+    assert f'<option value="{groceries}" selected>' in body
+    assert _sent(ai_stubbed) == ["HARDWARE BARN"]
