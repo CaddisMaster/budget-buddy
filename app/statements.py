@@ -7,7 +7,8 @@ DECIDES something lives here, where it is directly testable.
 
 ⚠️ THE APP DECIDES WHAT IS MISSING, NEVER THE MODEL. The model's only jobs are
 naming a CSV's columns (`ai.map_csv_columns`, validated by `validate_mapping`
-below) and suggesting categories. Matching a statement line to a ledger row is
+below) and suggesting categories for merchants the user's own history does not
+already answer (`history_categories`, #454). Matching a statement line to a ledger row is
 `match_lines()`, plain arithmetic on dates and amounts, so a model mistake can
 never hide a duplicate or invent a gap.
 
@@ -436,6 +437,89 @@ def match_lines(lines, ledger):
     return [Review(index=i, line=line, status=status.get(i, "missing"),
                    match=match.get(i), transfer_like=bool(_TRANSFER_RE.search(line.description)))
             for i, line in enumerate(lines)]
+
+
+# ── Categories from the user's own history (#454) ────────────────────────────
+#
+# Before the model is asked, a missing line takes the category the user last
+# gave the same merchant. "The same merchant" is `merchant_key()`, plain string
+# handling: the bank prints one shop a dozen ways (`SQ *BLUE BOTTLE 0423`,
+# `SQ *BLUE BOTTLE 0611`), and the key throws away what varies.
+
+# A short card-processor token glued to the merchant with `*`: `SQ *`, `TST*`,
+# `PAYPAL *`, `DOORDASH*`. No space allowed inside it, so `AMZN Mktp US*2K4AB1`
+# is NOT read as a prefix: its `*` is followed by an order reference instead.
+_PROCESSOR = re.compile(r"^\s*([a-z0-9]{1,8})\s*\*\s*(.*)$", re.I | re.S)
+
+
+def _is_reference(word):
+    """A store number, date or order reference rather than part of a name:
+    all digits (`0423`), or a code at least a third digits (`2k4ab1`). `7eleven`
+    and `1800flowerscom` stay."""
+    digits = sum(c.isdigit() for c in word)
+    return digits == len(word) or (digits >= 2 and digits * 3 >= len(word))
+
+
+def _key_words(text):
+    text = re.sub(r"[-.']", "", text.lower())   # wal-mart, amazon.com, joe's
+    return [w for w in re.split(r"[^a-z0-9&]+", text) if w and not _is_reference(w)]
+
+
+def merchant_key(description):
+    """The part of a description that names the merchant, normalised so the
+    bank's variations of one shop agree: lowercase, a processor prefix dropped,
+    anything after a `*` dropped, store numbers and references dropped. An
+    empty string means nothing usable was left, and is never looked up."""
+    text = description or ""
+    m = _PROCESSOR.match(text)
+    if m:
+        words = _key_words(m.group(2).split("*")[0])
+        if words:
+            return " ".join(words)
+        text = m.group(1)            # `AMAZON*AB12CD`: the prefix IS the merchant
+    return " ".join(_key_words(text.split("*")[0]))
+
+
+def history_categories(reviews, rows, kinds):
+    """Category ids from the user's own history for the lines that would
+    otherwise go to the model (missing, not transfer-like), keyed by line index.
+
+    Two sources, both the user's own rows:
+      1. this upload's recorded and pending matches: the LINE's merchant key is
+         paired with the matched row's category. That is what teaches the bank's
+         `SQ *BLUE BOTTLE` the category of a row typed by hand as "Coffee";
+      2. `rows`, earlier categorised rows, each under its own description's key.
+
+    `rows` (and the matched rows) need: id, transaction_date, description,
+    category_id. `kinds` maps the user's category ids to 'expense'/'income'; a
+    category of the wrong kind for the line (an expense category on a refund),
+    or one not in `kinds`, is never used. When a merchant has been filed under
+    more than one category, the most recently dated row wins (then the higher
+    id), so a recategorisation takes effect at once.
+    """
+    seen = {}
+
+    def note(key, row):
+        if key and row.category_id is not None:
+            seen.setdefault(key, []).append(row)
+
+    for r in reviews:
+        if r.status in ("recorded", "pending") and r.match is not None:
+            note(merchant_key(r.line.description), r.match)
+    for row in rows:
+        note(merchant_key(row.description), row)
+
+    found = {}
+    for r in reviews:
+        if r.status != "missing" or r.transfer_like:
+            continue
+        kind = "income" if r.line.direction == "in" else "expense"
+        usable = [row for row in seen.get(merchant_key(r.line.description), ())
+                  if kinds.get(row.category_id) == kind]
+        if usable:
+            latest = max(usable, key=lambda row: (row.transaction_date, row.id))
+            found[r.index] = latest.category_id
+    return found
 
 
 def adjustments_within(ledger, start, end):

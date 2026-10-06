@@ -26,7 +26,7 @@ from werkzeug.datastructures import MultiDict
 
 from app import ai
 from tests.features.support import _pattern, _user
-from tests.helpers import _connection, create_account, create_transfer
+from tests.helpers import _connection, create_account, create_category, create_transfer
 
 
 @_pattern(r"\d+(?:\.\d{2})?")
@@ -203,6 +203,7 @@ def given_ai_available(context):
     context.suggested_category = category
 
     def categorize(rows, category_names, today, api_key):
+        context.categorize_calls.append(rows)
         return ai._Suggestions(suggestions=[
             ai._Suggestion(id=r["id"], category=category, confidence="high") for r in rows])
 
@@ -226,6 +227,7 @@ def given_ai_available(context):
 
     context.accounts, context.baseline, context.mapped_rows = {}, {}, None
     context.screenshot_calls, context.screenshot_lines = [], []
+    context.categorize_calls, context.categories = [], {}
 
 
 @given("no Anthropic API key is set")
@@ -619,3 +621,68 @@ def then_shots_unreadable(context, who):
     assert context.response.status_code == 400, context.response.status_code
     assert "These screenshots could not be read" in _body(context)
     assert len(context.screenshot_calls) == 1, "the model was asked once"
+
+
+# ── #454: categories from history ───────────────────────────────────────────
+
+def _hold_categorised(context, acct, description, category, amount, way, when, ref=None):
+    _sql("INSERT INTO transactions (amount, description, category_id, account_id, "
+         "transaction_date, transaction_type, import_ref, user_id) "
+         "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+         (amount, description, context.categories[category], _account(context, acct), when,
+          "income" if way == "in" else "expense", ref, _user(context, "A")["id"]))
+
+
+def _sent_to_ai(context):
+    return [r["description"] for rows in context.categorize_calls for r in rows]
+
+
+@given("user {who:Who} has an expense category {name:Q}")
+def given_expense_category(context, who, name):
+    context.categories[name] = create_category(_user(context, who)["id"], name)
+
+
+@given("{acct:Q} holds {description:Q} in {category:Q} for ${amount:Amt} {way:Way} {when:Rel}")
+def given_categorised_row(context, acct, description, category, amount, way, when):
+    _hold_categorised(context, acct, description, category, amount, way, when)
+
+
+@given("{acct:Q} holds an imported {description:Q} in {category:Q} "
+       "for ${amount:Amt} {way:Way} {when:Rel}")
+def given_imported_row(context, acct, description, category, amount, way, when):
+    _hold_categorised(context, acct, description, category, amount, way, when,
+                      ref=f"BEH-earlier-{description}")
+
+
+@then("{description:Q} is suggested {category:Q}, from user {who:Who}'s history")
+def then_from_history(context, description, category, who):
+    _i, status, html = _row_for(context, description)
+    assert status == "missing", f"{description!r} is {status}"
+    selected = re.search(r'<option value="(\d+)" selected>([^<]+)</option>', html)
+    assert selected, f"{description!r} has no suggested category"
+    assert selected.group(2) == category, f"{description!r} is suggested {selected.group(2)!r}"
+    assert "data-from-history" in html, f"{description!r} is not marked as from history"
+
+
+@then("{description:Q} is not marked as from user {who:Who}'s history")
+def then_not_from_history(context, description, who):
+    _i, status, html = _row_for(context, description)
+    assert status == "missing", f"{description!r} is {status}"
+    assert "data-from-history" not in html, f"{description!r} is marked as from history"
+
+
+@then("{description:Q} was not sent to the AI")
+def then_not_sent(context, description):
+    sent = _sent_to_ai(context)
+    assert context.categorize_calls, "nothing was sent at all, so this proves nothing"
+    assert description not in sent, sent
+
+
+@then("{description:Q} was sent to the AI")
+def then_sent(context, description):
+    assert description in _sent_to_ai(context), _sent_to_ai(context)
+
+
+@then("no categorisation call is made")
+def then_no_call(context):
+    assert context.categorize_calls == [], context.categorize_calls

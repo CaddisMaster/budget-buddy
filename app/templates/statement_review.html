@@ -89,6 +89,7 @@
           </optgroup>
           {% endif %}
         </select>
+        {% if i in from_history %}<span class="field-hint" data-from-history>From your history</span>{% endif %}
         {% endif %}
       </td>
     </tr>
