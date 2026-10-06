@@ -301,19 +301,27 @@ server itself — **read it before touching anything on the Droplet.**
 
 ## Current status
 
-▶️ **NEXT UP: #433** (`0.13.0`) — make `release.yml` and `rollback.yml` copy
-`docker-compose.yml` to the Droplet themselves and check its hash, so the compose file always
-matches the image. **#36** stays date-parked. Prod runs **`0.12.0`** (2026-10-05). `main`
-carries, **not deployed**: the runbook fix #432, **one migration** (`sql/39`, #438, additive,
-before-pull), the device list and Home's push prompt (#437), and two records. ⚠️ #437's first
-real check is **on Sean's phone after deploy**: the "This device" mark and the label an
-installed iPhone app actually reports.
+▶️ **NEXT UP: cut `0.13.0`.** Its milestone has no open work. **#36** stays date-parked. Prod
+runs **`0.12.0`** (2026-10-05). `main` carries, **not deployed**:
+- **two migrations**, both additive and before-pull: `sql/39` (#438) and `sql/40` (#444);
+- the device list and Home's push prompt (#437);
+- the deploy shipping its own compose file (#433);
+- **statement import** (#445 OFX/CSV, #446 transfers, #447 screenshots);
+- the runbook fix #432, and the records.
+
+🛑 **A MANUAL STEP BEFORE OR AT THAT DEPLOY:** production Nginx has no `client_max_body_size`, so
+its 1 MB default refuses phone screenshots. Add RUNBOOK §3's `location = /transactions/import`
+block on the Droplet first. ⚠️ **First real checks after the deploy:**
+- #433's copy and `db` guard (the `db` service is unchanged since `v0.7.0`, so it should pass);
+- #437 on Sean's phone;
+- a real screenshot import, which proves the Nginx step.
 
 🛑 **THE MAC HAS NO CLONE OF THIS REPO** (2026-10-05). Every Droplet step runs from the Mac, and
 every line of code lives in the VM. So "scp it from your clone" copies whatever file is in the
 Mac shell's directory. A `diff` against that file is then vacuous, and at 0.12.0 it printed
-`identical` over the stale v0.11.0 compose file. Until #433 lands, use RUNBOOK §5's recipe: a
-download pinned to a tag, checked against a hash taken from the repo at both ends. **Before
+`identical` over the stale v0.11.0 compose file. #433 (merged, ships in `0.13.0`) makes the
+workflows copy it themselves; until then, and as break-glass afterwards, use RUNBOOK §5's recipe:
+a download pinned to a tag, checked against a hash taken from the repo at both ends. **Before
 handing Sean commands for the Mac, check what exists there**, and give one command per copy box.
 Rolling back past #402 still needs the old compose file first (RUNBOOK §5).
 
@@ -338,7 +346,7 @@ ported from the app layer into SQL keeps its shape and loses its meaning. `docs/
 the rule; `docs/status.md` carries the session.
 
 
-⚠️ **The open milestone is `0.13.0`** (#433 open; #437, #438 and the records closed). ✅ **`0.12.0` was closed on ship day** (2026-10-05, 24/24). ✅ **`0.10.0` was closed ON SHIP DAY** (2026-09-11) at
+⚠️ **The open milestone is `0.13.0`** (18 closed, 0 open as of 2026-10-05 evening). ✅ **`0.12.0` was closed on ship day** (2026-10-05, 24/24). ✅ **`0.10.0` was closed ON SHIP DAY** (2026-09-11) at
 `open=0, closed=25`, with its nine open items moved to `0.11.0` first — the corrective landing, and
 the shape every milestone but `0.9.0`'s has closed at. `0.9.0` was closed 2026-09-03, late: it
 shipped on 2026-09-02 but was left open to hold a backlog, so **seven commits landed after the
