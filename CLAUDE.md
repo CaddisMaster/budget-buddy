@@ -301,12 +301,15 @@ server itself — **read it before touching anything on the Droplet.**
 
 ## Current status
 
-▶️ **NEXT UP: cut `0.13.0`.** Its milestone has no open work. **#36** stays date-parked. Prod
-runs **`0.12.0`** (2026-10-05). `main` carries, **not deployed**:
+▶️ **NEXT UP: #457, then the rest of statement import.** 🛑 **`0.13.0` is NOT cut until statement
+import is complete** (Sean, 2026-10-06). Its open work is #455 and #457–#461 (filed 2026-10-06 from
+"make it as seamless as asking Claude"); several carry open questions, listed in `docs/status.md`.
+**#36** stays date-parked. Prod runs **`0.12.0`** (2026-10-05). `main` carries, **not deployed**:
 - **two migrations**, both additive and before-pull: `sql/39` (#438) and `sql/40` (#444);
 - the device list and Home's push prompt (#437);
 - the deploy shipping its own compose file (#433);
-- **statement import** (#445 OFX/CSV, #446 transfers, #447 screenshots);
+- **statement import** (#445 OFX/CSV, #446 transfers, #447 screenshots, #454 categories from
+  history, #456 updating an entry from a possible match);
 - the runbook fix #432, and the records.
 
 🛑 **A MANUAL STEP BEFORE OR AT THAT DEPLOY:** production Nginx has no `client_max_body_size`, so
@@ -346,7 +349,7 @@ ported from the app layer into SQL keeps its shape and loses its meaning. `docs/
 the rule; `docs/status.md` carries the session.
 
 
-⚠️ **The open milestone is `0.13.0`** (18 closed, 0 open as of 2026-10-05 evening). ✅ **`0.12.0` was closed on ship day** (2026-10-05, 24/24). ✅ **`0.10.0` was closed ON SHIP DAY** (2026-09-11) at
+⚠️ **The open milestone is `0.13.0`**, holding the rest of statement import (#455, #457–#461) as of 2026-10-06. ✅ **`0.12.0` was closed on ship day** (2026-10-05, 24/24). ✅ **`0.10.0` was closed ON SHIP DAY** (2026-09-11) at
 `open=0, closed=25`, with its nine open items moved to `0.11.0` first — the corrective landing, and
 the shape every milestone but `0.9.0`'s has closed at. `0.9.0` was closed 2026-09-03, late: it
 shipped on 2026-09-02 but was left open to hold a backlog, so **seven commits landed after the
