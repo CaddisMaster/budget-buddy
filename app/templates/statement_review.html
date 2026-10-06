@@ -9,6 +9,9 @@
    transfer" with each other account. A transfer-looking line whose other leg
    already sits in another account as a plain row comes preselected and ticked,
    naming that row; apply re-finds it by the same rule (find_counterpart).
+   #456 — a possible match offers "Update my entry" (the default once ticked:
+   the bank's amount and date replace the entry's, which keeps its name and
+   category) or "Add as a new transaction". Unticked stays skip.
    Only lines that need a decision carry hidden fields; apply re-validates every
    one of them. Recorded lines carry nothing, so they cannot be added. #}
 <p>
@@ -68,6 +71,14 @@
         {% if r.status == 'recorded' %}Already recorded
         {% elif r.status == 'pending' %}Pending in the ledger: tick to mark it posted
         {% elif r.status == 'possible' %}Possible match: {{ r.match.description or 'untitled' }}, ${{ r.match.amount|money }} on {{ r.match.transaction_date.strftime('%b %d') }}
+        {% if not r.match.is_transfer %}
+        {# #456 — a transfer leg is never offered: changing one leg's amount unbalances the pair. #}
+        <input type="hidden" name="match_{{ i }}" value="{{ r.match.id }}">
+        <br><select name="action_{{ i }}" aria-label="What to do with {{ r.line.description }}">
+          <option value="update" selected>Update my entry</option>
+          <option value="add">Add as a new transaction</option>
+        </select>
+        {% endif %}
         {% else %}Missing{% if r.transfer_like %} <span class="recurring-badge" data-transfer-like>looks like a transfer</span>{% endif %}
         {% if i in pairings %}{% set p = pairings[i] %}<br><span class="field-hint" data-pairs-with="{{ p.id }}">Pairs with {{ p.description or 'an entry' }} in {{ account_names[p.account_id] }} on {{ p.transaction_date.strftime('%b %d') }}</span>{% endif %}
         {% endif %}

@@ -60,6 +60,7 @@ from app.statements import (
     find_counterpart,
     history_categories,
     image_type,
+    is_possible,
     lines_from_screenshots,
     looks_binary,
     looks_like_ofx,
@@ -149,7 +150,7 @@ def _ledger(account_id, start, end):
     with db_cursor() as cursor:
         cursor.execute(
             "SELECT id, transaction_date, amount, transaction_type, description, "
-            "category_id, is_pending, is_adjustment, import_ref "
+            "category_id, is_pending, is_adjustment, is_transfer, import_ref "
             "FROM transactions "
             "WHERE user_id = %s AND account_id = %s "
             "AND transaction_date BETWEEN %s AND %s "
@@ -345,6 +346,12 @@ def _posted_line(form, i):
         if transfer_account is None:
             return None
         choice = ''
+    # #456: a possible match can update the entry it matched instead of adding.
+    update_id = None
+    if form.get(f'action_{i}') == 'update':
+        update_id = parse_int_param(form.get(f'match_{i}'))
+        if update_id is None:
+            return None
     return {
         'date': when,
         'amount': amount,
@@ -355,6 +362,7 @@ def _posted_line(form, i):
         'category_id': parse_int_param(choice),
         'pending_id': parse_int_param(form.get(f'pending_{i}')),
         'transfer_account': transfer_account,
+        'update_id': update_id,
     }
 
 
@@ -435,6 +443,34 @@ def _record_transfer(cursor, account_id, line):
     return 1, 0
 
 
+def _update_entry(cursor, account_id, line):
+    """Update an existing entry to a statement line (#456): the bank's amount
+    and date, the line's import_ref, and posted. Its description and category
+    are kept. Returns 1, or 0 when the row is not one the review could have
+    offered, which counts as a line that could not be added.
+
+    The row is re-checked here, never trusted from the form: this user's, this
+    account's, not a transfer leg (changing one leg unbalances the pair), not
+    an adjustment, not already carrying a statement reference, and still a
+    possible match for the line by `is_possible()`, the rule the review used.
+    FOR UPDATE, so two applies racing cannot both rewrite it."""
+    cursor.execute(
+        "SELECT id, transaction_date, amount, transaction_type FROM transactions "
+        "WHERE id = %s AND user_id = %s AND account_id = %s AND import_ref IS NULL "
+        "AND NOT is_transfer AND NOT is_adjustment FOR UPDATE",
+        (line['update_id'], current_user.id, account_id))
+    row = cursor.fetchone()
+    as_line = Line(line['date'], Decimal(f"{line['amount']:.2f}"), line['direction'],
+                   line['description'], line['ref'])
+    if row is None or not is_possible(as_line, row):
+        return 0
+    cursor.execute(
+        "UPDATE transactions SET amount = %s, transaction_date = %s, import_ref = %s, "
+        "is_pending = false WHERE id = %s AND user_id = %s",
+        (line['amount'], line['date'], line['ref'], row.id, current_user.id))
+    return cursor.rowcount
+
+
 @bp.route('/transactions/import/apply', methods=['POST'])
 @limiter.limit("10 per minute")
 @login_required
@@ -475,7 +511,7 @@ def import_apply():
                     cursor, current_user.id, line['category_id'], None):
                 line['category_id'] = None
 
-    added = posted = transfers = paired = 0
+    added = posted = transfers = paired = updated = 0
     try:
         with db_cursor(commit=True) as cursor:
             for line in lines:
@@ -483,6 +519,11 @@ def import_apply():
                     made, joined = _record_transfer(cursor, account.account_id, line)
                     transfers += made
                     paired += joined
+                    continue
+                if line['update_id'] is not None:
+                    done = _update_entry(cursor, account.account_id, line)
+                    updated += done
+                    rejected += 1 - done
                     continue
                 if line['pending_id'] is not None:
                     # The ledger already holds it as pending: clear the flag
@@ -513,13 +554,16 @@ def import_apply():
         return redirect(url_for('imports.import_form', account=account.account_id))
 
     parts = []
-    if added or not (transfers or posted):
+    if added or not (transfers or posted or updated):
         parts.append(f"Added {added} transaction{'s' if added != 1 else ''} "
                      f"to {account.account_name}.")
     if transfers:
         parts.append(f"Recorded {transfers} transfer{'s' if transfers != 1 else ''}"
                      + (f", {paired} paired with an entry already in the other account."
                         if paired else "."))
+    if updated:
+        parts.append(f"Updated {updated} entr{'ies' if updated != 1 else 'y'} "
+                     "to match the statement.")
     if posted:
         parts.append(f"Marked {posted} pending transaction{'s' if posted != 1 else ''} posted.")
     if rejected:

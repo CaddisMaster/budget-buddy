@@ -19,6 +19,7 @@ import io
 import os
 import re
 from datetime import date, timedelta
+from decimal import Decimal
 from html.parser import HTMLParser
 
 from behave import given, register_type, then, when
@@ -168,18 +169,22 @@ class _ReviewForm(HTMLParser):
             self._select = None
 
 
-def _apply(context, uncheck=(), choose=None):
+def _apply(context, uncheck=(), choose=None, field="category"):
     """Submit the review as rendered, optionally unticking lines, or setting
-    one line's category select to `choose` = (description, value) and ticking it."""
+    one line's `field` select (category_<i> by default, or action_<i>) to
+    `choose` = (description, value) and ticking it. A select the page did not
+    render cannot be chosen: that is a missing option, not a forged form."""
     form = _ReviewForm()
     form.feed(_body(context))
     skip = {str(_row_for(context, d)[0]) for d in uncheck}
     data = [(k, v) for k, v in form.fields if not (k == "apply" and v in skip)]
     if choose:
         i = str(_row_for(context, choose[0])[0])
+        name = f"{field}_{i}"
+        assert any(k == name for k, _v in data), f"the review offers no {name} for {choose[0]!r}"
         data = [(k, v) for k, v in data
-                if k != f"category_{i}" and not (k == "apply" and v == i)]
-        data += [(f"category_{i}", choose[1]), ("apply", i)]
+                if k != name and not (k == "apply" and v == i)]
+        data += [(name, choose[1]), ("apply", i)]
     context.response = context.client.post("/transactions/import/apply", data=MultiDict(data),
                                            follow_redirects=True)
 
@@ -686,3 +691,42 @@ def then_sent(context, description):
 @then("no categorisation call is made")
 def then_no_call(context):
     assert context.categorize_calls == [], context.categorize_calls
+
+
+# ── #456: update my entry ───────────────────────────────────────────────────
+
+ACTIONS = {"Update my entry": "update", "Add as a new transaction": "add"}
+
+
+@when("chooses {choice:Q} for {description:Q} and applies")
+def when_choosing_action(context, choice, description):
+    _apply(context, choose=(description, ACTIONS[choice]), field="action")
+
+
+@given("user {who:Who} has uploaded it and chosen {choice:Q} for {description:Q}")
+def given_uploaded_and_chosen(context, who, choice, description):
+    context.execute_steps(f"When user {who} uploads it")
+    _apply(context, choose=(description, ACTIONS[choice]), field="action")
+
+
+@when("applies {description:Q} as an update of {other:Q} in {acct:Q}")
+def when_forging_update(context, description, other, acct):
+    """A hand-edited review: the line's match id swapped for a row in another
+    account, which the page never offered."""
+    (row_id,), = _sql("SELECT id FROM transactions WHERE account_id = %s AND description = %s",
+                      (_account(context, acct), other))
+    i = str(_row_for(context, description)[0])
+    form = _ReviewForm()
+    form.feed(_body(context))
+    data = [(k, v) for k, v in form.fields if k not in (f"match_{i}", f"action_{i}")]
+    data += [(f"match_{i}", str(row_id)), (f"action_{i}", "update"), ("apply", i)]
+    context.response = context.client.post("/transactions/import/apply", data=MultiDict(data),
+                                           follow_redirects=True)
+
+
+@then("{acct:Q} still holds {description:Q} for ${amount:Amt} {way:Way} {when:Rel}, unchanged")
+def then_unchanged(context, acct, description, amount, way, when):
+    rows = _sql("SELECT amount, transaction_type, transaction_date, import_ref "
+                "FROM transactions WHERE account_id = %s AND description = %s",
+                (_account(context, acct), description))
+    assert rows == [(Decimal(amount), "income" if way == "in" else "expense", when, None)], rows
