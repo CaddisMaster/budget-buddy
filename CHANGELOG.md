@@ -36,6 +36,13 @@ this project uses the `0.x` versioning scheme described in
   shown without a year are placed in the most recent matching year, never in
   the future. Screenshots aren't kept, and there's no balance check, because a
   screenshot doesn't carry a statement balance. (#447)
+- **Imported lines are categorised the way you already file them.** Before
+  asking the AI, the statement import checks how you categorised the same
+  merchant before, ignoring the store numbers and card-processor prefixes
+  banks add (`SQ *BLUE BOTTLE 0423` and `SQ *BLUE BOTTLE 0611` are one shop).
+  It also learns from lines in the same statement that match entries you typed
+  in yourself. A category found this way is marked "From your history", and
+  only merchants it has never seen are sent to the AI. (#454)
 - **The database can now remember which bank statement a transaction came
   from.** Nothing uses this yet; it prepares for filling in missing
   transactions from a statement export, where it lets a second import of the
