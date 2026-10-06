@@ -5,11 +5,47 @@
 
 ## Current Status
 
-▶️ **NEXT SESSION: release `0.13.0`** (milestone 18/0). 🛑 **Before or at the deploy, add RUNBOOK
-§3's Nginx `location = /transactions/import { client_max_body_size 16m; }` block on the Droplet**,
-or screenshot import fails with a 413. **#36** stays date-parked. Prod runs **`0.12.0`**
-(2026-10-05). ⚠️ The `Acceptance criteria` check is **still not a required status check** (last
-re-checked 2026-10-02).
+▶️ **NEXT SESSION: #457** (ledger entries the statement doesn't list), then #458. **`0.13.0` is NOT
+being cut until statement import is complete** (Sean, 2026-10-06: "I don't want to cut .13 until
+this feature is fully complete"). Its open items are #455 and #457–#461. 🛑 **Before or at that deploy,
+add RUNBOOK §3's Nginx `location = /transactions/import { client_max_body_size 16m; }` block on
+the Droplet**, or screenshot import fails with a 413. **#36** stays date-parked. Prod runs
+**`0.12.0`** (2026-10-05). ⚠️ The `Acceptance criteria` check is **still not a required status
+check** (last re-checked 2026-10-02).
+
+### The 2026-10-06 session: making the import work like a reconcile in a session
+
+On `main`, **not deployed**. Ships with `0.13.0`:
+
+| PR | Issue | |
+|---|---|---|
+| #462 | **#454** | categories from the user's own history before the model (`merchant_key`, `history_categories`); known merchants make no call |
+| #463 | **#456** | a possible match can **update** the entry (amount, date, `import_ref`, posted) instead of adding a duplicate; `is_possible()` is now the one rule |
+| this PR | **#464** | this record |
+
+- **Sean asked for the import to be "as seamless as when I ask you to update my transactions".**
+  Comparing the two produced eight issues, **#454–#461**, all on `0.13.0`. The rule underneath
+  stays *the model reads, the app decides, the person confirms*: in a session the person checks
+  the agent, and an end user has nobody checking the model. Proposed **writes** from Ask-style
+  follow-ups were deliberately left unfiled, because Ask is read-only by design.
+- ⚠️ **Open questions to settle before building:** **#457** (leave the section out for
+  screenshot uploads? recommended yes); **#455** (once descriptions are cleaned, history loses
+  the bank's raw text: a raw-text column, which is a migration in its own PR, or key on the
+  clean name?); **#459** (a card OFX's `BALAMT` sign, to check against a real Discover export).
+  **#461 needs a migration issue of its own first**, as #444 preceded #445.
+- **#454 widened its own spec**, recorded in the issue: history is every categorised row (not
+  adjustments), not only imported ones, since a hand-typed "Kroger" is the same evidence.
+  Matching is exact on the cleaned name, so a trailing city/state still splits a merchant; that
+  cleanup belongs to #455. **#456 settled its open question:** a transfer leg is never offered
+  *Update*.
+- ⚠️ **Two mutation passes (13 and 14 mutants).** Each found a `user_id` scope that no outcome
+  could see, because a second filter (the category list, or the already-owned account) discards
+  the row anyway. #454's test now spies on the query's rows; #456's is kept per the scoping
+  rule. And **two #454 mutants looked caught only because ruff flagged the name they left
+  unused**. Re-run with `SKIP_LINT=1`, scenarios caught both, so a mutation run must skip lint.
+- ⚠️ **Hand-filed issues still start a `claude-triage` run.** It fires on `opened`, reads the
+  labels, and skips both Claude steps when `triage` is absent. Nothing is billed or posted, but
+  the Actions list shows a "success" per issue, which looks like a review happened.
 
 ### The 2026-10-05 evening: the compose file ships itself, and statement import
 
