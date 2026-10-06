@@ -482,3 +482,105 @@ def test_a_failed_category_call_keeps_what_history_found(client_a, users, checki
     assert _history_marked(resp, "KROGER #456")
     assert f'<option value="{groceries}" selected>' in body
     assert _sent(ai_stubbed) == ["HARDWARE BARN"]
+
+
+# ── #456: update my entry instead of adding ─────────────────────────────────
+
+def _entry(user_id, account_id, amount="40.00", when=None, description="Dinner", ref=None,
+           transfer=False, adjustment=False, category_id=None):
+    with db_cursor(commit=True) as cur:
+        cur.execute("INSERT INTO transactions (amount, description, category_id, account_id, "
+                    "transaction_date, transaction_type, is_transfer, is_adjustment, import_ref, "
+                    "user_id) VALUES (%s, %s, %s, %s, %s, 'expense', %s, %s, %s, %s) "
+                    "RETURNING id",
+                    (amount, description, category_id, account_id, when or TODAY, transfer,
+                     adjustment, ref, user_id))
+        return cur.fetchone().id
+
+
+def _fetch(entry_id):
+    with db_cursor() as cur:
+        cur.execute("SELECT amount, transaction_date, import_ref, description, category_id "
+                    "FROM transactions WHERE id = %s", (entry_id,))
+        return cur.fetchone()
+
+
+def _update(client, account_id, entry_id, amount="42.80", ref="csv:trattoria"):
+    return _apply(client, account_id, line_0={**GOOD, "amount": amount, "ref": ref,
+                                              "description": "TRATTORIA",
+                                              "action": "update", "match": entry_id})
+
+
+def test_an_update_keeps_the_entrys_name_and_category_and_says_so(client_a, users, checking,
+                                                                   ai_stubbed):
+    entry = _entry(users["a"]["id"], checking, category_id=users["a"]["category_id"])
+    resp = _update(client_a, checking, entry)
+    row = _fetch(entry)
+    assert (str(row.amount), row.import_ref) == ("42.80", "csv:trattoria")
+    assert (row.description, row.category_id) == ("Dinner", users["a"]["category_id"])
+    assert len(_rows(checking)) == 1
+    flashed = client_a.get(resp.headers["Location"]).get_data(as_text=True)
+    assert "Updated 1 entry to match the statement." in flashed
+
+
+@pytest.mark.parametrize("kind", ["transfer leg", "adjustment", "already imported"])
+def test_an_entry_the_review_never_offers_is_not_updated(client_a, users, checking, ai_stubbed,
+                                                         kind):
+    entry = _entry(users["a"]["id"], checking, transfer=kind == "transfer leg",
+                   adjustment=kind == "adjustment",
+                   ref="csv:earlier" if kind == "already imported" else None)
+    before = _fetch(entry)
+    _update(client_a, checking, entry)
+    assert _fetch(entry) == before
+    assert len(_rows(checking)) == 1
+
+
+def test_a_transfer_legs_possible_match_offers_no_update(client_a, users, checking, ai_stubbed):
+    _entry(users["a"]["id"], checking, transfer=True)
+    resp = _upload(client_a, checking, _csv((TODAY, "TRATTORIA", "-42.80")))
+    body = resp.get_data(as_text=True)
+    assert 'data-status="possible"' in body, "the setup must produce a possible match"
+    assert 'name="action_0"' not in body and 'name="match_0"' not in body
+
+
+def test_a_plain_possible_match_offers_update_by_default(client_a, users, checking, ai_stubbed):
+    entry = _entry(users["a"]["id"], checking)
+    body = _upload(client_a, checking, _csv((TODAY, "TRATTORIA", "-42.80"))).get_data(as_text=True)
+    assert f'name="match_0" value="{entry}"' in body
+    assert '<option value="update" selected>Update my entry</option>' in body
+
+
+def test_another_users_entry_is_not_updated(client_a, users, checking, ai_stubbed):
+    b = users["b"]
+    entry = _entry(b["id"], b["account_id"])
+    before = _fetch(entry)
+    _update(client_a, checking, entry)
+    assert _fetch(entry) == before
+
+
+def test_an_amount_outside_the_possible_match_rule_is_not_written(client_a, users, checking,
+                                                                  ai_stubbed):
+    # A hand-edited review: the right entry, but a line it could never match.
+    entry = _entry(users["a"]["id"], checking)
+    before = _fetch(entry)
+    resp = _update(client_a, checking, entry, amount="400.00")
+    assert _fetch(entry) == before
+    assert len(_rows(checking)) == 1
+    flashed = client_a.get(resp.headers["Location"]).get_data(as_text=True)
+    assert "1 line could not be added." in flashed
+    assert "Updated" not in flashed
+
+
+def test_applying_an_update_twice_changes_nothing_the_second_time(client_a, users, checking,
+                                                                  ai_stubbed):
+    entry = _entry(users["a"]["id"], checking)
+    _update(client_a, checking, entry)
+    after = _fetch(entry)
+    _update(client_a, checking, entry, ref="csv:other")
+    assert _fetch(entry) == after
+    assert len(_rows(checking)) == 1
+
+
+def test_an_update_naming_no_entry_is_refused(client_a, checking, ai_stubbed):
+    _apply(client_a, checking, line_0={**GOOD, "action": "update", "match": "abc"})
+    assert _rows(checking) == []

@@ -372,6 +372,23 @@ def _days(line, row):
     return abs((line.date - row.transaction_date).days)
 
 
+def _share(line, row):
+    amount = Decimal(row.amount)
+    return abs(amount - line.amount) / max(amount, line.amount)
+
+
+def is_possible(line, row):
+    """Whether a ledger row is near enough to a statement line to be shown as
+    its possible match: the same direction, within ±MATCH_DAYS, the amounts
+    within POSSIBLE_SHARE of the larger. The ONE place this rule lives:
+    `match_lines()` offers a possible match by it, and apply (#456) re-checks
+    it against the row before updating that row to the line, so a hand-edited
+    review cannot rewrite an entry the page never offered."""
+    return (_direction(row) == line.direction
+            and _days(line, row) <= MATCH_DAYS
+            and _share(line, row) <= POSSIBLE_SHARE)
+
+
 def match_lines(lines, ledger):
     """Classify each statement line against the account's ledger rows.
 
@@ -419,19 +436,9 @@ def match_lines(lines, ledger):
              and _days(line, row) <= MATCH_DAYS]
     assign(exact, lambda row: "pending" if row.is_pending else "recorded")
 
-    near = []
-    for i, line in enumerate(lines):
-        if i in status:
-            continue
-        for row in rows:
-            if _direction(row) != line.direction:
-                continue
-            if _days(line, row) > MATCH_DAYS:
-                continue
-            amount = Decimal(row.amount)
-            share = abs(amount - line.amount) / max(amount, line.amount)
-            if share <= POSSIBLE_SHARE:
-                near.append(((share, _days(line, row)), i, row))
+    near = [((_share(line, row), _days(line, row)), i, row)
+            for i, line in enumerate(lines) if i not in status
+            for row in rows if is_possible(line, row)]
     assign(near, lambda row: "possible")
 
     return [Review(index=i, line=line, status=status.get(i, "missing"),

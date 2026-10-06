@@ -43,6 +43,14 @@ this project uses the `0.x` versioning scheme described in
   It also learns from lines in the same statement that match entries you typed
   in yourself. A category found this way is marked "From your history", and
   only merchants it has never seen are sent to the AI. (#454)
+- **A possible match can fix your entry instead of duplicating it.** When the
+  statement shows a near miss (your $40.00 "Dinner" against the bank's $42.80,
+  because of the tip), the review now offers "Update my entry": ticking it
+  sets your entry to the bank's amount and date, keeps its name and category,
+  and marks it posted if it was pending. "Add as a new transaction" is still
+  there for a genuinely separate charge. A re-import then recognises the
+  updated entry. One side of a transfer is never offered for updating, since
+  changing it alone would unbalance the pair. (#456)
 - **The database can now remember which bank statement a transaction came
   from.** Nothing uses this yet; it prepares for filling in missing
   transactions from a statement export, where it lets a second import of the
