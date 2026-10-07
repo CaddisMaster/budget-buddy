@@ -15,20 +15,22 @@
         <option value="{{ account.account_id }}" {% if account.account_id == selected %}selected{% endif %}>{{ account.account_name }}</option>
         {% endfor %}
     </select>
-    <label for="import-file">Statement file or screenshots</label>
+    <label for="import-file">Statement file, PDF or screenshots</label>
     <input type="file" name="statement" id="import-file" multiple required
-           accept=".ofx,.qfx,.csv,text/csv,image/png,image/jpeg,image/webp,image/gif">
+           accept=".ofx,.qfx,.csv,text/csv,.pdf,application/pdf,image/png,image/jpeg,image/webp,image/gif">
     <p class="field-hint">
         Download it from your bank's website as <strong>OFX</strong> or <strong>QFX</strong>
-        (best: it includes the closing balance) or <strong>CSV</strong>. No export handy?
+        (best: it includes the closing balance) or <strong>CSV</strong>, or upload the
+        <strong>PDF statement</strong> your bank sends. No statement handy?
         Upload up to five <strong>screenshots</strong> of the account's transactions instead.
         You'll see what's already in Budget Buddy and what's missing, and nothing is added
         until you confirm.
     </p>
     <p class="field-hint">
         Nothing you upload is kept. For a CSV, its first few rows are sent to the AI to work
-        out which column is which. Screenshots are sent to the AI to read the transactions in
-        them. The descriptions of lines you're missing are sent to suggest categories.
+        out which column is which. Screenshots, and the whole of a PDF statement, are sent to
+        the AI to read the transactions in them. The descriptions of lines you're missing are
+        sent to suggest categories.
     </p>
     <div style="margin-top:0.75rem">
         <button type="submit" class="btn btn-primary">Review statement</button>

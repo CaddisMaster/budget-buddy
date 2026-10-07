@@ -28,7 +28,13 @@ from werkzeug.datastructures import MultiDict
 
 from app import ai
 from tests.features.support import _pattern, _user
-from tests.helpers import _connection, create_account, create_category, create_transfer
+from tests.helpers import (
+    _connection,
+    create_account,
+    create_category,
+    create_transfer,
+    make_pdf,
+)
 
 
 @_pattern(r"\d+(?:\.\d{2})?")
@@ -229,7 +235,7 @@ def given_ai_available(context):
     def read_shots(images, today, api_key):
         context.screenshot_calls.append(images)
         return ai._ScreenshotRead(lines=list(context.screenshot_lines),
-                                  balance=context.shot_balance)
+                                  balance=context.shot_balance, period=context.shot_period)
 
     for name, stub in (("_call_categorize_model", categorize),
                        ("_call_csv_mapping_model", map_columns),
@@ -239,7 +245,7 @@ def given_ai_available(context):
         context.add_cleanup(setattr, ai, name, original)
 
     context.accounts, context.baseline, context.mapped_rows = {}, {}, None
-    context.balance_col, context.shot_balance = None, None
+    context.balance_col, context.shot_balance, context.shot_period = None, None, None
     context.screenshot_calls, context.screenshot_lines = [], []
     context.categorize_calls, context.categories = [], {}
 
@@ -1028,4 +1034,53 @@ def then_gap_named(context, who, description):
     named = re.search(r'Adding the unticked line "([^"]+)" \(\$[\d,.]+ on [^)]+\) would '
                       r"close the gap\.", said)
     assert named and named.group(1).lower() == description.lower(), said
+
+
+# ── #460: PDF statements ───────────────────────────────────────────────────
+#
+# The PDF itself is real (pypdf writes it), because the app checks its pages
+# and its encryption before the model is asked. Its CONTENT is what the stubbed
+# model "reads": the lines a scenario lists, with the year a statement prints.
+
+@given("a PDF statement for {acct:Q} lists {description:Q} for ${amount:Amt} {way:Way} {when:Rel}")
+def given_pdf(context, acct, description, amount, way, when):
+    context.pdf = (acct, make_pdf(pages=2))
+    context.screenshot_lines.append(_shot_line(description, amount, way, when))
+
+
+@given("it shows a closing balance of ${amount:Amt} {when:Rel}")
+def given_pdf_closing(context, amount, when):
+    context.shot_balance = ai._ScreenshotBalance(
+        amount=amount, month=when.month, day=when.day, year=when.year, kind="statement")
+
+
+@given("a password-protected PDF statement for {acct:Q}")
+def given_locked_pdf(context, acct):
+    context.pdf = (acct, make_pdf(password="secret"))
+    context.screenshot_lines.append(_shot_line("GROCERY MART", "82.17", "out",
+                                               date.today()))
+
+
+@when("user {who:Who} uploads the PDF")
+def when_uploading_pdf(context, who):
+    acct, raw = context.pdf
+    _upload(context, _account(context, acct), raw, "statement.pdf")
+
+
+@when("user {who:Who} uploads it as {filename:Q}")
+def when_uploading_as(context, who, filename):
+    payload, _name = context.statement["build"](context.statement)
+    _upload(context, _account(context, context.statement["account"]), payload, filename)
+
+
+@then("the ledger is compared with a closing balance of ${amount:Amt} {when:Rel}")
+def then_compared_with(context, amount, when):
+    expected = f"closing balance of ${float(amount):,.2f} on {when:%b} {when.day}, {when.year}"
+    assert expected in _flash(context), _flash(context)
+
+
+@then("it is read as a CSV")
+def then_read_as_csv(context):
+    assert context.mapped_rows is not None, "the CSV's columns were never mapped"
+    assert context.screenshot_calls == [], "it was sent to the model as a document"
 

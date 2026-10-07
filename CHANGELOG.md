@@ -87,6 +87,15 @@ this project uses the `0.x` versioning scheme described in
   negative; before, a card could report twice its balance as a gap. And when
   the ledger is off by exactly one unticked line, or one entry that's in your
   ledger but not on the statement, the message names it. (#459)
+- **Import the PDF statement your bank sends.** The statement import now takes
+  a PDF of up to 12 pages. The AI reads its transactions, statement period and
+  closing balance, and everything goes through the same review as any other
+  statement: missing lines, possible matches, entries in your ledger that the
+  statement doesn't list, and a balance check after applying. A PDF that needs
+  a password to open is refused before anything is sent. One locked only
+  against printing, as many banks send them, is fine. A PDF covering more than
+  one account is refused too. The whole PDF is sent to the AI to read and is
+  never kept. (#460)
 - **The database can now remember which bank statement a transaction came
   from.** Nothing uses this yet; it prepares for filling in missing
   transactions from a statement export, where it lets a second import of the

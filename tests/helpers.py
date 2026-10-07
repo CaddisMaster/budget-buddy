@@ -688,3 +688,25 @@ def fetch_goal(goal_id):
     cur.close()
     conn.close()
     return row
+
+
+def make_pdf(pages=1, password=None, owner_only=False):
+    """A real PDF of blank pages (#460), optionally encrypted: with a password
+    needed to open it, or (`owner_only`) locked against printing and copying
+    but opening with none, as many banks send statements. Blank is enough:
+    what is IN a statement is the model's to read, and the model is stubbed.
+    What the app itself checks is the page count and the encryption."""
+    import io
+
+    from pypdf import PdfWriter
+
+    writer = PdfWriter()
+    for _ in range(pages):
+        writer.add_blank_page(width=612, height=792)
+    if password is not None:
+        writer.encrypt(password)
+    elif owner_only:
+        writer.encrypt(user_password="", owner_password="bank")
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
