@@ -5,13 +5,55 @@
 
 ## Current Status
 
-▶️ **NEXT SESSION: #457** (ledger entries the statement doesn't list), then #458. **`0.13.0` is NOT
-being cut until statement import is complete** (Sean, 2026-10-06: "I don't want to cut .13 until
-this feature is fully complete"). Its open items are #455 and #457–#461. 🛑 **Before or at that deploy,
-add RUNBOOK §3's Nginx `location = /transactions/import { client_max_body_size 16m; }` block on
-the Droplet**, or screenshot import fails with a 413. **#36** stays date-parked. Prod runs
-**`0.12.0`** (2026-10-05). ⚠️ The `Acceptance criteria` check is **still not a required status
-check** (last re-checked 2026-10-02).
+▶️ **NEXT SESSION: run Sean's real Discover export through the import at localhost**, then release
+prep for `0.13.0`. ✅ **Statement import is built** (2026-10-07): the `0.13.0` milestone holds 0 open
+issues, so Sean's condition for cutting it (2026-10-06) is met on scope. 🛑 **But no real bank file
+has been through it.** Sean pulled a Discover report (9/22 to 10/07); an empty "Discover" Credit
+Card account was added to the dev `sean` user for the test. Every line will show as missing, and
+the balance check needs an opening balance (a check-in) or a typed balance (#474) to mean
+anything. 🛑 **Before or at that deploy, add RUNBOOK §3's Nginx `location = /transactions/import
+{ client_max_body_size 16m; }` block on the Droplet**, or screenshot and PDF import fail with a
+413. **#36** stays date-parked. Prod runs **`0.12.0`** (2026-10-05). ⚠️ The `Acceptance criteria`
+check is **still not a required status check** (last re-checked 2026-10-02).
+
+### The 2026-10-07 session: statement import finished
+
+On `main`, **not deployed**. Ships with `0.13.0`:
+
+| PR | Issue | |
+|---|---|---|
+| #466 | **#457** | ledger entries the statement doesn't list, and "still pending"; left out for screenshots (Sean) |
+| #467 | **#458** | summary first, "Needs you", everything else folded in `<details>`; one Apply |
+| #468 | **#455** | clean names: the user's own name for a merchant, else a cleaned one; plain code, no raw-text column (Sean) |
+| #469 | **#459** | a balance for CSV (running column) and screenshots (dated only); cards read in the nearer sign (Sean); a gap one item explains is named |
+| #470 | **#460** | PDF statements through the screenshot seam (Sonnet 5) + `pypdf` for pages and locks (Sean) |
+| #472 | **#471** | `sql/41`: `account.number_last4`, CHECK four digits, partial UNIQUE per user. Additive, before-pull |
+| #473 | **#461** | the account is detected from the statement's last four; learned on apply, the last apply wins (Sean) |
+| #475 | **#474** | a typed closing balance on the upload form, used over the file's own; the review names the source |
+| this PR | **#476** | this record |
+
+- **Every open question was settled before code**, and most turned out to be lookups. #455's
+  "first model output in a stored column" premise was false (screenshots already store one). #459's
+  "check a real Discover export" became unnecessary once a rule was right under both sign
+  conventions. #461's "editable or learned" hid a real failure: a wrong first apply would have
+  stuck forever. "The last apply wins" makes it self-correcting, and sql/41's per-user unique index
+  makes it a guarantee.
+- ⚠️ **Mutation passes found three kinds of survivor, again.** Real untested rules got a test (for
+  example, #459's apply-side filters: a ticked, pending or later line must never be named). Duplicate
+  guards were deleted: the apply-side `NOT is_adjustment`, an explicit PDF lock check pypdf already
+  makes, and a backwards-period check the containment check already makes. A `user_id` scope that
+  another filter also enforces was kept, per the non-negotiable.
+- ⚠️ **Real model calls caught one prompt gap the mocks never could.** Shown a screenshot with an
+  "Available balance" and running balances beside each line, Sonnet 5 returned the available one,
+  correctly labelled and so safely ignored, but leaving no check. A "prefer a statement balance,
+  then the running balance beside the most recent line" sentence fixed it. Each new schema field was
+  confirmed against the real API once (cents): CSV `balance_col`, the screenshot balance, the PDF
+  `document` block (one page, 5.9 s) and `account_last4`.
+- **#474 came from Sean's question** "what can we tell the AI about the balance?" The answer was
+  "nothing": the AI never matches, and a Discover CSV carries no balance. The typed balance closes
+  that. It is never stored; the Accounts page check-in still records a balance.
+- ⚠️ **Not yet seen against a real file:** a Discover OFX's sign, a multi-page bank PDF, real phone
+  screenshots. All were checked only with generated files.
 
 ### The 2026-10-06 session: making the import work like a reconcile in a session
 
