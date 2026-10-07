@@ -77,6 +77,16 @@ this project uses the `0.x` versioning scheme described in
   number and location removed ("Joes Pizza"). The name is editable in the
   review, and the bank's text is shown beneath it. Importing the same statement
   again still recognises every line, whatever it was renamed to. (#455)
+- **Every statement import now checks your balance, not just OFX.** A CSV
+  with a running-balance column is checked against the balance on its most
+  recent row, whether the file lists oldest or newest first. A screenshot is
+  checked against a balance tied to a date: a statement balance, or the running
+  balance beside a transaction. An "available balance" is never used, since it
+  includes holds. The message now says which figure it compared against. A credit
+  card agrees whether the statement shows the amount owed as positive or
+  negative; before, a card could report twice its balance as a gap. And when
+  the ledger is off by exactly one unticked line, or one entry that's in your
+  ledger but not on the statement, the message names it. (#459)
 - **The database can now remember which bank statement a transaction came
   from.** Nothing uses this yet; it prepares for filling in missing
   transactions from a statement export, where it lets a second import of the

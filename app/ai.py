@@ -945,6 +945,7 @@ class _CsvMapping(BaseModel):
     out_is_negative: bool
     debit_col: int | None
     credit_col: int | None
+    balance_col: int | None = None    # #459: a running balance, when the file has one
 
 
 def map_csv_columns(rows, date_formats, *, today=None):
@@ -979,7 +980,9 @@ def _call_csv_mapping_model(rows, date_formats, today, api_key):
         "money-out and money-in columns, with amount_col null). For a signed "
         "amount column, set out_is_negative to true if money leaving the account "
         "(a purchase, a withdrawal) is shown as a negative number, false if "
-        "purchases are positive (common on credit-card exports). Choose "
+        "purchases are positive (common on credit-card exports). Set balance_col "
+        "to the column holding the account's running balance after each row, if "
+        "there is one, else null; never an amount column. Choose "
         "date_format ONLY from this list, matching the date cells exactly: "
         + json.dumps(date_formats) + ". If the dates are ambiguous between "
         "month-first and day-first, prefer the one that makes every sample date "
@@ -1031,14 +1034,26 @@ class _ScreenshotLine(BaseModel):
     legible: bool             # false if any part was cut off or unclear
 
 
+class _ScreenshotBalance(BaseModel):
+    """A balance shown in the screenshots (#459). Untrusted — only a balance
+    tied to a date is used (statements.screenshot_balance())."""
+    amount: str
+    month: int | None
+    day: int | None
+    year: int | None
+    kind: str      # "statement" | "after_line" | "available" | "current" | "other"
+
+
 class _ScreenshotRead(BaseModel):
     lines: list[_ScreenshotLine]
+    balance: _ScreenshotBalance | None = None
 
 
 def read_screenshots(images, *, today=None):
     """Read the transaction lines from one or more screenshots. `images` is a
-    list of (media_type, bytes). Returns a list of plain dicts for
-    statements.lines_from_screenshots(), or raises ParseError on any failure."""
+    list of (media_type, bytes). Returns a plain dict, {"lines": [...],
+    "balance": {...} or None}, for statements.lines_from_screenshots(), or
+    raises ParseError on any failure."""
     today = today or date.today()
     if not images:
         raise ParseError("No images to read")
@@ -1048,7 +1063,7 @@ def read_screenshots(images, *, today=None):
     parsed = _call_screenshot_model(images, today, api_key)
     if parsed is None:
         raise ParseError("Model returned no structured output")
-    return [line.model_dump() for line in parsed.lines]
+    return parsed.model_dump()
 
 
 def _call_screenshot_model(images, today, api_key):
@@ -1067,7 +1082,18 @@ def _call_screenshot_model(images, today, api_key):
         "made, withdrawals) and 'in' for money arriving (deposits, refunds, "
         "payments received on a card). Set legible to false if any part of the "
         "line is cut off, blurred or ambiguous. Skip running balances, pending "
-        "holds you cannot attribute to a line, and headers. Today's date is "
+        "holds you cannot attribute to a line, and headers. Separately, if a "
+        "balance is shown, set balance: the amount exactly as printed, the date "
+        "it applies to (month, day, and year only if shown), and kind: "
+        "'statement' for a statement or closing balance printed with its date, "
+        "'after_line' for a running balance printed beside a transaction (use the "
+        "most recent such transaction and its date), 'available' for an available "
+        "balance or available credit, 'current' for a current balance with no "
+        "date, 'other' for anything else. If more than one balance is shown, "
+        "report the first of these that exists: a statement balance, then the "
+        "running balance beside the most recent transaction, then any other. "
+        "With no balance shown, balance is null. "
+        "Today's date is "
         + today.isoformat() + "."
     )
     content = [{"type": "image", "source": {
