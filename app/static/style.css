@@ -1178,3 +1178,13 @@ tr:hover td.report-miss { background: var(--danger-soft); }
 .review-section { margin-top: var(--sp-6); padding-top: var(--sp-5); border-top: 1px solid var(--border); }
 .review-section > h2:first-child { margin-top: 0; }
 .review-section > .field-hint { margin-bottom: var(--sp-3); }
+/* #458 — the review opens on a summary; lines that need nothing are folded.
+   The chevron is the .charts-details one, so a fold reads the same everywhere. */
+.review-summary { font-size: 15px; font-weight: 600; }
+.review-summary [data-needs] { color: var(--text-muted); font-weight: 500; }
+.review-fold { margin-top: var(--sp-4); }
+.review-fold > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: var(--sp-2) 0; font-weight: 600; user-select: none; }
+.review-fold > summary::-webkit-details-marker { display: none; }
+.review-fold > summary::after { content: ''; width: 9px; height: 9px; border-right: 2px solid var(--text-muted); border-bottom: 2px solid var(--text-muted); transform: rotate(-45deg); transition: transform 0.15s; }
+.review-fold[open] > summary::after { transform: rotate(45deg); }
+.review-actions { margin-top: var(--sp-5); display: flex; gap: 0.5rem; }

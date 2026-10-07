@@ -16,6 +16,7 @@ from app.statements import (
     Review,
     StatementError,
     adjustments_within,
+    apply_summary,
     csv_ref,
     csv_rows,
     decode,
@@ -31,6 +32,7 @@ from app.statements import (
     parse_csv,
     parse_ofx,
     resolve_date,
+    review_plan,
     sample_rows,
     unlisted_rows,
     validate_mapping,
@@ -632,4 +634,52 @@ def test_an_unmatched_pending_row_is_still_pending_not_unlisted():
     outside = _row(3, date(2026, 10, 1), "9.00", pending=True)
     assert _unlisted([_line(_on(5), "2000.00", "in")], [early, late, outside]) == (
         [], [early, late])
+
+
+# ── review_plan / apply_summary (#458) ──────────────────────────────────────
+
+def _r(i, status="missing", transfer=False, uncertain=False):
+    line = Line(_on(i + 1), Decimal("10.00"), "out", f"L{i}", None, uncertain)
+    return Review(index=i, line=line, status=status, transfer_like=transfer)
+
+
+def test_a_missing_line_with_a_category_is_added_and_needs_nobody():
+    assert review_plan([_r(0)], suggested={0: 7}, pairings={}) == ({0: "add"}, set())
+
+
+def test_a_pending_line_is_marked_posted():
+    assert review_plan([_r(0, "pending")], {}, {}) == ({0: "posted"}, set())
+
+
+def test_a_recorded_line_is_neither_ticked_nor_needed():
+    assert review_plan([_r(0, "recorded")], {}, {}) == ({}, set())
+
+
+def test_a_paired_transfer_line_is_recorded_as_a_transfer():
+    assert review_plan([_r(0, transfer=True)], {}, {0: object()}) == ({0: "transfer"}, set())
+
+
+@pytest.mark.parametrize("review, suggested, ticked", [
+    (_r(0, "possible"), {0: 7}, False),           # a decision: update, add or skip
+    (_r(0, transfer=True), {0: 7}, False),        # a transfer with no other leg found
+    (_r(0, uncertain=True), {0: 7}, False),       # the model could not read it cleanly
+    (_r(0, "pending", uncertain=True), {}, False),
+    (_r(0), {}, True),                            # added, but with no category
+])
+def test_what_needs_a_decision(review, suggested, ticked):
+    plan, needs = review_plan([review], suggested, {})
+    assert needs == {0}
+    assert (0 in plan) is ticked
+
+
+@pytest.mark.parametrize("counts, text", [
+    ({"add": 3, "posted": 1}, "Adding 3 transactions, marking 1 posted."),
+    ({"add": 1, "update": 2, "posted": 4, "transfer": 1},
+     "Adding 1 transaction, updating 2 entries, marking 4 posted, recording 1 transfer."),
+    ({"update": 1, "transfer": 2}, "Updating 1 entry, recording 2 transfers."),
+    ({}, "Nothing will be changed."),
+    ({"add": 0}, "Nothing will be changed."),
+])
+def test_the_summary_says_what_applying_will_do(counts, text):
+    assert apply_summary(counts) == text
 

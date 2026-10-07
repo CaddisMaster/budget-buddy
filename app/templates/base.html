@@ -165,6 +165,32 @@ document.body.addEventListener('htmx:afterRequest', (e) => {
   if (form.dataset.focusAfter) form.querySelector(form.dataset.focusAfter)?.focus();
 });
 
+// <form data-apply-summary="#el">: the statement review (#458). Recount what
+// Apply will do whenever a box or a select changes, in apply's own order: a
+// transfer choice, then "Update my entry", then a pending entry, else an add.
+// ⚠️ Phrased exactly as statements.apply_summary(); change both together.
+document.addEventListener('change', (e) => {
+  const form = e.target.closest('form[data-apply-summary]');
+  if (!form) return;
+  const n = { add: 0, update: 0, posted: 0, transfer: 0 };
+  form.querySelectorAll('input[name="apply"]:checked').forEach((box) => {
+    const field = (name) => form.elements[`${name}_${box.value}`];
+    if (field('category')?.value.startsWith('xfer:')) n.transfer++;
+    else if (field('action')?.value === 'update') n.update++;
+    else if (field('pending')) n.posted++;
+    else n.add++;
+  });
+  const count = (k, one, many) => `${n[k]} ${n[k] === 1 ? one : many}`;
+  const parts = [];
+  if (n.add) parts.push('adding ' + count('add', 'transaction', 'transactions'));
+  if (n.update) parts.push('updating ' + count('update', 'entry', 'entries'));
+  if (n.posted) parts.push(`marking ${n.posted} posted`);
+  if (n.transfer) parts.push('recording ' + count('transfer', 'transfer', 'transfers'));
+  const text = parts.length ? parts.join(', ') + '.' : 'Nothing will be changed.';
+  document.querySelector(form.dataset.applySummary).textContent =
+    text[0].toUpperCase() + text.slice(1);
+});
+
 // HTMX toasts: servers fire `HX-Trigger: {"showToast": {...}}` to surface
 // success/error feedback, since flash() doesn't render on a partial swap.
 const toastHost = document.getElementById('toast-host');
