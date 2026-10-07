@@ -84,7 +84,8 @@ def _ofx(statement):
     dates = [ln["date"] for ln in lines]
     out = ["OFXHEADER:100", "DATA:OFXSGML", "", "<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS>",
            "<BANKTRANLIST>",
-           f"<DTSTART>{min(dates):%Y%m%d}", f"<DTEND>{max(dates):%Y%m%d}"]
+           f"<DTSTART>{statement.get('start') or min(dates):%Y%m%d}",
+           f"<DTEND>{statement.get('end') or max(dates):%Y%m%d}"]
     for i, ln in enumerate(lines):
         sign = "-" if ln["way"] == "out" else ""
         out += ["<STMTTRN>", f"<DTPOSTED>{ln['date']:%Y%m%d}",
@@ -730,3 +731,60 @@ def then_unchanged(context, acct, description, amount, way, when):
                 "FROM transactions WHERE account_id = %s AND description = %s",
                 (_account(context, acct), description))
     assert rows == [(Decimal(amount), "income" if way == "in" else "expense", when, None)], rows
+
+
+# ── #457: ledger entries the statement does not list ──────────────────────
+
+def _unlisted(context):
+    """The descriptions in the "In your ledger but not on this statement"
+    section, one per row, or None when the section is not rendered. The review
+    table must be there, so "not shown" never passes on an error page."""
+    _rows(context)
+    section = re.search(r'<section[^>]*data-section="unlisted"[^>]*>(.*?)</section>',
+                        _body(context), re.S)
+    if section is None:
+        return None
+    return re.findall(r'<tr data-unlisted="\d+">\s*<td>[^<]*</td>\s*<td>([^<]*)</td>',
+                      section.group(1))
+
+
+@given("a statement for {acct:Q} covers {start:Rel} to {end:Rel}")
+def given_statement_period(context, acct, start, end):
+    context.statement = {"account": acct, "build": _ofx, "closing": None,
+                         "start": start, "end": end, "lines": []}
+
+
+@given("{acct:Q} holds {description:Q} for ${amount:Amt} {way:Way} {when:Rel}, twice")
+def given_ledger_row_twice(context, acct, description, amount, way, when):
+    for _ in range(2):
+        _hold(_account(context, acct), _user(context, "A")["id"], description, amount, way, when)
+
+
+@given("it shows {description:Q} for ${amount:Amt} {way:Way} {when:Rel}")
+def given_another_shot_line(context, description, amount, way, when):
+    context.screenshot_lines.append(_shot_line(description, amount, way, when, year=False))
+
+
+@then("{description:Q} is shown as in my ledger but not on the statement")
+def then_unlisted(context, description):
+    shown = _unlisted(context)
+    assert shown is not None, "no unlisted section"
+    assert description in shown, shown
+
+
+@then("exactly one {description:Q} is shown as in my ledger but not on the statement")
+def then_unlisted_once(context, description):
+    shown = _unlisted(context)
+    assert shown is not None, "no unlisted section"
+    assert shown.count(description) == 1, shown
+
+
+@then("{description:Q} is not shown as in my ledger but not on the statement")
+def then_not_unlisted(context, description):
+    assert description not in (_unlisted(context) or []), _unlisted(context)
+
+
+@then("nothing is shown as in my ledger but not on the statement")
+def then_no_unlisted_section(context):
+    assert _unlisted(context) is None, _unlisted(context)
+

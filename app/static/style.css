@@ -1174,3 +1174,7 @@ tr:hover td.report-miss { background: var(--danger-soft); }
    muted so the eye goes to the ones that need a decision. */
 .flash.is-warning { border-left-color: var(--warning); }
 .statement-review tr[data-status="recorded"] td { color: var(--text-muted); }
+/* #457 — the ledger rows a statement does not list, below the review form. */
+.review-section { margin-top: var(--sp-6); padding-top: var(--sp-5); border-top: 1px solid var(--border); }
+.review-section > h2:first-child { margin-top: 0; }
+.review-section > .field-hint { margin-bottom: var(--sp-3); }

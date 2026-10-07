@@ -22,7 +22,7 @@ import html
 import io
 import re
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 # Caps. A monthly statement is tens to a few hundred lines; these keep one
@@ -536,6 +536,32 @@ def adjustments_within(ledger, start, end):
     return [r for r in ledger
             if r.is_adjustment and start <= r.transaction_date <= end]
 
+
+
+def unlisted_rows(reviews, ledger, start, end):
+    """The account's ledger rows that the statement does not list (#457), as
+    (unlisted, still_pending). Matching only runs from line to row, so without
+    this a row entered twice, typo'd or cancelled at the bank is never seen.
+
+    A row is "used" when `match_lines()` gave it to a line, recorded, pending
+    or possible alike: the reviews carry exactly that set, so the two cannot
+    disagree. Of the rest, inside the statement period:
+      - adjustments are left out (the blueprint already warns about them);
+      - pending rows are still_pending, not a problem;
+      - rows in the period's last MATCH_DAYS days are left out, since a
+        purchase made then usually posts on the next statement.
+    Only lists rows; nothing here (or in the review) changes one."""
+    used = {r.match.id for r in reviews if r.match is not None}
+    settled = end - timedelta(days=MATCH_DAYS)
+    unlisted, still_pending = [], []
+    for row in ledger:
+        if row.id in used or row.is_adjustment or not start <= row.transaction_date <= end:
+            continue
+        if row.is_pending:
+            still_pending.append(row)
+        elif row.transaction_date <= settled:
+            unlisted.append(row)
+    return unlisted, still_pending
 
 def find_counterpart(line, rows, used=()):
     """The other account's existing plain row that a transfer line should pair

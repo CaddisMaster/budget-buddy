@@ -68,6 +68,7 @@ from app.statements import (
     parse_csv,
     parse_ofx,
     sample_rows,
+    unlisted_rows,
     validate_mapping,
 )
 
@@ -274,8 +275,9 @@ def import_scan():
                             account.account_id)
 
     kinds = [image_type(raw) for raw in raws]
+    from_screenshots = all(kinds)
     try:
-        if all(kinds):
+        if from_screenshots:
             # #447: screenshots, read by the model.
             if len(raws) > MAX_IMAGES:
                 return _upload_form(f"Send at most {MAX_IMAGES} screenshots at a time.",
@@ -301,6 +303,11 @@ def import_scan():
     other_accounts = [a for a in _accounts(current_user.id)
                       if a.account_id != account.account_id]
 
+    # #457: a screenshot's period is only its earliest to its latest visible
+    # line, so a skipped scroll would flag entries that are really there.
+    unlisted, still_pending = ([], []) if from_screenshots else unlisted_rows(
+        reviews, ledger, statement.start, statement.end)
+
     counts = {s: sum(1 for r in reviews if r.status == s)
               for s in ('recorded', 'pending', 'possible', 'missing')}
     return render_template(
@@ -318,6 +325,9 @@ def import_scan():
         expense_categories=[c for c in categories if c.kind == 'expense'],
         income_categories=[c for c in categories if c.kind == 'income'],
         adjustments=adjustments_within(ledger, statement.start, statement.end),
+        unlisted=unlisted,
+        still_pending=still_pending,
+        match_days=MATCH_DAYS,
     )
 
 

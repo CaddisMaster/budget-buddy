@@ -584,3 +584,62 @@ def test_applying_an_update_twice_changes_nothing_the_second_time(client_a, user
 def test_an_update_naming_no_entry_is_refused(client_a, checking, ai_stubbed):
     _apply(client_a, checking, line_0={**GOOD, "action": "update", "match": "abc"})
     assert _rows(checking) == []
+
+
+# ── #457: ledger entries the statement does not list ───────────────────────
+
+def _hold(user_id, account_id, description, amount, when, pending=False):
+    with db_cursor(commit=True) as cur:
+        cur.execute("INSERT INTO transactions (amount, description, account_id, "
+                    "transaction_date, transaction_type, is_pending, user_id) "
+                    "VALUES (%s, %s, %s, %s, 'expense', %s, %s) RETURNING id",
+                    (amount, description, account_id, when, pending, user_id))
+        return cur.fetchone().id
+
+
+def _section(body, name):
+    found = re.search(rf'<section[^>]*data-section="{name}"[^>]*>(.*?)</section>', body, re.S)
+    return found.group(1) if found else None
+
+
+def test_an_unmatched_pending_row_is_listed_as_still_pending(client_a, users, checking,
+                                                             ai_stubbed):
+    _hold(users["a"]["id"], checking, "Gym", "30.00", TODAY - timedelta(days=20))
+    _hold(users["a"]["id"], checking, "Hold", "9.00", TODAY - timedelta(days=15), pending=True)
+    body = _upload(client_a, checking, _csv(
+        (TODAY - timedelta(days=30), "PAYROLL", "2000.00"),
+        (TODAY, "COFFEE", "-4.50"))).get_data(as_text=True)
+    unlisted, pending = _section(body, "unlisted"), _section(body, "still-pending")
+    assert unlisted is not None and "Gym" in unlisted
+    assert pending is not None and "Hold" in pending
+    assert "Hold" not in unlisted and "Gym" not in pending
+
+
+def test_nothing_unlisted_renders_neither_section(client_a, checking, ai_stubbed):
+    body = _upload(client_a, checking, _csv(
+        (TODAY - timedelta(days=10), "COFFEE", "-4.50"))).get_data(as_text=True)
+    assert 'data-line="0"' in body
+    assert _section(body, "unlisted") is None and _section(body, "still-pending") is None
+
+
+def test_an_unlisted_rows_link_finds_it_in_history(client_a, users, checking, ai_stubbed):
+    """The link narrows History to that row: its account, its month and its
+    description. Each decoy differs from the row in exactly one of the three."""
+    a = users["a"]["id"]
+    when = TODAY - timedelta(days=20)
+    row_id = _hold(a, checking, "Gym & Spa", "30.00", when)
+    decoys = [
+        _hold(a, checking, "Gym & Spa", "30.00", when - timedelta(days=62)),
+        _hold(a, checking, "Bakery", "30.00", when),
+        _hold(a, create_account(a, "Savings"), "Gym & Spa", "30.00", when),
+    ]
+    body = _upload(client_a, checking, _csv(
+        (TODAY - timedelta(days=30), "PAYROLL", "2000.00"),
+        (TODAY, "COFFEE", "-4.50"))).get_data(as_text=True)
+    href = re.search(rf'<tr data-unlisted="{row_id}">.*?<a href="([^"]+)"',
+                     _section(body, "unlisted"), re.S).group(1).replace("&amp;", "&")
+    assert href.startswith("/transactions?")
+    history = client_a.get(href).get_data(as_text=True)
+    assert f'/transactions/{row_id}/edit' in history, "the link does not reach the row"
+    for decoy in decoys:
+        assert f'/transactions/{decoy}/edit' not in history, f"the link also lists row {decoy}"
