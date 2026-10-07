@@ -1061,6 +1061,7 @@ class _ScreenshotRead(BaseModel):
     balance: _ScreenshotBalance | None = None
     period: _StatementPeriod | None = None     # a PDF's statement period
     account_count: int = 1                     # a PDF covering several accounts
+    account_last4: str | None = None           # #461: "ending in 1234", as shown
 
 
 def read_screenshots(images, *, today=None):
@@ -1112,7 +1113,9 @@ def _call_screenshot_model(images, today, api_key):
         "closing or new balance as the statement balance with its date, set "
         "period to the statement's start and end dates as printed, and set "
         "account_count to how many separate accounts' transactions it lists. "
-        "For screenshots, period is null and account_count is 1. "
+        "For screenshots, period is null and account_count is 1. If the account "
+        "or card number is shown, even masked (for example '...1234' or 'ending "
+        "in 1234'), set account_last4 to its last four digits; otherwise null. "
         "Today's date is "
         + today.isoformat() + "."
     )

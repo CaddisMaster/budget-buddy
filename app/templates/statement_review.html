@@ -18,6 +18,12 @@
   <strong>{{ account.account_name }}</strong>, {{ statement.start.strftime('%b %d, %Y') }}
   to {{ statement.end.strftime('%b %d, %Y') }}.
 </p>
+{% if detected %}
+{# #461 — the statement named its account. Changing it means uploading again:
+   the file is never kept. #}
+<p class="field-hint" data-detected>Detected: {{ account.account_name }} (…{{ statement.account_last4 }}).
+  <a href="{{ url_for('imports.import_form') }}">Not this account? Choose another and upload again.</a></p>
+{% endif %}
 {# #458 — what Apply will do, counted from statements.review_plan(). The
    data-apply-summary listener in base.html recounts it as boxes and selects
    change. #}
@@ -136,6 +142,7 @@
 <form method="post" action="{{ url_for('imports.import_apply') }}" data-apply-summary="#apply-summary">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="account_id" value="{{ account.account_id }}">
+  {% if statement.account_last4 %}<input type="hidden" name="number_last4" value="{{ statement.account_last4 }}">{% endif %}
   {% if statement.closing_balance is not none %}
   <input type="hidden" name="closing_balance" value="{{ statement.closing_balance }}">
   <input type="hidden" name="closing_date" value="{{ statement.closing_date.isoformat() }}">

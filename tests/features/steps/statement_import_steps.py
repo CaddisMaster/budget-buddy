@@ -89,8 +89,10 @@ def _hold(account_id, user_id, description, amount, way, when,
 def _ofx(statement):
     lines = statement["lines"]
     dates = [ln["date"] for ln in lines]
-    out = ["OFXHEADER:100", "DATA:OFXSGML", "", "<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS>",
-           "<BANKTRANLIST>",
+    out = ["OFXHEADER:100", "DATA:OFXSGML", "", "<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS>"]
+    if statement.get("acctid"):                                  # #461
+        out += ["<BANKACCTFROM>", f"<ACCTID>{statement['acctid']}", "</BANKACCTFROM>"]
+    out += ["<BANKTRANLIST>",
            f"<DTSTART>{statement.get('start') or min(dates):%Y%m%d}",
            f"<DTEND>{statement.get('end') or max(dates):%Y%m%d}"]
     for i, ln in enumerate(lines):
@@ -120,11 +122,14 @@ def _csv_split(statement):
 
 
 def _upload(context, account_id, payload, filename):
-    context.baseline.setdefault(account_id, _count(account_id))
+    """`account_id` None leaves the account to be worked out (#461)."""
+    if account_id is not None:
+        context.baseline.setdefault(account_id, _count(account_id))
     context.upload = (account_id, payload, filename)
     context.response = context.client.post(
         "/transactions/import",
-        data={"account_id": str(account_id), "statement": (io.BytesIO(payload), filename)},
+        data={"account_id": "" if account_id is None else str(account_id),
+              "statement": (io.BytesIO(payload), filename)},
         content_type="multipart/form-data")
 
 
@@ -1083,4 +1088,70 @@ def then_compared_with(context, amount, when):
 def then_read_as_csv(context):
     assert context.mapped_rows is not None, "the CSV's columns were never mapped"
     assert context.screenshot_calls == [], "it was sent to the model as a document"
+
+
+# ── #461: which account a statement belongs to ─────────────────────────────
+
+def _known_last4(context, acct):
+    return _sql("SELECT number_last4 FROM account WHERE account_id = %s",
+                (_account(context, acct),))[0][0]
+
+
+@given("{acct:Q} is known to end in {digits:d}")
+def given_known_last4(context, acct, digits):
+    _sql("UPDATE account SET number_last4 = %s WHERE account_id = %s",
+         (f"{digits:04d}", _account(context, acct)))
+
+
+@given("no account is known to end in {digits:d}")
+def given_no_account_known(context, digits):
+    rows = _sql("SELECT account_id FROM account WHERE user_id = %s AND number_last4 = %s",
+                (_user(context, "A")["id"], f"{digits:04d}"))
+    assert rows == [], rows
+
+
+@given("an OFX statement for an account ending in {digits:d} lists {description:Q} "
+       "for ${amount:Amt} {way:Way} {when:Rel}")
+def given_ofx_for_last4(context, digits, description, amount, way, when):
+    context.statement = {"account": None, "build": _ofx, "closing": None,
+                         "acctid": f"XXXXXXXX{digits:04d}", "lines": [
+                             {"description": description, "amount": amount, "way": way,
+                              "date": when}]}
+
+
+@when("user {who:Who} uploads it without choosing an account")
+def when_uploading_undetermined(context, who):
+    payload, filename = context.statement["build"](context.statement)
+    _upload(context, None, payload, filename)
+
+
+@when("user {who:Who} uploads it for {acct:Q}")
+def when_uploading_for(context, who, acct):
+    payload, filename = context.statement["build"](context.statement)
+    _upload(context, _account(context, acct), payload, filename)
+
+
+@then("the review is for {acct:Q}")
+def then_review_for(context, acct):
+    _rows(context)
+    body = _body(context)
+    assert f'<input type="hidden" name="account_id" value="{_account(context, acct)}">' in body
+    detected = re.search(r"<[^>]*data-detected[^>]*>(.*?)</", body, re.S)
+    assert detected and acct in unescape(detected.group(1)), "no Detected line naming it"
+
+
+@then("{acct:Q} is known to end in {digits:d}")
+def then_known_last4(context, acct, digits):
+    assert "Added" in _flash(context), _flash(context)
+    assert _known_last4(context, acct) == f"{digits:04d}"
+
+
+@then("user {who:Who} is asked which account it is for")
+def then_asked_for_account(context, who):
+    body = _body(context)
+    assert context.response.status_code == 200, context.response.status_code
+    assert 'data-line="' not in body, "a review was shown without an account"
+    assert "Which account is this statement for?" in unescape(body), body[:400]
+    assert re.search(r'<select name="account_id"[^>]*>\s*<option value="" selected', body), \
+        "the account picker is not waiting for a choice"
 

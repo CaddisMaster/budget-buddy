@@ -35,7 +35,7 @@ TODAY = date.today()
 def ai_stubbed(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     calls = {"mapping": [], "categorize": [], "screenshots": [], "shot_lines": [],
-             "shot_balance": None, "shot_period": None}
+             "shot_balance": None, "shot_period": None, "shot_last4": None}
 
     def map_columns(rows, date_formats, today, api_key):
         calls["mapping"].append(rows)
@@ -50,7 +50,7 @@ def ai_stubbed(monkeypatch):
     def read_shots(images, today, api_key):
         calls["screenshots"].append(images)
         return ai._ScreenshotRead(lines=list(calls["shot_lines"]), balance=calls["shot_balance"],
-                                  period=calls["shot_period"])
+                                  period=calls["shot_period"], account_last4=calls["shot_last4"])
 
     monkeypatch.setattr(ai, "_call_csv_mapping_model", map_columns)
     monkeypatch.setattr(ai, "_call_categorize_model", categorize)
@@ -887,3 +887,100 @@ def test_a_pdf_keeps_the_ledger_only_section(client_a, users, checking, ai_stubb
     body = _upload(client_a, checking, make_pdf(), "statement.pdf").get_data(as_text=True)
     assert f'data-unlisted="{gym}"' in body
 
+
+# ── #461: which account a statement belongs to ─────────────────────────────
+
+def _ofx_for(last4, when=None, amount="-4.50"):
+    when = when or TODAY - timedelta(days=3)
+    return (f"OFXHEADER:100\nDATA:OFXSGML\n\n<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS>\n"
+            f"<BANKACCTFROM>\n<ACCTID>XXXXXXXX{last4}\n</BANKACCTFROM>\n<BANKTRANLIST>\n"
+            f"<STMTTRN>\n<DTPOSTED>{when:%Y%m%d}\n<TRNAMT>{amount}\n<FITID>F1\n"
+            "<NAME>COFFEE CO\n</STMTTRN>\n</BANKTRANLIST>\n"
+            "</STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>\n").encode()
+
+
+def _set_last4(account_id, digits):
+    with db_cursor(commit=True) as cur:
+        cur.execute("UPDATE account SET number_last4 = %s WHERE account_id = %s",
+                    (digits, account_id))
+
+
+def _last4(account_id):
+    with db_cursor() as cur:
+        cur.execute("SELECT number_last4 FROM account WHERE account_id = %s", (account_id,))
+        return cur.fetchone().number_last4
+
+
+def _undetermined(client, payload, filename="s.ofx"):
+    return client.post("/transactions/import",
+                       data={"account_id": "", "statement": (io.BytesIO(payload), filename)},
+                       content_type="multipart/form-data")
+
+
+def _review_account(body):
+    found = re.search(r'<input type="hidden" name="account_id" value="(\d+)">', body)
+    return int(found.group(1)) if found else None
+
+
+def test_another_users_account_is_never_detected(client_a, users, ai_stubbed):
+    _set_last4(users["b"]["account_id"], "1234")
+    body = _undetermined(client_a, _ofx_for("1234")).get_data(as_text=True)
+    assert _review_account(body) is None and "Which account is this statement for?" in body
+
+
+def test_a_chosen_account_wins_over_a_detected_one(client_a, users, checking, ai_stubbed):
+    discover = create_account(users["a"]["id"], "Discover", "Credit Card")
+    _set_last4(discover, "1234")
+    body = _upload(client_a, checking, _ofx_for("1234"), "s.ofx").get_data(as_text=True)
+    assert _review_account(body) == checking
+    assert "data-detected" not in body
+
+
+def test_the_last_apply_moves_the_digits(client_a, users, checking, ai_stubbed):
+    discover = create_account(users["a"]["id"], "Discover", "Credit Card")
+    _set_last4(checking, "1234")
+    _set_last4(users["b"]["account_id"], "1234")
+    resp = _apply(client_a, discover, extra=[("number_last4", "1234")], line_0=GOOD)
+    assert resp.status_code == 302
+    assert (_last4(discover), _last4(checking)) == ("1234", None)
+    assert _last4(users["b"]["account_id"]) == "1234", "another user's account was touched"
+
+
+@pytest.mark.parametrize("forged", ["12345", "abcd", "", "12 4"])
+def test_forged_digits_teach_nothing_and_break_nothing(client_a, checking, ai_stubbed, forged):
+    _set_last4(checking, "0042")
+    resp = _apply(client_a, checking, extra=[("number_last4", forged)], line_0=GOOD)
+    assert resp.status_code == 302
+    assert _last4(checking) == "0042"
+    assert [r.description for r in _rows(checking)] == ["GROCERY"]
+
+
+def test_the_review_carries_the_digits_to_apply(client_a, checking, ai_stubbed):
+    body = _upload(client_a, checking, _ofx_for("5678"), "s.ofx").get_data(as_text=True)
+    assert '<input type="hidden" name="number_last4" value="5678">' in body
+
+
+def test_a_pdfs_digits_detect_its_account(client_a, users, ai_stubbed):
+    discover = create_account(users["a"]["id"], "Discover", "Credit Card")
+    _set_last4(discover, "1234")
+    ai_stubbed["shot_lines"].append(_read_line(TODAY - timedelta(days=3)))
+    ai_stubbed["shot_last4"] = "ending in 1234"
+    body = _undetermined(client_a, make_pdf(), "statement.pdf").get_data(as_text=True)
+    assert _review_account(body) == discover
+
+
+def test_an_account_id_that_is_not_a_number_is_still_not_found(client_a, ai_stubbed):
+    resp = client_a.post("/transactions/import",
+                         data={"account_id": "abc", "statement": (io.BytesIO(_ofx_for("1")), "s.ofx")},
+                         content_type="multipart/form-data")
+    assert resp.status_code == 404
+
+
+
+def test_a_screenshots_digits_detect_its_account(client_a, users, ai_stubbed):
+    discover = create_account(users["a"]["id"], "Discover", "Credit Card")
+    _set_last4(discover, "1234")
+    ai_stubbed["shot_lines"].append(_read_line(TODAY - timedelta(days=3)))
+    ai_stubbed["shot_last4"] = "...1234"
+    body = _undetermined(client_a, PNG, "shot.png").get_data(as_text=True)
+    assert _review_account(body) == discover

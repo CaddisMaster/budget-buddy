@@ -10,7 +10,9 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% if error %}<p class="flash is-warning" role="alert">{{ error }}</p>{% endif %}
     <label for="import-account">Account</label>
-    <select name="account_id" id="import-account" required>
+    {# #461 — left empty, the account is worked out from the statement's number. #}
+    <select name="account_id" id="import-account">
+        <option value="" {% if not selected %}selected{% endif %}>Work it out from the statement</option>
         {% for account in accounts %}
         <option value="{{ account.account_id }}" {% if account.account_id == selected %}selected{% endif %}>{{ account.account_name }}</option>
         {% endfor %}
