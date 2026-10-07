@@ -563,6 +563,63 @@ def unlisted_rows(reviews, ledger, start, end):
             unlisted.append(row)
     return unlisted, still_pending
 
+
+def review_plan(reviews, suggested, pairings):
+    """How the review opens (#458), as (plan, needs).
+
+    `plan` maps each line ticked by default to what applying it will do:
+    'add', 'posted' (a pending entry the bank has now posted) or 'transfer'
+    (a transfer line whose other leg was found, #446). The template reads it
+    for every checkbox, and the summary counts it, so what the page shows ticked
+    and what it says applying will do come from one rule.
+
+    `needs` is the lines that need a decision: a possible match (update, add or
+    skip), a transfer-looking line with no other leg found, a line the model
+    found hard to read, and a missing line with no category. The last stays
+    ticked, since it can be added uncategorised; the others start unticked."""
+    plan, needs = {}, set()
+    for r in reviews:
+        i = r.index
+        if r.status == "recorded":
+            continue
+        if r.line.uncertain or r.status == "possible":
+            needs.add(i)
+        elif r.status == "pending":
+            plan[i] = "posted"
+        elif i in pairings:
+            plan[i] = "transfer"
+        elif r.transfer_like:
+            needs.add(i)
+        else:
+            plan[i] = "add"
+            if suggested.get(i) is None:
+                needs.add(i)
+    return plan, needs
+
+
+def _plural(n, one, many):
+    return f"{n} {one if n == 1 else many}"
+
+
+def apply_summary(counts):
+    """What applying will do, in words: "Adding 3 transactions, marking 1
+    posted." `counts` maps 'add' / 'update' / 'posted' / 'transfer' to how many
+    ticked lines will do each. ⚠️ base.html's review-summary listener phrases
+    the same counts the same way as boxes are ticked; change both together."""
+    parts = []
+    if counts.get("add"):
+        parts.append("adding " + _plural(counts["add"], "transaction", "transactions"))
+    if counts.get("update"):
+        parts.append("updating " + _plural(counts["update"], "entry", "entries"))
+    if counts.get("posted"):
+        parts.append(f"marking {counts['posted']} posted")
+    if counts.get("transfer"):
+        parts.append("recording " + _plural(counts["transfer"], "transfer", "transfers"))
+    if not parts:
+        return "Nothing will be changed."
+    text = ", ".join(parts) + "."
+    return text[0].upper() + text[1:]
+
 def find_counterpart(line, rows, used=()):
     """The other account's existing plain row that a transfer line should pair
     with (#446), or None. Same amount, OPPOSITE direction (money into the card

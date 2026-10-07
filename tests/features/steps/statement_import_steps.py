@@ -20,6 +20,7 @@ import os
 import re
 from datetime import date, timedelta
 from decimal import Decimal
+from html import unescape
 from html.parser import HTMLParser
 
 from behave import given, register_type, then, when
@@ -788,3 +789,117 @@ def then_not_unlisted(context, description):
 def then_no_unlisted_section(context):
     assert _unlisted(context) is None, _unlisted(context)
 
+
+
+# ── #458: a review that shows only what needs me ───────────────────────────
+#
+# Lines sit a week apart, so no line is within MATCH_DAYS of another's ledger
+# row and each kind matches exactly as it was built.
+
+def _finds(context, missing=0, pending=0, recorded=0, possible=0):
+    account_id, user_id = _account(context, "Checking"), _user(context, "A")["id"]
+    lines, step = [], 0
+    for kind, count in (("recorded", recorded), ("pending", pending),
+                        ("possible", possible), ("missing", missing)):
+        for _ in range(count):
+            when = date.today() - timedelta(days=7 * step)
+            amount = f"{10 + step}.00"
+            description = f"{kind.upper()} {step}"
+            if kind in ("recorded", "pending"):
+                _hold(account_id, user_id, f"Ledger {step}", amount, "out", when,
+                      pending=kind == "pending")
+            elif kind == "possible":
+                _hold(account_id, user_id, f"Ledger {step}", f"{9 + step}.50", "out", when)
+            lines.append({"description": description, "amount": amount, "way": "out",
+                          "date": when})
+            step += 1
+    context.statement = {"account": "Checking", "build": _ofx, "closing": None,
+                         "lines": lines}
+
+
+def _part(context, name):
+    """(opening tag, inner html) of the review part marked data-section=name."""
+    found = re.search(rf'(<(section|details)[^>]*data-section="{name}"[^>]*>)(.*?)</\2>',
+                      _body(context), re.S)
+    return (found.group(1), found.group(3)) if found else (None, None)
+
+
+def _statuses_in(html):
+    return re.findall(r'<tr data-line="\d+" data-status="(\w+)">', html or "")
+
+
+def _says(context, marker):
+    found = re.search(rf'<span[^>]*{marker}[^>]*>(.*?)</span>', _body(context), re.S)
+    assert found, f"no {marker} in the review"
+    return " ".join(unescape(re.sub(r'<[^>]+>', '', found.group(1))).split())
+
+
+@given("an upload finds {m:d} missing lines, {p:d} pending line and {r:d} recorded lines")
+def given_finds_mixed(context, m, p, r):
+    _finds(context, missing=m, pending=p, recorded=r)
+
+
+@given("an upload finds a possible match and {m:d} missing lines")
+def given_finds_possible(context, m):
+    _finds(context, missing=m, possible=1)
+
+
+@given("an upload finds {r:d} recorded lines")
+def given_finds_recorded(context, r):
+    _finds(context, recorded=r)
+
+
+@given("every missing line has a category and nothing is uncertain")
+def given_all_categorised(context):
+    # "the AI is available" suggests a category for every line it is sent.
+    _finds(context, missing=3)
+
+
+@when("the review is shown")
+def when_review_shown(context):
+    context.execute_steps("When user A uploads it")
+
+
+@then('it says "{text}"')
+def then_says(context, text):
+    said = _says(context, "data-apply-text")
+    assert text in said, said
+
+
+@then('the possible match is listed under "Needs you"')
+def then_possible_needs_you(context):
+    tag, html = _part(context, "needs")
+    assert tag is not None, "no Needs you section"
+    assert "Needs you" in html
+    assert _statuses_in(html) == ["possible"], _statuses_in(html)
+
+
+@then('the missing lines are under a collapsed "Will be added" section')
+def then_missing_folded(context):
+    tag, html = _part(context, "adding")
+    assert tag is not None and tag.startswith("<details"), tag
+    assert " open" not in tag, "the section starts open"
+    assert "Will be added" in html
+    every_missing = [s for s, _h in _rows(context).values() if s == "missing"]
+    assert _statuses_in(html) == every_missing and len(every_missing) == 10, _statuses_in(html)
+
+
+@then('they are under a collapsed "Already in your ledger" section')
+def then_recorded_folded(context):
+    tag, html = _part(context, "recorded")
+    assert tag is not None and tag.startswith("<details"), tag
+    assert " open" not in tag, "the section starts open"
+    assert "Already in your ledger" in html
+    assert _statuses_in(html) == ["recorded"] * 40, len(_statuses_in(html))
+    context.recorded_html = html
+
+
+@then("none of them has a checkbox")
+def then_no_checkbox(context):
+    assert 'name="apply"' not in context.recorded_html
+
+
+@then("it says nothing needs me")
+def then_nothing_needs_me(context):
+    assert _says(context, "data-needs") == "Nothing needs you."
+    assert _part(context, "needs")[0] is None, "an empty Needs you section"

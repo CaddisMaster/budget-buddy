@@ -643,3 +643,38 @@ def test_an_unlisted_rows_link_finds_it_in_history(client_a, users, checking, ai
     assert f'/transactions/{row_id}/edit' in history, "the link does not reach the row"
     for decoy in decoys:
         assert f'/transactions/{decoy}/edit' not in history, f"the link also lists row {decoy}"
+
+
+# ── #458: a review that shows only what needs me ───────────────────────────
+
+def _part(body, name):
+    found = re.search(rf'<(section|details)[^>]*data-section="{name}"[^>]*>(.*?)</\1>', body, re.S)
+    return found.group(2) if found else None
+
+
+def _needs_text(body):
+    return re.search(r'<span data-needs>([^<]*)</span>', body).group(1)
+
+
+@pytest.mark.parametrize("possible, text", [(1, "1 needs you."), (2, "2 need you.")])
+def test_the_summary_counts_what_needs_me(client_a, users, checking, ai_stubbed,
+                                          possible, text):
+    lines = []
+    for k in range(possible):
+        when = TODAY - timedelta(days=10 * k)
+        _hold(users["a"]["id"], checking, f"Dinner {k}", "40.00", when)
+        lines.append((when, f"TRATTORIA {k}", "-42.80"))
+    body = _upload(client_a, checking, _csv(*lines)).get_data(as_text=True)
+    assert body.count('data-status="possible"') == possible
+    assert _needs_text(body) == text
+
+
+def test_a_pending_line_folds_under_will_be_marked_posted(client_a, users, checking, ai_stubbed):
+    _hold(users["a"]["id"], checking, "Lunch", "20.00", TODAY - timedelta(days=3), pending=True)
+    body = _upload(client_a, checking, _csv(
+        (TODAY - timedelta(days=3), "BISTRO", "-20.00"))).get_data(as_text=True)
+    folded = _part(body, "posting")
+    assert folded is not None and 'data-status="pending"' in folded
+    assert "Will be marked posted (1)" in folded
+    assert _part(body, "adding") is None and _part(body, "needs") is None
+    assert re.search(r'name="apply"[^>]*\bchecked\b', folded), "a pending line starts ticked"

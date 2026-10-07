@@ -16,11 +16,14 @@
    one of them. Recorded lines carry nothing, so they cannot be added. #}
 <p>
   <strong>{{ account.account_name }}</strong>, {{ statement.start.strftime('%b %d, %Y') }}
-  to {{ statement.end.strftime('%b %d, %Y') }}:
-  {{ counts.missing }} missing,
-  {{ counts.possible }} possible match{{ 'es' if counts.possible != 1 else '' }},
-  {{ counts.pending }} pending,
-  {{ counts.recorded }} already recorded.
+  to {{ statement.end.strftime('%b %d, %Y') }}.
+</p>
+{# #458 — what Apply will do, counted from statements.review_plan(). The
+   data-apply-summary listener in base.html recounts it as boxes and selects
+   change. #}
+<p class="review-summary">
+  <span id="apply-summary" data-apply-text aria-live="polite">{{ apply_text }}</span>
+  <span data-needs>{{ needs_text }}</span>
 </p>
 
 {% for adj in adjustments %}
@@ -37,25 +40,19 @@
 <p class="field-hint">Categories couldn't be suggested right now. You can still choose them yourself.</p>
 {% endif %}
 
-<form method="post" action="{{ url_for('imports.import_apply') }}">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <input type="hidden" name="account_id" value="{{ account.account_id }}">
-  {% if statement.closing_balance is not none %}
-  <input type="hidden" name="closing_balance" value="{{ statement.closing_balance }}">
-  <input type="hidden" name="end_date" value="{{ statement.end.isoformat() }}">
-  {% endif %}
-  <div class="table-wrapper">
-  <table class="statement-review">
-    <thead><tr><th></th><th>Date</th><th>Description</th><th>Amount</th><th>Status</th><th>Category</th></tr></thead>
-    <tbody>
-    {% for r in reviews %}
+{% macro review_table(rows) %}
+<div class="table-wrapper">
+<table class="statement-review">
+  <thead><tr><th></th><th>Date</th><th>Description</th><th>Amount</th><th>Status</th><th>Category</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
     {% set i = r.index %}
     <tr data-line="{{ i }}" data-status="{{ r.status }}">
       <td>
         {% if r.status != 'recorded' %}
         <input type="checkbox" name="apply" value="{{ i }}" id="apply-{{ i }}"
                aria-label="{{ 'Mark posted' if r.status == 'pending' else 'Add' }}: {{ r.line.description }}"
-               {% if not r.line.uncertain and (r.status == 'pending' or (r.status == 'missing' and (not r.transfer_like or i in pairings))) %}checked{% endif %}>
+               {% if i in plan %}checked{% endif %}>
         <input type="hidden" name="date_{{ i }}" value="{{ r.line.date.isoformat() }}">
         <input type="hidden" name="amount_{{ i }}" value="{{ r.line.amount }}">
         <input type="hidden" name="direction_{{ i }}" value="{{ r.line.direction }}">
@@ -104,15 +101,11 @@
         {% endif %}
       </td>
     </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  </div>
-  <div style="margin-top:0.75rem;display:flex;gap:0.5rem">
-    <button type="submit" class="btn btn-primary">Add checked lines</button>
-    <a href="{{ url_for('transactions.transactions') }}" class="btn">Cancel</a>
-  </div>
-</form>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endmacro %}
 
 {# #457 — the ledger's side of the reconcile: rows in the statement period that
    no line matched (statements.unlisted_rows). Listed only, never acted on: each
@@ -136,20 +129,62 @@
 </div>
 {% endmacro %}
 
-{% if unlisted %}
-<section class="review-section" data-section="unlisted">
-  <h2>In your ledger but not on this statement</h2>
-  <p class="field-hint">Check these for something entered twice, a mistyped amount, or a charge
-    that was cancelled. Entries from the statement's last {{ match_days }} days aren't listed,
-    since those usually appear on the next statement.</p>
-  {{ ledger_rows(unlisted, 'data-unlisted') }}
-</section>
-{% endif %}
-{% if still_pending %}
-<section class="review-section" data-section="still-pending">
-  <h2>Still pending</h2>
-  <p class="field-hint">Marked pending in your ledger, and not on this statement yet.</p>
-  {{ ledger_rows(still_pending, 'data-still-pending') }}
-</section>
-{% endif %}
+<form method="post" action="{{ url_for('imports.import_apply') }}" data-apply-summary="#apply-summary">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="account_id" value="{{ account.account_id }}">
+  {% if statement.closing_balance is not none %}
+  <input type="hidden" name="closing_balance" value="{{ statement.closing_balance }}">
+  <input type="hidden" name="end_date" value="{{ statement.end.isoformat() }}">
+  {% endif %}
+
+  {# #458 — only the lines that need a decision are open. Everything else is
+     folded into a <details>: still editable, and still submitted with the form. #}
+  {% if groups.needs %}
+  <section class="review-section" data-section="needs">
+    <h2>Needs you ({{ groups.needs|length }})</h2>
+    {{ review_table(groups.needs) }}
+  </section>
+  {% endif %}
+
+  {% if unlisted %}
+  <section class="review-section" data-section="unlisted">
+    <h2>In your ledger but not on this statement</h2>
+    <p class="field-hint">Check these for something entered twice, a mistyped amount, or a charge
+      that was cancelled. Entries from the statement's last {{ match_days }} days aren't listed,
+      since those usually appear on the next statement.</p>
+    {{ ledger_rows(unlisted, 'data-unlisted') }}
+  </section>
+  {% endif %}
+  {% if still_pending %}
+  <section class="review-section" data-section="still-pending">
+    <h2>Still pending</h2>
+    <p class="field-hint">Marked pending in your ledger, and not on this statement yet.</p>
+    {{ ledger_rows(still_pending, 'data-still-pending') }}
+  </section>
+  {% endif %}
+
+  {% if groups.adding %}
+  <details class="review-fold" data-section="adding">
+    <summary>Will be added ({{ groups.adding|length }})</summary>
+    {{ review_table(groups.adding) }}
+  </details>
+  {% endif %}
+  {% if groups.posting %}
+  <details class="review-fold" data-section="posting">
+    <summary>Will be marked posted ({{ groups.posting|length }})</summary>
+    {{ review_table(groups.posting) }}
+  </details>
+  {% endif %}
+  {% if groups.recorded %}
+  <details class="review-fold" data-section="recorded">
+    <summary>Already in your ledger ({{ groups.recorded|length }})</summary>
+    {{ review_table(groups.recorded) }}
+  </details>
+  {% endif %}
+
+  <div class="review-actions">
+    <button type="submit" class="btn btn-primary">Apply</button>
+    <a href="{{ url_for('transactions.transactions') }}" class="btn">Cancel</a>
+  </div>
+</form>
 {% endblock %}

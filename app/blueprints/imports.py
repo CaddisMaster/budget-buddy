@@ -55,6 +55,7 @@ from app.statements import (
     Line,
     StatementError,
     adjustments_within,
+    apply_summary,
     csv_rows,
     decode,
     find_counterpart,
@@ -67,6 +68,7 @@ from app.statements import (
     match_lines,
     parse_csv,
     parse_ofx,
+    review_plan,
     sample_rows,
     unlisted_rows,
     validate_mapping,
@@ -308,14 +310,32 @@ def import_scan():
     unlisted, still_pending = ([], []) if from_screenshots else unlisted_rows(
         reviews, ledger, statement.start, statement.end)
 
-    counts = {s: sum(1 for r in reviews if r.status == s)
-              for s in ('recorded', 'pending', 'possible', 'missing')}
+    # #458: what applying will do, and which lines need a decision. Every line
+    # lands in exactly one part of the page.
+    plan, needs = review_plan(reviews, suggested, pairings)
+    groups = {'needs': [], 'adding': [], 'posting': [], 'recorded': []}
+    for r in reviews:
+        if r.index in needs:
+            groups['needs'].append(r)
+        elif r.status == 'recorded':
+            groups['recorded'].append(r)
+        elif plan[r.index] == 'posted':
+            groups['posting'].append(r)
+        else:
+            groups['adding'].append(r)
+    effects = list(plan.values())
+    apply_text = apply_summary({e: effects.count(e) for e in set(effects)})
+    needs_text = ("Nothing needs you." if not needs
+                  else f"{len(needs)} need{'s' if len(needs) == 1 else ''} you.")
     return render_template(
         'statement_review.html',
         account=account,
         statement=statement,
         reviews=reviews,
-        counts=counts,
+        plan=plan,
+        groups=groups,
+        apply_text=apply_text,
+        needs_text=needs_text,
         suggested=suggested,
         from_history=from_history,
         suggest_failed=suggest_failed,

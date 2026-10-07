@@ -60,6 +60,15 @@ this project uses the `0.x` versioning scheme described in
   and pending entries appear separately under "Still pending". The section
   only lists entries and never changes them. It is left out for screenshots,
   which may not cover every day you scrolled past. (#457)
+- **The statement review starts with what needs you.** It opens with a summary
+  of what applying will do ("Adding 23 transactions, marking 4 posted,
+  recording 2 transfers. 3 need you.") that updates as you tick and untick.
+  Below it, "Needs you" holds only the lines that need a decision: a possible
+  match, a transfer whose other side wasn't found, a line that was hard to read,
+  or one with no category. Lines that will be added, pending entries that will
+  be marked posted, and lines already in your ledger are folded away underneath.
+  They're still there to open and change. Nothing is written until you press
+  Apply, as before. (#458)
 - **The database can now remember which bank statement a transaction came
   from.** Nothing uses this yet; it prepares for filling in missing
   transactions from a statement export, where it lets a second import of the
