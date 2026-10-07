@@ -24,6 +24,7 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
+from itertools import pairwise
 
 # Caps. A monthly statement is tens to a few hundred lines; these keep one
 # upload's review form, and its round trip through apply, comfortably bounded.
@@ -88,8 +89,9 @@ class Statement:
     lines: tuple
     start: date
     end: date
-    closing_balance: Decimal | None = None   # OFX LEDGERBAL only
+    closing_balance: Decimal | None = None   # #459: OFX, a CSV's running balance, a screenshot's
     skipped: int = 0                          # rows that could not be read
+    closing_date: date | None = None         # the day closing_balance applies to
 
 
 @dataclass(frozen=True)
@@ -102,6 +104,7 @@ class CsvMapping:
     out_is_negative: bool = True      # ... and which sign is money out
     debit_col: int | None = None      # ... or separate debit/credit columns
     credit_col: int | None = None
+    balance_col: int | None = None    # #459: the running balance after each row
 
 
 @dataclass(frozen=True)
@@ -226,10 +229,11 @@ def parse_ofx(text):
         raise StatementError(f"This statement has more than {MAX_LINES} lines. "
                              "Export a shorter date range.")
 
-    closing = None
+    closing = as_of = None
     ledger = re.search(r"<LEDGERBAL>(.*?)</LEDGERBAL>", text, re.I | re.S)
     if ledger:
         closing = money(_ofx_field(ledger.group(1), "BALAMT"))
+        as_of = _ofx_date(_ofx_field(ledger.group(1), "DTASOF"))
 
     tranlist = re.search(r"<BANKTRANLIST>(.*?)<STMTTRN>", text, re.I | re.S)
     start = end = None
@@ -237,7 +241,8 @@ def parse_ofx(text):
         start = _ofx_date(_ofx_field(tranlist.group(1), "DTSTART"))
         end = _ofx_date(_ofx_field(tranlist.group(1), "DTEND"))
     start, end = _period(lines, start, end)
-    return Statement(tuple(lines), start, end, closing, skipped)
+    closing_date = (as_of or end) if closing is not None else None
+    return Statement(tuple(lines), start, end, closing, skipped, closing_date)
 
 
 # ── CSV ──────────────────────────────────────────────────────────────────────
@@ -277,7 +282,8 @@ def validate_mapping(raw, rows):
     width = len(rows[header_row])
 
     cols = {name: index(name) for name in
-            ("date_col", "description_col", "amount_col", "debit_col", "credit_col")}
+            ("date_col", "description_col", "amount_col", "debit_col", "credit_col",
+             "balance_col")}
     for value in cols.values():
         if value is not None and not 0 <= value < width:
             raise StatementError(_NO_COLUMNS)
@@ -287,6 +293,12 @@ def validate_mapping(raw, rows):
     split = cols["debit_col"] is not None and cols["credit_col"] is not None
     if signed == split:   # exactly one way of reading amounts
         raise StatementError(_NO_COLUMNS)
+
+    # #459: a balance column the model pointed at another column is dropped,
+    # not refused: the file still imports, just with no balance check.
+    balance_col = cols["balance_col"]
+    if balance_col in [v for k, v in cols.items() if k != "balance_col"]:
+        balance_col = None
 
     date_format = raw.get("date_format")
     if date_format not in DATE_FORMATS:
@@ -302,6 +314,7 @@ def validate_mapping(raw, rows):
         out_is_negative=bool(raw.get("out_is_negative", True)),
         debit_col=cols["debit_col"] if split else None,
         credit_col=cols["credit_col"] if split else None,
+        balance_col=balance_col,
     )
 
 
@@ -318,7 +331,7 @@ def parse_csv(rows, mapping):
     def cell(row, col):
         return row[col] if col is not None and col < len(row) else ""
 
-    lines, skipped, seen = [], 0, {}
+    lines, skipped, seen, balances = [], 0, {}, []
     for row in rows[mapping.header_row + 1:]:
         if not any(c.strip() for c in row):
             continue                      # blank line: not a transaction at all
@@ -352,6 +365,7 @@ def parse_csv(rows, mapping):
         seen[key] = seen.get(key, 0) + 1
         lines.append(Line(when, amount, direction, description,
                           csv_ref(when, amount, direction, description, seen[key])))
+        balances.append((when, cell(row, mapping.balance_col)))
 
     if not lines:
         raise StatementError("This file could not be read: no transactions were found in it.")
@@ -359,7 +373,26 @@ def parse_csv(rows, mapping):
         raise StatementError(f"This statement has more than {MAX_LINES} lines. "
                              "Export a shorter date range.")
     start, end = _period(lines)
-    return Statement(tuple(lines), start, end, None, skipped)
+    closing, closing_date = (_csv_closing(balances) if mapping.balance_col is not None
+                             else (None, None))
+    return Statement(tuple(lines), start, end, closing, skipped, closing_date)
+
+
+def _csv_closing(balances):
+    """(balance, date) from a CSV's running balance (#459): the balance on the
+    file's CHRONOLOGICALLY last row, never just its last physical one. A file
+    whose dates rise is oldest-first and closes on its last row; one whose
+    dates fall is newest-first and closes on its first. A file all on one day,
+    or out of order, cannot say which row is last, so it gets no check."""
+    dates = [when for when, _cell in balances]
+    if dates[0] < dates[-1] and all(a <= b for a, b in pairwise(dates)):
+        when, cell = balances[-1]
+    elif dates[0] > dates[-1] and all(a >= b for a, b in pairwise(dates)):
+        when, cell = balances[0]
+    else:
+        return None, None
+    closing = money(cell)
+    return (closing, when) if closing is not None else (None, None)
 
 
 # ── Matching ─────────────────────────────────────────────────────────────────
@@ -655,6 +688,35 @@ def unlisted_rows(reviews, ledger, start, end):
     return unlisted, still_pending
 
 
+
+def compare_balance(ledger, closing, card):
+    """The gap between the ledger and a statement's closing balance (#459),
+    ledger minus statement. The ledger holds a card that owes money as a
+    NEGATIVE balance, but banks and formats differ on the sign they print the
+    amount owed in, and a CSV column or a screenshot carries no convention at
+    all. So for a card the statement's figure is read as +x or -x, whichever
+    is nearer the ledger (Sean, 2026-10-07): right under either convention.
+    Every other account is compared as printed."""
+    gap = ledger - closing
+    if card:
+        gap = min(gap, ledger + closing, key=abs)
+    return gap.quantize(Decimal("0.01"))
+
+
+def explain_gap(gap, unticked, unlisted):
+    """The ONE thing whose amount equals the gap exactly (#459), or None: an
+    unticked line that adding would close it (money out lowers the ledger, so
+    it closes a ledger that is above), or a ledger-only row (#457) that the
+    ledger would agree without. Two candidates explain nothing, so neither is
+    named. `unticked` are Lines; `unlisted` are ledger rows."""
+    if not gap:
+        return None
+    found = [ln for ln in unticked
+             if (ln.amount if ln.direction == "in" else -ln.amount) == -gap]
+    found += [row for row in unlisted
+              if (row.amount if row.transaction_type == "income" else -row.amount) == gap]
+    return found[0] if len(found) == 1 else None
+
 def review_plan(reviews, suggested, pairings):
     """How the review opens (#458), as (plan, needs).
 
@@ -782,7 +844,21 @@ def resolve_date(month, day, year, today):
     return None
 
 
-def lines_from_screenshots(raw_lines, today):
+def screenshot_balance(raw, today):
+    """(balance, date) from a screenshot (#459), or (None, None). Only a
+    balance the model ties to a date, a statement balance or the running
+    balance beside a line, is used. An "available" balance is today's and
+    includes holds, so it is not the balance after any line the review shows."""
+    if not raw or raw.get("kind") not in ("statement", "after_line"):
+        return None, None
+    when = resolve_date(raw.get("month"), raw.get("day"), raw.get("year"), today)
+    amount = money(str(raw.get("amount") or ""))
+    if when is None or amount is None:
+        return None, None
+    return amount, when
+
+
+def lines_from_screenshots(raw_lines, today, balance=None):
     """The model's lines, re-checked. A line with no readable date or amount
     cannot be shown at all and is counted as skipped; one the model flagged as
     hard to read, or with a direction it could not name, is kept but marked
@@ -811,4 +887,5 @@ def lines_from_screenshots(raw_lines, today):
     if len(lines) > MAX_LINES:
         raise StatementError(f"These screenshots show more than {MAX_LINES} lines.")
     start, end = _period(lines)
-    return Statement(tuple(lines), start, end, None, skipped)
+    closing, closing_date = screenshot_balance(balance, today)
+    return Statement(tuple(lines), start, end, closing, skipped, closing_date)

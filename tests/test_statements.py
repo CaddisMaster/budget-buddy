@@ -18,9 +18,11 @@ from app.statements import (
     adjustments_within,
     apply_summary,
     clean_name,
+    compare_balance,
     csv_ref,
     csv_rows,
     decode,
+    explain_gap,
     find_counterpart,
     history_categories,
     image_type,
@@ -773,4 +775,141 @@ def test_names_are_proposed_for_lines_that_can_be_added_only():
 def test_a_one_word_name_in_capitals_is_mine_not_the_banks():
     rows = [HistRow(10, _on(1), "IKEA", None)]
     assert _named([_review(0, "IKEA 0042 BROOKLYN NY")], rows) == {0: "IKEA"}
+
+
+# ── #459: a closing balance for every kind of statement ─────────────────────
+
+def _bal(balance_col=3):
+    return CsvMapping(header_row=0, date_col=0, date_format="%Y-%m-%d",
+                      description_col=1, amount_col=2, balance_col=balance_col)
+
+
+def _csv_rows(*rows):
+    return [["Date", "Description", "Amount", "Balance"], *[list(r) for r in rows]]
+
+
+def test_an_oldest_first_csv_closes_on_its_last_row():
+    st = parse_csv(_csv_rows(("2026-09-01", "A", "-10.00", "1,190.00"),
+                             ("2026-09-02", "B", "-5.00", "1,185.00")), _bal())
+    assert (st.closing_balance, st.closing_date) == (Decimal("1185.00"), _on(2))
+
+
+def test_a_newest_first_csv_closes_on_its_first_row():
+    st = parse_csv(_csv_rows(("2026-09-02", "B", "-5.00", "1200.00"),
+                             ("2026-09-01", "A", "-10.00", "1205.00")), _bal())
+    assert (st.closing_balance, st.closing_date) == (Decimal("1200.00"), _on(2))
+
+
+def test_rows_on_one_day_take_the_last_row_of_an_oldest_first_file():
+    st = parse_csv(_csv_rows(("2026-09-01", "A", "-10.00", "90.00"),
+                             ("2026-09-02", "B", "-5.00", "85.00"),
+                             ("2026-09-02", "C", "-1.00", "84.00")), _bal())
+    assert st.closing_balance == Decimal("84.00")
+
+
+@pytest.mark.parametrize("rows", [
+    (("2026-09-01", "A", "-10.00", "90.00"), ("2026-09-01", "B", "-5.00", "85.00")),  # one day
+    (("2026-09-01", "A", "-1.00", "9.00"), ("2026-09-03", "B", "-1.00", "8.00"),
+     ("2026-09-02", "C", "-1.00", "7.00")),                                          # no order
+    (("2026-09-01", "A", "-10.00", "90.00"), ("2026-09-02", "B", "-5.00", "")),       # unreadable
+])
+def test_no_closing_balance_when_the_last_row_cannot_be_told(rows):
+    assert parse_csv(_csv_rows(*rows), _bal()).closing_balance is None
+
+
+def test_no_balance_column_no_closing_balance():
+    st = parse_csv(_csv_rows(("2026-09-01", "A", "-10.00", "90.00")), _bal(None))
+    assert st.closing_balance is None
+
+
+def _raw_mapping(**over):
+    return {"header_row": 0, "date_col": 0, "date_format": "%Y-%m-%d", "description_col": 1,
+            "amount_col": 2, "out_is_negative": True, "debit_col": None, "credit_col": None,
+            "balance_col": 3, **over}
+
+
+def test_a_balance_column_is_validated_like_the_others():
+    rows = _csv_rows(("2026-09-01", "A", "-10.00", "90.00"))
+    assert validate_mapping(_raw_mapping(), rows).balance_col == 3
+    with pytest.raises(StatementError):
+        validate_mapping(_raw_mapping(balance_col=4), rows)
+
+
+@pytest.mark.parametrize("col", [0, 1, 2])
+def test_a_balance_column_that_is_another_column_is_dropped(col):
+    rows = _csv_rows(("2026-09-01", "A", "-10.00", "90.00"))
+    assert validate_mapping(_raw_mapping(balance_col=col), rows).balance_col is None
+
+
+def test_an_ofx_balance_applies_on_its_own_date():
+    st = parse_ofx(OFX_SGML.replace("<DTASOF>20260930", "<DTASOF>20260928"))
+    assert (st.closing_balance, st.closing_date) == (Decimal("2345.67"), _on(28))
+
+
+def test_an_ofx_balance_with_no_date_applies_on_the_last_day():
+    st = parse_ofx(OFX_SGML.replace("<DTASOF>20260930\n", ""))
+    assert st.closing_date == _on(30)
+
+
+def _shot_balance(**over):
+    return {"amount": "950.00", "month": 10, "day": 2, "year": None, "kind": "statement", **over}
+
+
+@pytest.mark.parametrize("kind", ["statement", "after_line"])
+def test_a_screenshot_balance_tied_to_a_date_is_used(kind):
+    st = lines_from_screenshots([_shot()], TODAY, _shot_balance(kind=kind))
+    assert (st.closing_balance, st.closing_date) == (Decimal("950.00"), date(2026, 10, 2))
+
+
+@pytest.mark.parametrize("balance", [
+    None,
+    _shot_balance(kind="available"),          # today's balance, holds included
+    _shot_balance(kind="current"),
+    _shot_balance(month=None, day=None),      # tied to no date
+    _shot_balance(amount="NaN"),
+    _shot_balance(month=2, day=30),           # no such day
+])
+def test_any_other_screenshot_balance_is_dropped(balance):
+    st = lines_from_screenshots([_shot()], TODAY, balance)
+    assert st.closing_balance is None and st.closing_date is None
+
+
+@pytest.mark.parametrize("ledger, closing, card, gap", [
+    ("100.00", "90.00", False, "10.00"),
+    ("-1000.00", "1000.00", False, "-2000.00"),     # not a card: compared as-is
+    ("-1042.80", "1042.80", True, "0.00"),          # owed shown positive
+    ("-1042.80", "-1042.80", True, "0.00"),         # owed shown negative
+    ("-1000.00", "1042.80", True, "42.80"),
+    ("-1000.00", "-1042.80", True, "42.80"),
+    ("20.00", "-20.00", True, "0.00"),              # a card in credit
+])
+def test_a_card_balance_is_read_in_the_nearer_sign(ledger, closing, card, gap):
+    assert compare_balance(Decimal(ledger), Decimal(closing), card) == Decimal(gap)
+
+
+Ledger = namedtuple("Ledger", "id transaction_date amount transaction_type description")
+
+
+def test_a_gap_one_unticked_line_closes_is_named():
+    trattoria = _line(_on(5), "42.80", "out", "TRATTORIA")
+    others = [_line(_on(6), "12.00", "out", "BAKERY"), _line(_on(7), "42.80", "in", "REFUND")]
+    assert explain_gap(Decimal("42.80"), [trattoria, *others], []) == trattoria
+    assert explain_gap(Decimal("-42.80"), [trattoria, *others], []) == others[1]
+
+
+def test_a_gap_one_ledger_only_row_closes_is_named():
+    gym = Ledger(1, _on(10), Decimal("30.00"), "expense", "Gym")
+    assert explain_gap(Decimal("-30.00"), [], [gym]) == gym
+    assert explain_gap(Decimal("30.00"), [], [gym]) is None
+
+
+def test_two_explanations_name_neither():
+    a, b = _line(_on(5), "42.80", "out", "A"), _line(_on(6), "42.80", "out", "B")
+    assert explain_gap(Decimal("42.80"), [a, b], []) is None
+    gym = Ledger(1, _on(10), Decimal("42.80"), "income", "Refund")
+    assert explain_gap(Decimal("42.80"), [a], [gym]) is None
+
+
+def test_no_gap_needs_no_explanation():
+    assert explain_gap(Decimal("0.00"), [_line(_on(5), "0.00")], []) is None
 

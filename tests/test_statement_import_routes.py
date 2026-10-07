@@ -6,6 +6,7 @@ can hold a real ANTHROPIC_API_KEY, so a route test that reached an unstubbed
 seam would make a real, billed call. The fixture sets a fake key and replaces
 both seams the import reaches.
 """
+import html
 import io
 import re
 from datetime import date, timedelta
@@ -26,7 +27,8 @@ TODAY = date.today()
 @pytest.fixture
 def ai_stubbed(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-    calls = {"mapping": [], "categorize": [], "screenshots": [], "shot_lines": []}
+    calls = {"mapping": [], "categorize": [], "screenshots": [], "shot_lines": [],
+             "shot_balance": None}
 
     def map_columns(rows, date_formats, today, api_key):
         calls["mapping"].append(rows)
@@ -40,7 +42,7 @@ def ai_stubbed(monkeypatch):
 
     def read_shots(images, today, api_key):
         calls["screenshots"].append(images)
-        return ai._ScreenshotRead(lines=list(calls["shot_lines"]))
+        return ai._ScreenshotRead(lines=list(calls["shot_lines"]), balance=calls["shot_balance"])
 
     monkeypatch.setattr(ai, "_call_csv_mapping_model", map_columns)
     monkeypatch.setattr(ai, "_call_categorize_model", categorize)
@@ -152,8 +154,8 @@ def test_applying_to_another_users_account_is_not_found(client_a, users, ai_stub
 
 
 def test_a_ledger_that_agrees_says_so(client_a, users, checking, ai_stubbed):
-    """Compared AS OF the statement's end date: a row entered after it is not
-    part of the statement and must not count."""
+    """Compared AS OF the date the closing balance applies to: a row entered
+    after it is not part of the statement and must not count."""
     end = TODAY - timedelta(days=1)
     with db_cursor(commit=True) as cur:
         cur.execute("INSERT INTO transactions (amount, description, account_id, "
@@ -161,7 +163,7 @@ def test_a_ledger_that_agrees_says_so(client_a, users, checking, ai_stubbed):
                     "VALUES (99, 'after the statement', %s, CURRENT_DATE, 'expense', %s)",
                     (checking, users["a"]["id"]))
     resp = _apply(client_a, checking,
-                  extra=[("closing_balance", "-12.34"), ("end_date", end.isoformat())],
+                  extra=[("closing_balance", "-12.34"), ("closing_date", end.isoformat())],
                   line_0={**GOOD, "date": end.isoformat()})
     assert resp.status_code == 302
     page = client_a.get(resp.headers["Location"]).get_data(as_text=True)
@@ -705,4 +707,126 @@ def test_an_earlier_uncategorised_row_names_a_line(client_a, users, checking, ai
     body = _upload(client_a, checking, _csv(
         (TODAY - timedelta(days=2), "TST* JOES 00123 BROOKLYN NY", "-18.00"))).get_data(as_text=True)
     assert 'name="description_0" value="Joe&#39;s"' in body
+
+
+# ── #459: a closing balance for every kind of statement ────────────────────
+
+def _flash_after(client, resp):
+    assert resp.status_code == 302, resp.status_code
+    page = client.get(resp.headers["Location"]).get_data(as_text=True)
+    return html.unescape(" ".join(re.findall(r'<div class="flash">(.*?)</div>', page, re.S)))
+
+
+def test_a_screenshot_statement_balance_is_compared(client_a, users, checking, ai_stubbed):
+    when = TODAY - timedelta(days=3)
+    ai_stubbed["shot_lines"].append(ai._ScreenshotLine(
+        month=when.month, day=when.day, year=when.year, description="GROCERY",
+        amount="12.34", direction="out", legible=True))
+    later = TODAY - timedelta(days=1)   # after the balance: the period ends later than it
+    ai_stubbed["shot_lines"].append(ai._ScreenshotLine(
+        month=later.month, day=later.day, year=later.year, description="BAKERY",
+        amount="5.00", direction="out", legible=True))
+    ai_stubbed["shot_balance"] = ai._ScreenshotBalance(
+        amount="-12.34", month=when.month, day=when.day, year=when.year, kind="after_line")
+    body = _upload(client_a, checking, PNG, "shot.png").get_data(as_text=True)
+    form = MultiDict(re.findall(r'<input type="(?:hidden|checkbox)" name="(\w+)" value="([^"]*)"',
+                                body))
+    assert form.get("closing_balance") == "-12.34"
+    assert form.get("closing_date") == when.isoformat()
+    form.setlist("description_0", ["Grocery"])
+    form.setlist("description_1", ["Bakery"])
+    said = _flash_after(client_a, client_a.post("/transactions/import/apply", data=form))
+    assert "agrees with the statement's closing balance of -$12.34" in said, said
+
+
+def _gym(user_id, account_id, when):
+    return _hold(user_id, account_id, "Gym", "30.00", when)
+
+
+def test_a_gap_a_ledger_only_row_explains_is_named(client_a, users, checking, ai_stubbed):
+    when = TODAY - timedelta(days=10)
+    gym = _gym(users["a"]["id"], checking, when)
+    said = _flash_after(client_a, _apply(
+        client_a, checking, extra=[("closing_balance", "-12.34"),
+                                   ("closing_date", TODAY.isoformat()), ("unlisted", str(gym))],
+        line_0=GOOD))
+    assert "The ledger is $30.00 below" in said, said
+    assert '"Gym" ($30.00 on' in said and "without it they would agree" in said, said
+
+
+def test_another_users_row_is_never_named(client_a, users, checking, ai_stubbed):
+    theirs = _gym(users["b"]["id"], users["b"]["account_id"], TODAY - timedelta(days=10))
+    with db_cursor(commit=True) as cur:   # the same gap, made another way
+        cur.execute("INSERT INTO transactions (amount, description, account_id, "
+                    "transaction_date, transaction_type, user_id) "
+                    "VALUES (30, 'Bills', %s, %s, 'expense', %s)",
+                    (checking, TODAY - timedelta(days=10), users["a"]["id"]))
+    said = _flash_after(client_a, _apply(
+        client_a, checking, extra=[("closing_balance", "-12.34"),
+                                   ("closing_date", TODAY.isoformat()), ("unlisted", str(theirs))],
+        line_0=GOOD))
+    assert "The ledger is $30.00 below" in said, said
+    assert "Gym" not in said, said
+
+
+def test_the_review_carries_its_ledger_only_rows_to_apply(client_a, users, checking, ai_stubbed):
+    gym = _gym(users["a"]["id"], checking, TODAY - timedelta(days=20))
+    body = _upload(client_a, checking, _csv(
+        (TODAY - timedelta(days=30), "PAYROLL", "2000.00"),
+        (TODAY, "COFFEE", "-4.50"))).get_data(as_text=True)
+    assert f'<input type="hidden" name="unlisted" value="{gym}">' in body
+
+
+def _gap_of_thirty(client, checking, user_id, *extra, **lines):
+    """Apply with a ledger $30.00 below the closing balance ("Bills", not
+    posted as ledger-only), plus whatever the test adds. Returns the flash."""
+    _hold(user_id, checking, "Bills", "30.00", TODAY - timedelta(days=10))
+    return _flash_after(client, _apply(
+        client, checking, extra=[("closing_balance", "0.00"),
+                                 ("closing_date", (TODAY - timedelta(days=2)).isoformat()),
+                                 *extra], **lines))
+
+
+def _line(i, amount, direction, when, **more):
+    return {f"line_{i}": {"date": when.isoformat(), "amount": amount, "direction": direction,
+                          "description": f"LINE {i}", **more}}
+
+
+def test_only_a_line_left_unticked_is_named(client_a, users, checking, ai_stubbed):
+    """Three $30.00 lines that look as if they would close a $30.00 gap, and
+    none can: one is ticked (already added), one is pending (marking it posted
+    moves no money), one is dated after the balance. Each guard alone, removed,
+    makes exactly one of them named."""
+    when = TODAY - timedelta(days=5)
+    held = _hold(users["a"]["id"], checking, "Held", "30.00", when, pending=True)
+    untick = [(f"{k}_{i}", str(v)) for i, fields in (
+        (1, {"date": when.isoformat(), "amount": "30.00", "direction": "in",
+             "description": "PENDING", "pending": held}),
+        (2, {"date": TODAY.isoformat(), "amount": "30.00", "direction": "in",
+             "description": "TOO LATE"}))
+        for k, v in fields.items()]
+    # Ledger: Bills -30, Held -30, the ticked line +30 = $30.00 below.
+    said = _gap_of_thirty(client_a, checking, users["a"]["id"], *untick,
+                          **_line(0, "30.00", "in", when, ref="csv:ticked"))
+    assert "$30.00 below" in said and "would close the gap" not in said, said
+
+
+def test_the_unticked_line_that_closes_it_is_named(client_a, users, checking, ai_stubbed):
+    """The positive control for the test above: the same gap, one honest line."""
+    when = TODAY - timedelta(days=5)
+    untick = [("date_3", when.isoformat()), ("amount_3", "30.00"), ("direction_3", "in"),
+              ("description_3", "REFUND")]
+    said = _gap_of_thirty(client_a, checking, users["a"]["id"], *untick)
+    assert 'Adding the unticked line "REFUND"' in said, said
+
+
+def test_a_ledger_only_row_elsewhere_or_later_is_never_named(client_a, users, checking,
+                                                             ai_stubbed):
+    a = users["a"]["id"]
+    other = _hold(a, create_account(a, "Savings"), "Gym", "30.00", TODAY - timedelta(days=10))
+    later = _hold(a, checking, "Late", "30.00", TODAY)
+    said = _gap_of_thirty(client_a, checking, a, ("unlisted", str(other)),
+                          ("unlisted", str(later)))
+    # "Late" is after the balance, so the gap is the $30.00 of Bills alone.
+    assert "$30.00 below" in said and "without it they would agree" not in said, said
 

@@ -138,8 +138,11 @@
   <input type="hidden" name="account_id" value="{{ account.account_id }}">
   {% if statement.closing_balance is not none %}
   <input type="hidden" name="closing_balance" value="{{ statement.closing_balance }}">
-  <input type="hidden" name="end_date" value="{{ statement.end.isoformat() }}">
+  <input type="hidden" name="closing_date" value="{{ statement.closing_date.isoformat() }}">
   {% endif %}
+  {# #459 — the ledger-only rows, so apply can name one that explains a gap. #}
+  {% for row in unlisted %}<input type="hidden" name="unlisted" value="{{ row.id }}">
+  {% endfor %}
 
   {# #458 — only the lines that need a decision are open. Everything else is
      folded into a <details>: still editable, and still submitted with the form. #}

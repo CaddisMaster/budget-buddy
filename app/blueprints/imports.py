@@ -56,8 +56,10 @@ from app.statements import (
     StatementError,
     adjustments_within,
     apply_summary,
+    compare_balance,
     csv_rows,
     decode,
+    explain_gap,
     find_counterpart,
     history_categories,
     image_type,
@@ -99,7 +101,7 @@ def _owned_account(account_id):
         abort(404)
     with db_cursor() as cursor:
         cursor.execute(
-            "SELECT account_id, account_name FROM account "
+            "SELECT account_id, account_name, type FROM account "
             "WHERE account_id = %s AND user_id = %s",
             (account_id, current_user.id))
         account = cursor.fetchone()
@@ -134,11 +136,11 @@ def _read_statement(raw):
 def _read_screenshots(images):
     """Screenshots to a Statement (#447). The model reads; the app re-checks."""
     try:
-        raw_lines = read_screenshots(images)
+        read = read_screenshots(images)
     except ParseError as e:
         raise StatementError("These screenshots could not be read right now. "
                              "Try again.") from e
-    return lines_from_screenshots(raw_lines, date.today())
+    return lines_from_screenshots(read["lines"], date.today(), read.get("balance"))
 
 
 def _uploads():
@@ -402,12 +404,57 @@ def _posted_line(form, i):
     }
 
 
-def _balance_message(account_id, closing_raw, end_raw):
-    """Compare the ledger with the statement's closing balance, or None when
-    the statement carried none (a CSV export)."""
+def _signed_dollars(amount):
+    return f"{'-' if amount < 0 else ''}${abs(amount):,.2f}"
+
+
+def _unticked_lines(form, closing_date):
+    """The review's lines left unticked that adding would have changed the
+    balance by their whole amount (#459): missing lines, not a pending one
+    (marking it posted moves no money) nor a possible match (updating it moves
+    only the difference). Each is re-validated like a ticked line; one dated
+    after the closing balance cannot be part of it."""
+    ticked = set(form.getlist('apply'))
+    found = []
+    for key in form:
+        index = key[5:] if key.startswith('date_') else None
+        if index is None or index in ticked or not index.isdigit():
+            continue
+        if form.get(f'pending_{index}') or form.get(f'match_{index}'):
+            continue
+        line = _posted_line(form, int(index))
+        if line is None or line['date'] > closing_date:
+            continue
+        found.append(Line(line['date'], Decimal(str(line['amount'])).quantize(Decimal('0.01')),
+                          line['direction'], line['description'], None))
+    return found
+
+
+def _unlisted_rows(form, account_id, closing_date):
+    """The review's ledger-only rows (#457), re-read from their posted ids and
+    scoped to this user and account: a forged id finds nothing of anyone
+    else's. (unlisted_rows() already left adjustments out; a hand-edited form
+    could only reword this user's own message about their own row.)"""
+    ids = [i for i in (parse_int_param(v) for v in form.getlist('unlisted')) if i is not None]
+    if not ids:
+        return []
+    with db_cursor() as cursor:
+        cursor.execute(
+            "SELECT id, transaction_date, amount, transaction_type, description "
+            "FROM transactions WHERE id = ANY(%s) AND user_id = %s AND account_id = %s "
+            "AND transaction_date <= %s",
+            (ids, current_user.id, account_id, closing_date))
+        return cursor.fetchall()
+
+
+def _balance_message(account, form):
+    """Compare the ledger with the statement's closing balance, as of the date
+    that balance applies to, or None when the statement carried none. A card's
+    balance is read in the nearer sign (compare_balance), and a gap that one
+    unticked line or one ledger-only row explains exactly is named (#459)."""
     try:
-        closing = Decimal(closing_raw)
-        end = date.fromisoformat(end_raw)
+        closing = Decimal(form.get('closing_balance'))
+        closing_date = date.fromisoformat(form.get('closing_date'))
     except (InvalidOperation, TypeError, ValueError):
         return None
     if not closing.is_finite():
@@ -418,15 +465,26 @@ def _balance_message(account_id, closing_raw, end_raw):
             "THEN amount ELSE -amount END), 0) AS balance "
             "FROM transactions WHERE user_id = %s AND account_id = %s "
             "AND transaction_date <= %s",
-            (current_user.id, account_id, end))
+            (current_user.id, account.account_id, closing_date))
         balance = Decimal(cursor.fetchone().balance)
-    gap = (balance - closing).quantize(Decimal('0.01'))
-    when = f"{end:%b} {end.day}, {end.year}"
+    gap = compare_balance(balance, closing, account.type == 'Credit Card')
+    figure = (f"the statement's closing balance of {_signed_dollars(closing)} on "
+              f"{closing_date:%b} {closing_date.day}, {closing_date.year}")
     if gap == 0:
-        return f"The ledger agrees with the statement's closing balance on {when}."
-    side = 'above' if gap > 0 else 'below'
-    return (f"The ledger is ${abs(gap):,.2f} {side} the statement's closing balance "
-            f"on {when}.")
+        return f"The ledger agrees with {figure}."
+    message = f"The ledger is ${abs(gap):,.2f} {'above' if gap > 0 else 'below'} {figure}."
+    culprit = explain_gap(gap, _unticked_lines(form, closing_date),
+                          _unlisted_rows(form, account.account_id, closing_date))
+    if isinstance(culprit, Line):
+        message += (f' Adding the unticked line "{culprit.description}" '
+                    f"(${culprit.amount:,.2f} on {culprit.date:%b} {culprit.date.day}) "
+                    "would close the gap.")
+    elif culprit is not None:
+        when = culprit.transaction_date
+        message += (f' "{culprit.description or "An entry"}" (${culprit.amount:,.2f} on '
+                    f"{when:%b} {when.day}) is in your ledger but not on the statement; "
+                    "without it they would agree.")
+    return message
 
 
 def _record_transfer(cursor, account_id, line):
@@ -604,8 +662,7 @@ def import_apply():
         parts.append(f"Marked {posted} pending transaction{'s' if posted != 1 else ''} posted.")
     if rejected:
         parts.append(f"{rejected} line{'s' if rejected != 1 else ''} could not be added.")
-    balance = _balance_message(account.account_id, form.get('closing_balance'),
-                               form.get('end_date'))
+    balance = _balance_message(account, form)
     if balance:
         parts.append(balance)
     flash(' '.join(parts))

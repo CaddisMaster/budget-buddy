@@ -102,10 +102,14 @@ def _ofx(statement):
 
 
 def _csv_split(statement):
-    rows = ["Date,Description,Debit,Credit"]
+    """Rows in the order the scenario lists them; a "Balance" column when any
+    line carries one (#459)."""
+    balance = any("balance" in ln for ln in statement["lines"])
+    rows = ["Date,Description,Debit,Credit" + (",Balance" if balance else "")]
     for ln in statement["lines"]:
         debit, credit = (ln["amount"], "") if ln["way"] == "out" else ("", ln["amount"])
-        rows.append(f"{ln['date']:%Y-%m-%d},{ln['description']},{debit},{credit}")
+        rows.append(f"{ln['date']:%Y-%m-%d},{ln['description']},{debit},{credit}"
+                    + (f",{ln.get('balance', '')}" if balance else ""))
     return ("\n".join(rows) + "\n").encode(), "statement.csv"
 
 
@@ -220,11 +224,12 @@ def given_ai_available(context):
         context.mapped_rows = rows
         return ai._CsvMapping(header_row=0, date_col=0, date_format="%Y-%m-%d",
                               description_col=1, amount_col=None, out_is_negative=True,
-                              debit_col=2, credit_col=3)
+                              debit_col=2, credit_col=3, balance_col=context.balance_col)
 
     def read_shots(images, today, api_key):
         context.screenshot_calls.append(images)
-        return ai._ScreenshotRead(lines=list(context.screenshot_lines))
+        return ai._ScreenshotRead(lines=list(context.screenshot_lines),
+                                  balance=context.shot_balance)
 
     for name, stub in (("_call_categorize_model", categorize),
                        ("_call_csv_mapping_model", map_columns),
@@ -234,6 +239,7 @@ def given_ai_available(context):
         context.add_cleanup(setattr, ai, name, original)
 
     context.accounts, context.baseline, context.mapped_rows = {}, {}, None
+    context.balance_col, context.shot_balance = None, None
     context.screenshot_calls, context.screenshot_lines = [], []
     context.categorize_calls, context.categories = [], {}
 
@@ -964,3 +970,62 @@ def then_described(context, amount, acct, name):
     rows = _sql("SELECT description FROM transactions WHERE account_id = %s AND amount = %s",
                 (_account(context, acct), amount))
     assert rows == [(name,)], rows
+
+
+# ── #459: a closing balance for every kind of statement ────────────────────
+
+def _flash(context):
+    return " ".join(unescape(m) for m in re.findall(r'<div class="flash">(.*?)</div>',
+                                                    _body(context), re.S))
+
+
+@given("a CSV for {acct:Q} with a running balance lists {description:Q} debited "
+       "${amount:Amt} {when:Rel}, leaving ${balance:Amt}")
+def given_csv_with_balance(context, acct, description, amount, when, balance):
+    context.balance_col = 4
+    context.statement = {"account": acct, "build": _csv_split, "lines": [
+        {"description": description, "amount": amount, "way": "out", "date": when,
+         "balance": balance}]}
+
+
+@given("it lists {description:Q} debited ${amount:Amt} {when:Rel}, leaving ${balance:Amt}")
+def given_another_balance_row(context, description, amount, when, balance):
+    context.statement["lines"].append({"description": description, "amount": amount,
+                                       "way": "out", "date": when, "balance": balance})
+
+
+@given("it closes with a balance of ${amount:Amt}")
+def given_closing_positive(context, amount):
+    context.statement["closing"] = amount
+
+
+@given("it shows an available balance of ${amount:Amt}")
+def given_available_balance(context, amount):
+    today = date.today()
+    context.shot_balance = ai._ScreenshotBalance(
+        amount=amount, month=today.month, day=today.day, year=None, kind="available")
+
+
+@given("user {who:Who} has a credit card account {name:Q}")
+def given_card_account(context, who, name):
+    context.accounts[name] = create_account(_user(context, who)["id"], name, "Credit Card")
+
+
+@then("user {who:Who} is told the ledger agrees with the statement")
+def then_agrees(context, who):
+    assert "The ledger agrees with the statement's closing balance" in _flash(context), \
+        _flash(context)
+
+
+@then("the balance compared is ${figure}")
+def then_balance_compared(context, figure):
+    assert f"closing balance of ${figure} on" in _flash(context), _flash(context)
+
+
+@then("user {who:Who} is told the {description:Q} line would close the gap")
+def then_gap_named(context, who, description):
+    said = _flash(context)
+    named = re.search(r'Adding the unticked line "([^"]+)" \(\$[\d,.]+ on [^)]+\) would '
+                      r"close the gap\.", said)
+    assert named and named.group(1).lower() == description.lower(), said
+
