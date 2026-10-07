@@ -126,11 +126,11 @@ def _upload(context, account_id, payload, filename):
     if account_id is not None:
         context.baseline.setdefault(account_id, _count(account_id))
     context.upload = (account_id, payload, filename)
+    data = {"account_id": "" if account_id is None else str(account_id),
+            "statement": (io.BytesIO(payload), filename)}
+    data.update(getattr(context, "typed_balance", None) or {})   # #474
     context.response = context.client.post(
-        "/transactions/import",
-        data={"account_id": "" if account_id is None else str(account_id),
-              "statement": (io.BytesIO(payload), filename)},
-        content_type="multipart/form-data")
+        "/transactions/import", data=data, content_type="multipart/form-data")
 
 
 def _body(context):
@@ -1154,4 +1154,51 @@ def then_asked_for_account(context, who):
     assert "Which account is this statement for?" in unescape(body), body[:400]
     assert re.search(r'<select name="account_id"[^>]*>\s*<option value="" selected', body), \
         "the account picker is not waiting for a choice"
+
+
+# ── #474: a balance the user types ─────────────────────────────────────────
+
+@given("user {who:Who} enters a closing balance of ${amount:Amt} {when:Rel}")
+def given_typed_balance(context, who, amount, when):
+    context.typed_balance = {"balance": amount, "balance_date": when.isoformat()}
+
+
+@given("user {who:Who} enters {text:Q} as the closing balance")
+def given_typed_balance_text(context, who, text):
+    context.typed_balance = {"balance": text, "balance_date": date.today().isoformat()}
+
+
+@then("user {who:Who} is told the ledger agrees with the balance they entered")
+def then_agrees_typed(context, who):
+    amount = float(context.typed_balance["balance"])
+    assert f"The ledger agrees with the balance you entered of ${amount:,.2f}" \
+        in _flash(context), _flash(context)
+
+
+@then("the review says it will check ${amount:Amt}, entered by user {who:Who}")
+def then_review_names_balance(context, amount, who):
+    _rows(context)
+    said = re.search(r'<p[^>]*data-balance-source="(\w+)"[^>]*>(.*?)</p>', _body(context), re.S)
+    assert said, "the review does not say which balance it will check"
+    assert said.group(1) == "typed", said.group(1)
+    assert f"${float(amount):,.2f}" in unescape(said.group(2)), said.group(2)
+
+
+@then("user {who:Who} is told the balance could not be read")
+def then_balance_unreadable(context, who):
+    assert context.response.status_code == 400, context.response.status_code
+    assert "The balance you entered couldn't be read" in unescape(_body(context))
+
+
+@then("user {who:Who} is told the balance's date cannot be in the future")
+def then_balance_future(context, who):
+    assert context.response.status_code == 400, context.response.status_code
+    assert "can't be in the future" in unescape(_body(context))
+
+
+@then("nothing was sent to the AI")
+def then_nothing_sent(context):
+    assert context.mapped_rows is None, "the CSV went to the model"
+    assert context.screenshot_calls == [] and context.categorize_calls == []
+    assert 'data-line="' not in _body(context), "a review was rendered"
 
