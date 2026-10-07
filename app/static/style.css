@@ -1188,3 +1188,6 @@ tr:hover td.report-miss { background: var(--danger-soft); }
 .review-fold > summary::after { content: ''; width: 9px; height: 9px; border-right: 2px solid var(--text-muted); border-bottom: 2px solid var(--text-muted); transform: rotate(-45deg); transition: transform 0.15s; }
 .review-fold[open] > summary::after { transform: rotate(45deg); }
 .review-actions { margin-top: var(--sp-5); display: flex; gap: 0.5rem; }
+/* #455 — an imported line's proposed name, editable, with the bank's text under it. */
+.review-name { width: 100%; min-width: 10rem; }
+.review-name + [data-bank-text] { display: block; margin-top: 2px; word-break: break-word; }

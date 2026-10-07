@@ -9,6 +9,7 @@ both seams the import reaches.
 import io
 import re
 from datetime import date, timedelta
+from decimal import Decimal
 
 import pytest
 from werkzeug.datastructures import MultiDict
@@ -16,7 +17,7 @@ from werkzeug.datastructures import MultiDict
 from app import ai
 from app.blueprints import imports
 from app.db import db_cursor
-from app.statements import MAX_FILE_BYTES, MAX_IMAGE_BYTES, MAX_IMAGES
+from app.statements import MAX_FILE_BYTES, MAX_IMAGE_BYTES, MAX_IMAGES, csv_ref
 from tests.helpers import create_account, create_category
 
 TODAY = date.today()
@@ -424,7 +425,7 @@ def _categorised(user_id, account_id, description, category_id, adjustment=False
 
 
 def _history_marked(resp, description):
-    row = re.search(rf'<tr data-line="\d+"[^>]*>(?:(?!</tr>).)*value="{re.escape(description)}"'
+    row = re.search(rf'<tr data-line="\d+"[^>]*>(?:(?!</tr>).)*(?:value|data-bank)="{re.escape(description)}"'
                     r'(?:(?!</tr>).)*</tr>', resp.get_data(as_text=True), re.S)
     assert row, f"no review row for {description!r}"
     return "data-from-history" in row.group(0)
@@ -678,3 +679,30 @@ def test_a_pending_line_folds_under_will_be_marked_posted(client_a, users, check
     assert "Will be marked posted (1)" in folded
     assert _part(body, "adding") is None and _part(body, "needs") is None
     assert re.search(r'name="apply"[^>]*\bchecked\b', folded), "a pending line starts ticked"
+
+
+# ── #455: clean descriptions ───────────────────────────────────────────────
+
+def test_a_renamed_line_keeps_the_reference_of_the_banks_text(client_a, checking, ai_stubbed):
+    """The re-import scenario cannot see this: an identical line re-matches on
+    amount and date anyway. The reference is what makes it certain."""
+    raw, when = "TST* JOES PIZZA 00123 BROOKLYN NY", TODAY - timedelta(days=2)
+    body = _upload(client_a, checking, _csv((when, raw, "-18.00"))).get_data(as_text=True)
+    assert 'name="description_0" value="Joes Pizza"' in body
+    _apply(client_a, checking, line_0={"date": when.isoformat(), "amount": "18.00",
+                                       "direction": "out", "description": "Pizza night",
+                                       "ref": re.search(r'name="ref_0" value="([^"]+)"',
+                                                        body).group(1)})
+    (row,) = _rows(checking)
+    assert row.description == "Pizza night"
+    assert row.import_ref == csv_ref(when, Decimal("18.00"), "out", raw, 1)
+
+
+def test_an_earlier_uncategorised_row_names_a_line(client_a, users, checking, ai_stubbed):
+    """A name typed by hand counts whether or not it was ever filed: the
+    history read is not limited to categorised rows."""
+    _hold(users["a"]["id"], checking, "Joe's", "12.00", TODAY - timedelta(days=90))
+    body = _upload(client_a, checking, _csv(
+        (TODAY - timedelta(days=2), "TST* JOES 00123 BROOKLYN NY", "-18.00"))).get_data(as_text=True)
+    assert 'name="description_0" value="Joe&#39;s"' in body
+

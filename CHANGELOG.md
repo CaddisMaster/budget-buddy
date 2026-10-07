@@ -69,6 +69,14 @@ this project uses the `0.x` versioning scheme described in
   be marked posted, and lines already in your ledger are folded away underneath.
   They're still there to open and change. Nothing is written until you press
   Apply, as before. (#458)
+- **Imported lines get clean names.** Instead of the bank's
+  `SQ *BLUE BOTTLE 0611 SAN FRANCISCO CA`, a line is proposed under the name
+  you already use for that merchant ("Blue Bottle"), whether you typed it
+  yourself or it came from an earlier import. A merchant you've never had gets
+  a tidied version of the bank's text, with the card-processor prefix, store
+  number and location removed ("Joes Pizza"). The name is editable in the
+  review, and the bank's text is shown beneath it. Importing the same statement
+  again still recognises every line, whatever it was renamed to. (#455)
 - **The database can now remember which bank statement a transaction came
   from.** Nothing uses this yet; it prepares for filling in missing
   transactions from a statement export, where it lets a second import of the

@@ -467,16 +467,40 @@ def _is_reference(word):
     return digits == len(word) or (digits >= 2 and digits * 3 >= len(word))
 
 
+# #455: the bank often ends a line with where it happened. An upper-case state
+# code after at least two other words is a place, not a name ("SHOP ME" keeps
+# its "ME"; a hand-typed "Blue Bottle ca" keeps its "ca").
+_STATES = frozenset(
+    "AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE "
+    "NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY".split())
+
+
 def _key_words(text):
-    text = re.sub(r"[-.']", "", text.lower())   # wal-mart, amazon.com, joe's
-    return [w for w in re.split(r"[^a-z0-9&]+", text) if w and not _is_reference(w)]
+    tokens = text.split()
+    if len(tokens) >= 3 and tokens[-1] in _STATES:
+        tokens = tokens[:-1]
+    text = re.sub(r"[-.']", "", " ".join(tokens).lower())   # wal-mart, amazon.com, joe's
+    words = []
+    for w in re.split(r"[^a-z0-9&]+", text):
+        if not w:
+            continue
+        if _is_reference(w):
+            # A store number ends the name: what follows it is where the shop
+            # is (`BLUE BOTTLE 0611 SAN FRANCISCO CA`). One BEFORE any name
+            # word (`#1234 KROGER`) is just skipped.
+            if words:
+                break
+            continue
+        words.append(w)
+    return words
 
 
 def merchant_key(description):
     """The part of a description that names the merchant, normalised so the
     bank's variations of one shop agree: lowercase, a processor prefix dropped,
-    anything after a `*` dropped, store numbers and references dropped. An
-    empty string means nothing usable was left, and is never looked up."""
+    anything after a `*` dropped, a store number and everything after it
+    dropped, and a trailing state code dropped (#455). An empty string means
+    nothing usable was left, and is never looked up."""
     text = description or ""
     m = _PROCESSOR.match(text)
     if m:
@@ -486,6 +510,73 @@ def merchant_key(description):
         text = m.group(1)            # `AMAZON*AB12CD`: the prefix IS the merchant
     return " ".join(_key_words(text.split("*")[0]))
 
+
+
+# ── Clean descriptions (#455) ────────────────────────────────────────────────
+#
+# A line that can be added is proposed under the name the user already gives
+# that merchant, else a cleaned version of the bank's text. Both are keyed by
+# merchant_key(), and a cleaned name is built FROM the key, so it keys back to
+# the same merchant when the next statement arrives. That is what lets history
+# work with no column for the bank's raw text (Sean, 2026-10-07).
+
+def clean_name(description):
+    """The bank's text reduced to the merchant: `TST* JOES PIZZA 00123 BROOKLYN
+    NY` -> `Joes Pizza`. Empty when nothing usable is left."""
+    return " ".join(w.capitalize() for w in merchant_key(description).split())
+
+
+def _looks_like_bank_text(description):
+    """A stored description that still reads as the bank printed it, as every
+    import before #455 stored it: a `*`, a store number or reference, or
+    several words in capitals. Reusing one would propose the raw text back."""
+    words = re.split(r"[^A-Za-z0-9&]+", re.sub(r"[-.']", "", description))
+    words = [w for w in words if w]
+    return ("*" in description
+            or any(_is_reference(w.lower()) for w in words)
+            or (len(words) >= 2 and description == description.upper()
+                and any(c.isalpha() for c in description)))
+
+
+def proposed_names(reviews, rows):
+    """The description proposed for each line that can be added (missing or
+    possible), keyed by line index. The review shows it in an editable field,
+    with the bank's text beside it.
+
+    The user's own name for the merchant comes first, from the same two sources
+    as history_categories(): this upload's recorded and pending matches, then
+    `rows`, earlier rows (categorised or not), most recently dated first, then
+    the higher id. A name that is itself still bank text is cleaned. A merchant
+    with no history gets clean_name(), and a line with nothing usable keeps the
+    bank's text.
+
+    ⚠️ The line's import_ref is untouched: it was derived from the bank's text
+    when the statement was parsed, so a re-import still recognises the line."""
+    seen = {}
+
+    def note(key, row):
+        if key:
+            seen.setdefault(key, []).append(row)
+
+    for r in reviews:
+        if r.status in ("recorded", "pending") and r.match is not None:
+            note(merchant_key(r.line.description), r.match)
+    for row in rows:
+        note(merchant_key(row.description), row)
+
+    names = {}
+    for r in reviews:
+        if r.status not in ("missing", "possible"):
+            continue
+        mine = seen.get(merchant_key(r.line.description))
+        if mine:
+            name = max(mine, key=lambda row: (row.transaction_date, row.id)).description or ""
+            if _looks_like_bank_text(name):
+                name = clean_name(name)
+        else:
+            name = clean_name(r.line.description)
+        names[r.index] = (name or r.line.description)[:DESCRIPTION_MAX]
+    return names
 
 def history_categories(reviews, rows, kinds):
     """Category ids from the user's own history for the lines that would

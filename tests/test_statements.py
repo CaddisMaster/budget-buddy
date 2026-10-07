@@ -17,6 +17,7 @@ from app.statements import (
     StatementError,
     adjustments_within,
     apply_summary,
+    clean_name,
     csv_ref,
     csv_rows,
     decode,
@@ -31,6 +32,7 @@ from app.statements import (
     money,
     parse_csv,
     parse_ofx,
+    proposed_names,
     resolve_date,
     review_plan,
     sample_rows,
@@ -682,4 +684,93 @@ def test_what_needs_a_decision(review, suggested, ticked):
 ])
 def test_the_summary_says_what_applying_will_do(counts, text):
     assert apply_summary(counts) == text
+
+
+# ── #455: clean descriptions ────────────────────────────────────────────────
+
+@pytest.mark.parametrize("a, b", [
+    ("SQ *BLUE BOTTLE 0423", "SQ *BLUE BOTTLE 0611 SAN FRANCISCO CA"),  # cut at the store no.
+    ("BLUE BOTTLE SAN FRANCISCO", "BLUE BOTTLE SAN FRANCISCO CA"),     # a trailing state code
+    ("TST* JOES PIZZA 00123 BROOKLYN NY", "Joes Pizza"),
+])
+def test_where_the_bank_says_it_was_is_not_part_of_the_merchant(a, b):
+    assert merchant_key(a) == merchant_key(b) != ""
+
+
+@pytest.mark.parametrize("text, key", [
+    ("SHOP ME", "shop me"),          # one word before it: a name, not a place
+    ("Blue Bottle ca", "blue bottle ca"),   # only an upper-case state code is one
+    ("CHECK 1234", "check"),
+    ("#1234 KROGER", "kroger"),      # a store number before the name is skipped, not a cut
+    ("7-ELEVEN 12345 AUSTIN TX", "7eleven"),
+])
+def test_what_location_stripping_keeps(text, key):
+    assert merchant_key(text) == key
+
+
+@pytest.mark.parametrize("raw, name", [
+    ("SQ *BLUE BOTTLE 0611 SAN FRANCISCO CA", "Blue Bottle"),
+    ("TST* JOES PIZZA 00123 BROOKLYN NY", "Joes Pizza"),
+    ("KROGER FUEL DALLAS TX", "Kroger Fuel Dallas"),
+    ("AMAZON*AB12CD", "Amazon"),
+    ("#1234", ""),
+])
+def test_an_unseen_merchant_is_cleaned(raw, name):
+    assert clean_name(raw) == name
+
+
+@pytest.mark.parametrize("raw", [
+    "SQ *BLUE BOTTLE 0611 SAN FRANCISCO CA", "TST* JOES PIZZA 00123 BROOKLYN NY",
+    "WAL-MART #5432", "KROGER FUEL DALLAS TX", "PAYPAL *NETFLIX"])
+def test_a_cleaned_name_keys_back_to_the_same_merchant(raw):
+    """No raw-text column (#455 Q2): history keys on the stored name, so the
+    name stored for a line must find that line's merchant next time."""
+    assert merchant_key(clean_name(raw)) == merchant_key(raw)
+
+
+def _named(reviews, rows=()):
+    return proposed_names(reviews, list(rows))
+
+
+def test_my_own_name_from_this_upload_is_reused():
+    mine = HistRow(10, _on(3), "Blue Bottle", None)
+    reviews = [_review(0, "SQ *BLUE BOTTLE 0423", status="recorded", match=mine),
+               _review(1, "SQ *BLUE BOTTLE 0611 SAN FRANCISCO CA")]
+    assert _named(reviews) == {1: "Blue Bottle"}
+
+
+def test_my_own_name_from_an_earlier_row_is_reused_categorised_or_not():
+    rows = [HistRow(10, _on(1), "Pizza place", None), HistRow(11, _on(2), "Joes", 1)]
+    assert _named([_review(0, "PIZZA PLACE 0042"), _review(1, "SQ *JOES")], rows) == {
+        0: "Pizza place", 1: "Joes"}
+
+
+def test_the_most_recent_name_wins_then_the_higher_id():
+    rows = [HistRow(10, _on(1), "KROGER", 1),       # older
+            HistRow(11, _on(5), "kroger", 1),       # latest
+            HistRow(9, _on(5), "Kroger", 1)]        # same day, lower id
+    assert _named([_review(0, "KROGER #123")], rows) == {0: "kroger"}
+
+
+@pytest.mark.parametrize("stored", ["SQ *BLUE BOTTLE 0423", "BLUE BOTTLE", "Blue Bottle 0423",
+                                    "Sq *Blue Bottle"])   # some banks print mixed case
+def test_a_name_that_is_still_bank_text_is_cleaned_not_reused(stored):
+    """Imports before #455 stored the bank's text as it came."""
+    rows = [HistRow(10, _on(1), stored, None)]
+    assert _named([_review(0, "SQ *BLUE BOTTLE 0611")], rows) == {0: "Blue Bottle"}
+
+
+def test_names_are_proposed_for_lines_that_can_be_added_only():
+    mine = HistRow(10, _on(3), "Coffee", None)
+    reviews = [_review(0, "SQ *CAFE", status="recorded", match=mine),
+               _review(1, "SQ *CAFE", status="pending", match=mine),
+               _review(2, "SQ *CAFE", status="possible", match=mine),
+               _review(3, "ONLINE TRANSFER TO SAV 4421", transfer=True),
+               _review(4, "#0000")]
+    assert _named(reviews) == {2: "Coffee", 3: "Online Transfer To Sav", 4: "#0000"}
+
+
+def test_a_one_word_name_in_capitals_is_mine_not_the_banks():
+    rows = [HistRow(10, _on(1), "IKEA", None)]
+    assert _named([_review(0, "IKEA 0042 BROOKLYN NY")], rows) == {0: "IKEA"}
 

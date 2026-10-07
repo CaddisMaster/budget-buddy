@@ -68,6 +68,7 @@ from app.statements import (
     match_lines,
     parse_csv,
     parse_ofx,
+    proposed_names,
     review_plan,
     sample_rows,
     unlisted_rows,
@@ -202,26 +203,27 @@ def _categories():
         return cursor.fetchall()
 
 
-# How far back the category history reaches: the most recent categorised rows,
-# across every account. Bounded so a years-old ledger costs one modest read.
+# How far back the history reaches: the user's most recent rows, across every
+# account. Bounded so a years-old ledger costs one modest read.
 HISTORY_ROWS = 2000
 
 
 def _history():
-    """The user's most recent categorised rows, for history_categories() (#454).
-    A transfer leg never carries a category, so `category_id IS NOT NULL`
-    already leaves those out; an adjustment entered by hand can, and a balance
-    correction says nothing about a merchant."""
+    """The user's most recent rows: their categories for history_categories()
+    (#454), which skips an uncategorised row, and their names for
+    proposed_names() (#455), where a hand-typed name counts whether or not it
+    was ever filed. An adjustment is left out: a balance correction says
+    nothing about a merchant."""
     with db_cursor() as cursor:
         cursor.execute(
             "SELECT id, transaction_date, description, category_id FROM transactions "
-            "WHERE user_id = %s AND category_id IS NOT NULL AND NOT is_adjustment "
+            "WHERE user_id = %s AND NOT is_adjustment "
             "ORDER BY transaction_date DESC, id DESC LIMIT %s",
             (current_user.id, HISTORY_ROWS))
         return cursor.fetchall()
 
 
-def _suggest(reviews, categories):
+def _suggest(reviews, categories, history):
     """Suggested category ids for the missing lines, keyed by line index, and
     which of them came from the user's own history (#454). Only lines history
     cannot answer go to the model; when it answers them all, no call is made.
@@ -229,7 +231,7 @@ def _suggest(reviews, categories):
     and says so. A suggestion of the wrong kind (an expense category for money
     in) needs no filter here: the review lists only categories of the line's
     own kind, so it has no option to be selected."""
-    known = history_categories(reviews, _history(), {c.id: c.kind for c in categories})
+    known = history_categories(reviews, history, {c.id: c.kind for c in categories})
     wanted = [r for r in reviews
               if r.status == 'missing' and not r.transfer_like and r.index not in known]
     if not wanted:
@@ -299,7 +301,9 @@ def import_scan():
     ledger = _ledger(account.account_id, statement.start, statement.end)
     reviews = match_lines(statement.lines, ledger)
     categories = _categories()
-    suggested, from_history, suggest_failed = _suggest(reviews, categories)
+    history = _history()
+    suggested, from_history, suggest_failed = _suggest(reviews, categories, history)
+    names = proposed_names(reviews, history)
     pairings = _pairings(reviews, _other_rows(account.account_id,
                                               statement.start, statement.end))
     other_accounts = [a for a in _accounts(current_user.id)
@@ -337,6 +341,7 @@ def import_scan():
         apply_text=apply_text,
         needs_text=needs_text,
         suggested=suggested,
+        names=names,
         from_history=from_history,
         suggest_failed=suggest_failed,
         pairings=pairings,
@@ -348,6 +353,7 @@ def import_scan():
         unlisted=unlisted,
         still_pending=still_pending,
         match_days=MATCH_DAYS,
+        description_max=DESCRIPTION_MAX,
     )
 
 

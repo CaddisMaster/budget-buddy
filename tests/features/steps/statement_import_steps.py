@@ -135,7 +135,8 @@ def _row_for(context, description):
     decision, its description cell when it is already recorded."""
     rows = _rows(context)
     for i, (status, html) in rows.items():
-        if f'value="{description}"' in html or f"<td>{description}</td>" in html:
+        if (f'value="{description}"' in html or f"<td>{description}</td>" in html
+                or f'data-bank="{description}"' in html):
             return i, status, html
     raise AssertionError(f"no review row for {description!r}")
 
@@ -903,3 +904,63 @@ def then_no_checkbox(context):
 def then_nothing_needs_me(context):
     assert _says(context, "data-needs") == "Nothing needs you."
     assert _part(context, "needs")[0] is None, "an empty Needs you section"
+
+
+# ── #455: clean descriptions ───────────────────────────────────────────────
+
+def _proposed(context, raw):
+    """The review row for a statement line (by the bank's text) and the
+    description it proposes, from the editable field the browser submits."""
+    i, _status, html = _row_for(context, raw)
+    field = re.search(rf'<input type="text" name="description_{i}" value="([^"]*)"', html)
+    assert field, f"no editable description for {raw!r}"
+    return i, unescape(field.group(1)), html
+
+
+@given("an upload proposes {name:Q} for {raw:Q}")
+def given_upload_proposes(context, name, raw):
+    context.execute_steps(
+        f'Given a statement for "Checking" lists "{raw}" for $18.00 out 2 days ago\n'
+        f"When user A uploads it")
+    assert _proposed(context, raw)[1] == name
+    context.proposed = {name: raw}
+
+
+@given("user A imported a statement and its lines were renamed")
+def given_imported_and_renamed(context):
+    when = date.today() - timedelta(days=2)
+    context.statement = {"account": "Checking", "build": _csv_split, "lines": [
+        {"description": raw, "amount": amount, "way": "out", "date": when}
+        for raw, amount in (("TST* JOES PIZZA 00123 BROOKLYN NY", "18.00"),
+                            ("SQ *BLUE BOTTLE 0611 SAN FRANCISCO CA", "5.25"))]}
+    context.execute_steps("When user A uploads it")
+    _apply(context)
+    stored = {d for (d,) in _sql("SELECT description FROM transactions WHERE account_id = %s",
+                                 (_account(context, "Checking"),))}
+    assert stored == {"Joes Pizza", "Blue Bottle"}, stored
+
+
+@when("user {who:Who} changes {name:Q} to {new:Q} and applies")
+def when_renaming(context, who, name, new):
+    _apply(context, choose=(context.proposed[name], new), field="description")
+
+
+@then("{raw:Q} is proposed as {name:Q}")
+def then_proposed(context, raw, name):
+    assert _proposed(context, raw)[1] == name
+
+
+@then("the bank's text is shown beside {name:Q}")
+def then_bank_text_shown(context, name):
+    raw = context.statement["lines"][0]["description"]
+    _i, proposed, html = _proposed(context, raw)
+    assert proposed == name
+    shown = re.search(r'<span[^>]*data-bank-text[^>]*>([^<]*)</span>', html)
+    assert shown and unescape(shown.group(1)) == raw, html
+
+
+@then("the ${amount:Amt} transaction in {acct:Q} is described {name:Q}")
+def then_described(context, amount, acct, name):
+    rows = _sql("SELECT description FROM transactions WHERE account_id = %s AND amount = %s",
+                (_account(context, acct), amount))
+    assert rows == [(name,)], rows
