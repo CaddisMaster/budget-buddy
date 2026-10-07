@@ -32,7 +32,7 @@ Feature: Fill in missing transactions from a statement
     When user A uploads it
     And unchecks "HARDWARE BARN" and applies
     Then exactly 1 transaction has been added to "Checking"
-    And "Checking" holds "GROCERY MART" for $82.17 out 3 days ago
+    And "Checking" holds "Grocery Mart" for $82.17 out 3 days ago
 
   Scenario: Nothing is added without applying
     Given a statement for "Checking" lists "GROCERY MART" for $82.17 out 3 days ago

@@ -56,13 +56,17 @@
         <input type="hidden" name="date_{{ i }}" value="{{ r.line.date.isoformat() }}">
         <input type="hidden" name="amount_{{ i }}" value="{{ r.line.amount }}">
         <input type="hidden" name="direction_{{ i }}" value="{{ r.line.direction }}">
-        <input type="hidden" name="description_{{ i }}" value="{{ r.line.description }}">
+        {% if i not in names %}<input type="hidden" name="description_{{ i }}" value="{{ r.line.description }}">{% endif %}
         {% if r.line.ref %}<input type="hidden" name="ref_{{ i }}" value="{{ r.line.ref }}">{% endif %}
         {% if r.status == 'pending' %}<input type="hidden" name="pending_{{ i }}" value="{{ r.match.id }}">{% endif %}
         {% endif %}
       </td>
       <td>{{ r.line.date.strftime('%b %d') }}</td>
-      <td>{{ r.line.description }}{% if r.line.uncertain %} <span class="pending-badge" data-uncertain>hard to read: check it</span>{% endif %}</td>
+      {# #455 — a line that can be added proposes an editable name, with the bank's text beside it. #}
+      <td>{% if i in names %}<input type="text" name="description_{{ i }}" value="{{ names[i] }}" maxlength="{{ description_max }}"
+               class="review-name" data-bank="{{ r.line.description }}"
+               aria-label="Description for {{ r.line.description }}">
+        <span class="field-hint" data-bank-text>{{ r.line.description }}</span>{% else %}{{ r.line.description }}{% endif %}{% if r.line.uncertain %} <span class="pending-badge" data-uncertain>hard to read: check it</span>{% endif %}</td>
       <td>{{ '+' if r.line.direction == 'in' else '−' }}${{ r.line.amount|money }}</td>
       <td>
         {% if r.status == 'recorded' %}Already recorded
