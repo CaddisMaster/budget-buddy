@@ -50,7 +50,7 @@ app/
   logs.py          # logging: INFO, one format, a request ID per line + X-Request-ID (#404)
   models.py        # User (UserMixin)
   ai.py            # ALL model calls, one isolated _call_*_model() seam each. NEVER touches the DB
-  statements.py    # statement import (#445-447): parse OFX/CSV/screenshot lines + decide what's missing. PURE — no DB, no model
+  statements.py    # statement import (#445-#474): parse OFX/CSV/PDF/screenshot lines, decide what's missing, names, balance, account. PURE — no DB, no model
   mailer.py        # outbound email seam (Resend)          — single _call_resend() seam
   pusher.py        # outbound Web Push seam                — single _call_webpush() seam
   github.py        # outbound GitHub issue seam (stdlib urllib, NOT requests)
@@ -88,7 +88,8 @@ Full column lists and the reasoning behind each shape are in
   materializes a real transaction per due date and advances `next_due`
 - `categories` (`kind` expense|income) · `budgets` (one monthly amount each) · `budget_history`
   (append-only, nothing reads it yet)
-- `account` — ⚠️ **singular, and its PK is `account_id`, not `id`**. Carries `credit_limit`/`apr`
+- `account` — ⚠️ **singular, and its PK is `account_id`, not `id`**. Carries `credit_limit`/`apr`,
+  and `number_last4` (#471: last four digits ONLY, learned from imports, unique per user)
 - `goals` · `users` · `transfer_group_seq`
 - AI caches, narrative only — figures are always recomputed: `insights` (the month read),
   `agent_runs`. ⚠️ **`forecasts` and `goal_coach` are GONE** (`sql/36`) — dead since #232 and
@@ -301,15 +302,20 @@ server itself — **read it before touching anything on the Droplet.**
 
 ## Current status
 
-▶️ **NEXT UP: #457, then the rest of statement import.** 🛑 **`0.13.0` is NOT cut until statement
-import is complete** (Sean, 2026-10-06). Its open work is #455 and #457–#461 (filed 2026-10-06 from
-"make it as seamless as asking Claude"); several carry open questions, listed in `docs/status.md`.
-**#36** stays date-parked. Prod runs **`0.12.0`** (2026-10-05). `main` carries, **not deployed**:
-- **two migrations**, both additive and before-pull: `sql/39` (#438) and `sql/40` (#444);
+▶️ **NEXT UP: try Sean's real Discover export at localhost, then release prep for `0.13.0`.**
+✅ **Statement import is built** (2026-10-07): the `0.13.0` milestone has no open issues. 🛑 **But
+no real bank file has been through it** — every test and live model call used generated files.
+Sean pulled a Discover report covering 9/22 to 10/07 for exactly that; an empty "Discover" card
+account was added to the dev `sean` user for it. **#36** stays date-parked. Prod runs **`0.12.0`**
+(2026-10-05). `main` carries, **not deployed**:
+- **three migrations**, all additive and before-pull: `sql/39` (#438), `sql/40` (#444),
+  `sql/41` (#471, `account.number_last4`);
+- **a new dependency**, `pypdf` (#460), proven to install in the shipped image by CI's in-image run;
 - the device list and Home's push prompt (#437);
 - the deploy shipping its own compose file (#433);
-- **statement import** (#445 OFX/CSV, #446 transfers, #447 screenshots, #454 categories from
-  history, #456 updating an entry from a possible match);
+- **statement import**: #445 OFX/CSV, #446 transfers, #447 screenshots, #454 categories from
+  history, #455 clean names, #456 updating an entry, #457 ledger-only entries, #458 summary-first
+  review, #459 balance for every format, #460 PDF, #461 account detection, #474 a typed balance;
 - the runbook fix #432, and the records.
 
 🛑 **A MANUAL STEP BEFORE OR AT THAT DEPLOY:** production Nginx has no `client_max_body_size`, so
@@ -317,7 +323,8 @@ its 1 MB default refuses phone screenshots. Add RUNBOOK §3's `location = /trans
 block on the Droplet first. ⚠️ **First real checks after the deploy:**
 - #433's copy and `db` guard (the `db` service is unchanged since `v0.7.0`, so it should pass);
 - #437 on Sean's phone;
-- a real screenshot import, which proves the Nginx step.
+- a real screenshot import, which proves the Nginx step, and a real multi-page PDF (only ONE page
+  was ever timed: 5.9 s, against a 12-page cap and a 90 s seam timeout).
 
 🛑 **THE MAC HAS NO CLONE OF THIS REPO** (2026-10-05). Every Droplet step runs from the Mac, and
 every line of code lives in the VM. So "scp it from your clone" copies whatever file is in the
@@ -349,7 +356,7 @@ ported from the app layer into SQL keeps its shape and loses its meaning. `docs/
 the rule; `docs/status.md` carries the session.
 
 
-⚠️ **The open milestone is `0.13.0`**, holding the rest of statement import (#455, #457–#461) as of 2026-10-06. ✅ **`0.12.0` was closed on ship day** (2026-10-05, 24/24). ✅ **`0.10.0` was closed ON SHIP DAY** (2026-09-11) at
+⚠️ **The open milestone is `0.13.0`**: 0 open, 39 closed as of 2026-10-07 (statement import complete). Close it on ship day. ✅ **`0.12.0` was closed on ship day** (2026-10-05, 24/24). ✅ **`0.10.0` was closed ON SHIP DAY** (2026-09-11) at
 `open=0, closed=25`, with its nine open items moved to `0.11.0` first — the corrective landing, and
 the shape every milestone but `0.9.0`'s has closed at. `0.9.0` was closed 2026-09-03, late: it
 shipped on 2026-09-02 but was left open to hold a backlog, so **seven commits landed after the
