@@ -18,8 +18,15 @@ from werkzeug.datastructures import MultiDict
 from app import ai
 from app.blueprints import imports
 from app.db import db_cursor
-from app.statements import MAX_FILE_BYTES, MAX_IMAGE_BYTES, MAX_IMAGES, csv_ref
-from tests.helpers import create_account, create_category
+from app.statements import (
+    MAX_FILE_BYTES,
+    MAX_IMAGE_BYTES,
+    MAX_IMAGES,
+    MAX_PDF_BYTES,
+    MAX_PDF_PAGES,
+    csv_ref,
+)
+from tests.helpers import create_account, create_category, make_pdf
 
 TODAY = date.today()
 
@@ -28,7 +35,7 @@ TODAY = date.today()
 def ai_stubbed(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     calls = {"mapping": [], "categorize": [], "screenshots": [], "shot_lines": [],
-             "shot_balance": None}
+             "shot_balance": None, "shot_period": None}
 
     def map_columns(rows, date_formats, today, api_key):
         calls["mapping"].append(rows)
@@ -42,7 +49,8 @@ def ai_stubbed(monkeypatch):
 
     def read_shots(images, today, api_key):
         calls["screenshots"].append(images)
-        return ai._ScreenshotRead(lines=list(calls["shot_lines"]), balance=calls["shot_balance"])
+        return ai._ScreenshotRead(lines=list(calls["shot_lines"]), balance=calls["shot_balance"],
+                                  period=calls["shot_period"])
 
     monkeypatch.setattr(ai, "_call_csv_mapping_model", map_columns)
     monkeypatch.setattr(ai, "_call_categorize_model", categorize)
@@ -829,4 +837,53 @@ def test_a_ledger_only_row_elsewhere_or_later_is_never_named(client_a, users, ch
                           ("unlisted", str(later)))
     # "Late" is after the balance, so the gap is the $30.00 of Bills alone.
     assert "$30.00 below" in said and "without it they would agree" not in said, said
+
+
+# ── #460: PDF statements ───────────────────────────────────────────────────
+
+def _read_line(when, description="GROCERY", amount="12.34"):
+    return ai._ScreenshotLine(month=when.month, day=when.day, year=when.year,
+                              description=description, amount=amount, direction="out",
+                              legible=True)
+
+
+def test_a_pdf_reaches_the_model_as_a_document(client_a, checking, ai_stubbed):
+    ai_stubbed["shot_lines"].append(_read_line(TODAY - timedelta(days=3)))
+    resp = _upload(client_a, checking, make_pdf(), "statement.pdf")
+    assert resp.status_code == 200 and 'data-status="missing"' in resp.get_data(as_text=True)
+    ((media_type, _raw),) = ai_stubbed["screenshots"][0]
+    assert media_type == "application/pdf"
+
+
+def test_a_pdf_over_the_page_cap_is_refused_before_the_model(client_a, checking, ai_stubbed):
+    resp = _upload(client_a, checking, make_pdf(pages=MAX_PDF_PAGES + 1), "statement.pdf")
+    assert resp.status_code == 400
+    assert f"more than {MAX_PDF_PAGES} pages" in resp.get_data(as_text=True)
+    assert ai_stubbed["screenshots"] == []
+
+
+def test_an_oversized_pdf_is_refused_unread(client_a, checking, ai_stubbed):
+    raw = make_pdf() + b"%" + b"x" * MAX_PDF_BYTES
+    resp = _upload(client_a, checking, raw, "statement.pdf")
+    assert resp.status_code == 413 and ai_stubbed["screenshots"] == []
+
+
+def test_a_pdf_and_screenshots_together_are_refused(client_a, checking, ai_stubbed):
+    resp = client_a.post("/transactions/import", data={
+        "account_id": str(checking),
+        "statement": [(io.BytesIO(make_pdf()), "a.pdf"), (io.BytesIO(PNG), "b.png")]},
+        content_type="multipart/form-data")
+    assert resp.status_code == 400 and ai_stubbed["screenshots"] == []
+
+
+def test_a_pdf_keeps_the_ledger_only_section(client_a, users, checking, ai_stubbed):
+    """Unlike screenshots (#457): a statement's period is the bank's."""
+    gym = _gym(users["a"]["id"], checking, TODAY - timedelta(days=20))
+    start, end = TODAY - timedelta(days=30), TODAY
+    ai_stubbed["shot_lines"].append(_read_line(TODAY - timedelta(days=25)))
+    ai_stubbed["shot_period"] = ai._StatementPeriod(
+        start_month=start.month, start_day=start.day, start_year=start.year,
+        end_month=end.month, end_day=end.day, end_year=end.year)
+    body = _upload(client_a, checking, make_pdf(), "statement.pdf").get_data(as_text=True)
+    assert f'data-unlisted="{gym}"' in body
 

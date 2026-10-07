@@ -11,12 +11,14 @@ import pytest
 from app.statements import (
     DATE_FORMATS,
     MAX_LINES,
+    MAX_PDF_PAGES,
     CsvMapping,
     Line,
     Review,
     StatementError,
     adjustments_within,
     apply_summary,
+    check_pdf,
     clean_name,
     compare_balance,
     csv_ref,
@@ -26,6 +28,8 @@ from app.statements import (
     find_counterpart,
     history_categories,
     image_type,
+    is_pdf,
+    lines_from_pdf,
     lines_from_screenshots,
     looks_binary,
     looks_like_ofx,
@@ -41,6 +45,7 @@ from app.statements import (
     unlisted_rows,
     validate_mapping,
 )
+from tests.helpers import make_pdf
 
 # ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -912,4 +917,68 @@ def test_two_explanations_name_neither():
 
 def test_no_gap_needs_no_explanation():
     assert explain_gap(Decimal("0.00"), [_line(_on(5), "0.00")], []) is None
+
+
+# ── #460: PDF statements ────────────────────────────────────────────────────
+
+def test_a_pdf_is_recognised_by_its_bytes_alone():
+    assert is_pdf(make_pdf())
+    assert not is_pdf(b"Date,Description,Amount\n")
+    assert not is_pdf(b"\x89PNG\r\n\x1a\n")
+
+
+def test_a_pdf_within_the_page_cap_passes():
+    assert check_pdf(make_pdf(pages=MAX_PDF_PAGES)) == MAX_PDF_PAGES
+
+
+def test_a_pdf_locked_only_against_printing_still_opens():
+    """Banks often send statements this way: it opens with no password."""
+    assert check_pdf(make_pdf(pages=2, owner_only=True)) == 2
+
+
+@pytest.mark.parametrize("raw, said", [
+    (make_pdf(pages=MAX_PDF_PAGES + 1), f"more than {MAX_PDF_PAGES} pages"),
+    (make_pdf(password="secret"), "could not be read"),
+    (b"%PDF-1.7\nnot really a pdf at all", "could not be read"),
+])
+def test_a_pdf_the_model_must_never_see_is_refused(raw, said):
+    with pytest.raises(StatementError, match=said):
+        check_pdf(raw)
+
+
+def _pdf_read(lines=None, period=None, balance=None, accounts=1):
+    return {"lines": lines or [_shot(year=2026, month=9, day=10)], "balance": balance,
+            "period": period, "account_count": accounts}
+
+
+def _span(start, end):
+    return {"start_month": start.month, "start_day": start.day, "start_year": start.year,
+            "end_month": end.month, "end_day": end.day, "end_year": end.year}
+
+
+def test_a_pdf_statement_period_is_the_banks():
+    st = lines_from_pdf(_pdf_read(period=_span(_on(1), _on(30))), TODAY)
+    assert (st.start, st.end) == (_on(1), _on(30))
+
+
+@pytest.mark.parametrize("period", [
+    _span(_on(11), _on(30)),          # leaves out a line it read
+    _span(_on(30), _on(1)),           # backwards
+    {**_span(_on(1), _on(30)), "end_day": 31},   # no such day
+    None,
+])
+def test_a_period_that_does_not_hold_together_falls_back_to_the_lines(period):
+    st = lines_from_pdf(_pdf_read(period=period), TODAY)
+    assert (st.start, st.end) == (_on(10), _on(10))
+
+
+def test_a_pdf_balance_is_read_like_a_screenshots():
+    balance = {"amount": "1,200.00", "month": 9, "day": 30, "year": 2026, "kind": "statement"}
+    st = lines_from_pdf(_pdf_read(balance=balance), TODAY)
+    assert (st.closing_balance, st.closing_date) == (Decimal("1200.00"), _on(30))
+
+
+def test_a_pdf_covering_more_than_one_account_is_refused():
+    with pytest.raises(StatementError, match="more than one account"):
+        lines_from_pdf(_pdf_read(accounts=2), TODAY)
 

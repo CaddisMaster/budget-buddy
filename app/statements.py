@@ -21,10 +21,12 @@ import hashlib
 import html
 import io
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from itertools import pairwise
+
+from pypdf import PdfReader
 
 # Caps. A monthly statement is tens to a few hundred lines; these keep one
 # upload's review form, and its round trip through apply, comfortably bounded.
@@ -803,6 +805,11 @@ MAX_IMAGES = 5
 MAX_IMAGE_BYTES = 5_000_000
 MAX_UPLOAD_BYTES = 15_000_000    # the whole request; see RUNBOOK §3 for Nginx
 
+# #460: a monthly statement is a handful of pages. Both caps are checked before
+# the model is asked: every page is billed as its text AND a rendered image.
+MAX_PDF_BYTES = 10_000_000
+MAX_PDF_PAGES = 12
+
 _IMAGE_MAGIC = (
     (b"\x89PNG\r\n\x1a\n", "image/png"),
     (b"\xff\xd8\xff", "image/jpeg"),
@@ -858,7 +865,7 @@ def screenshot_balance(raw, today):
     return amount, when
 
 
-def lines_from_screenshots(raw_lines, today, balance=None):
+def lines_from_screenshots(raw_lines, today, balance=None, noun="These screenshots"):
     """The model's lines, re-checked. A line with no readable date or amount
     cannot be shown at all and is counted as skipped; one the model flagged as
     hard to read, or with a direction it could not name, is kept but marked
@@ -882,10 +889,72 @@ def lines_from_screenshots(raw_lines, today, balance=None):
                           csv_ref(when, amount, direction, description, seen[key], "img"),
                           uncertain))
     if not lines:
-        raise StatementError("These screenshots could not be read: no transactions "
-                             "were found in them.")
+        raise StatementError(f"{noun} could not be read: no transactions were found.")
     if len(lines) > MAX_LINES:
-        raise StatementError(f"These screenshots show more than {MAX_LINES} lines.")
+        raise StatementError(f"{noun} list more than {MAX_LINES} transactions.")
     start, end = _period(lines)
     closing, closing_date = screenshot_balance(balance, today)
     return Statement(tuple(lines), start, end, closing, skipped, closing_date)
+
+
+# ── PDF statements (#460) ───────────────────────────────────────────────────
+#
+# The same untrusted-lines path as screenshots: the model reads the PDF, and
+# everything it returns is re-checked here. pypdf only ever opens the file to
+# count its pages and see whether it is locked, BEFORE the model is asked.
+
+_PDF_UNREADABLE = ("This file could not be read: the PDF is damaged or "
+                   "password-protected. Download the statement again, or export "
+                   "OFX or CSV instead.")
+
+
+def is_pdf(raw):
+    """A PDF, from its first bytes alone, never the filename."""
+    return raw.startswith(b"%PDF-")
+
+
+def check_pdf(raw):
+    """The page count of a PDF the model may be sent, or a StatementError.
+    Many banks lock a statement with only an OWNER password (no printing, no
+    copying); pypdf opens that with an empty password by itself, and it is
+    fine. One that needs a password to open makes pypdf raise
+    FileNotDecryptedError when its pages are counted, and is refused below,
+    as is one pypdf cannot parse at all."""
+    try:
+        pages = len(PdfReader(io.BytesIO(raw)).pages)
+    except Exception as e:   # pypdf raises many types on a locked or malformed file
+        raise StatementError(_PDF_UNREADABLE) from e
+    if pages > MAX_PDF_PAGES:
+        raise StatementError(f"This PDF has more than {MAX_PDF_PAGES} pages. "
+                             "Upload one month's statement at a time.")
+    return pages
+
+
+def _pdf_period(raw, today):
+    """(start, end) of the statement period the model read, or None."""
+    if not raw:
+        return None
+    start = resolve_date(raw.get("start_month"), raw.get("start_day"),
+                         raw.get("start_year"), today)
+    end = resolve_date(raw.get("end_month"), raw.get("end_day"), raw.get("end_year"), today)
+    if start is None or end is None:
+        return None
+    return start, end   # a backwards period holds no line, so lines_from_pdf drops it
+
+
+def lines_from_pdf(read, today):
+    """The model's reading of a PDF statement, re-checked. Its lines and its
+    balance go through the screenshot rules; its period is the bank's, used
+    only when it holds every line read (else the lines' own range, as for a
+    CSV). A PDF that lists more than one account is refused, as a
+    multi-account OFX is."""
+    if (read.get("account_count") or 1) > 1:
+        raise StatementError("This PDF holds more than one account. "
+                             "Upload one account's statement at a time.")
+    statement = lines_from_screenshots(read.get("lines") or [], today,
+                                       read.get("balance"), noun="This PDF")
+    period = _pdf_period(read.get("period"), today)
+    if period and period[0] <= statement.start and statement.end <= period[1]:
+        statement = replace(statement, start=period[0], end=period[1])
+    return statement
+

@@ -50,12 +50,14 @@ from app.statements import (
     MAX_FILE_BYTES,
     MAX_IMAGE_BYTES,
     MAX_IMAGES,
+    MAX_PDF_BYTES,
     MAX_UPLOAD_BYTES,
     REF_MAX,
     Line,
     StatementError,
     adjustments_within,
     apply_summary,
+    check_pdf,
     compare_balance,
     csv_rows,
     decode,
@@ -63,7 +65,9 @@ from app.statements import (
     find_counterpart,
     history_categories,
     image_type,
+    is_pdf,
     is_possible,
+    lines_from_pdf,
     lines_from_screenshots,
     looks_binary,
     looks_like_ofx,
@@ -80,7 +84,7 @@ from app.statements import (
 bp = Blueprint('imports', __name__)
 
 UNREADABLE = ("This file could not be read. Upload an OFX, QFX or CSV export of one "
-              "account, or screenshots of its transactions.")
+              "account, its PDF statement, or screenshots of its transactions.")
 TOO_LARGE = "That upload is too large. Export a shorter date range, or send fewer screenshots."
 ONE_KIND = (f"Upload one statement file, or up to {MAX_IMAGES} screenshots, "
             "not a mix of the two.")
@@ -143,11 +147,22 @@ def _read_screenshots(images):
     return lines_from_screenshots(read["lines"], date.today(), read.get("balance"))
 
 
+def _read_pdf(raw):
+    """A PDF statement to a Statement (#460): its pages and lock are checked
+    before the model reads it; the model reads; the app re-checks."""
+    check_pdf(raw)
+    try:
+        read = read_screenshots([('application/pdf', raw)])
+    except ParseError as e:
+        raise StatementError("This PDF could not be read right now. Try again.") from e
+    return lines_from_pdf(read, date.today())
+
+
 def _uploads():
-    """The uploaded files' bytes, each read to one byte past its own cap so an
-    oversized one is detected without holding more of it."""
-    return [f.read(MAX_IMAGE_BYTES + 1) for f in request.files.getlist('statement')
-            if f and f.filename]
+    """The uploaded files' bytes, each read to one byte past the largest cap
+    (a PDF's) so an oversized one is detected without holding more of it."""
+    cap = max(MAX_IMAGE_BYTES, MAX_PDF_BYTES) + 1
+    return [f.read(cap) for f in request.files.getlist('statement') if f and f.filename]
 
 
 def _ledger(account_id, start, end):
@@ -283,7 +298,12 @@ def import_scan():
     kinds = [image_type(raw) for raw in raws]
     from_screenshots = all(kinds)
     try:
-        if from_screenshots:
+        if len(raws) == 1 and is_pdf(raws[0]):
+            # #460: by its bytes, never its name ("statement.pdf" may be a CSV).
+            if len(raws[0]) > MAX_PDF_BYTES:
+                return _upload_form(TOO_LARGE, 413, account.account_id)
+            statement = _read_pdf(raws[0])
+        elif from_screenshots:
             # #447: screenshots, read by the model.
             if len(raws) > MAX_IMAGES:
                 return _upload_form(f"Send at most {MAX_IMAGES} screenshots at a time.",
