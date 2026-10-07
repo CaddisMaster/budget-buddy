@@ -101,6 +101,11 @@ this project uses the `0.x` versioning scheme described in
   transactions from a statement export, where it lets a second import of the
   same statement recognise every line it already added. Transactions entered by
   hand are unaffected. (#444)
+- **The database can now remember the last four digits of an account's
+  number.** Nothing uses this yet; it prepares for recognising which account an
+  uploaded statement belongs to. Only the last four digits are ever kept, never
+  a full account number, and two of your accounts can't share the same four.
+  Existing accounts are unaffected. (#471)
 
 - **A device that stops getting notifications now says so.** If you've turned
   notifications on somewhere but the device you're holding isn't getting them,
