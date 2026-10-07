@@ -96,8 +96,14 @@ CREATE TABLE public.account (
     user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     last_checked_in date,  -- v10.9 balance check-in; NULL = never reconciled
     credit_limit numeric(10,2) CONSTRAINT account_credit_limit_is_finite CHECK (credit_limit <> 'NaN'::numeric),  -- v10.10 credit limit; NULL = not set; meaningful for Credit Card accounts
-    apr numeric(5,2) CONSTRAINT account_apr_is_finite CHECK (apr <> 'NaN'::numeric)  -- v10.15 APR percent; NULL = not set; meaningful for Credit Card accounts
+    apr numeric(5,2) CONSTRAINT account_apr_is_finite CHECK (apr <> 'NaN'::numeric),  -- v10.15 APR percent; NULL = not set; meaningful for Credit Card accounts
+    number_last4 character varying(4) CONSTRAINT account_number_last4_is_digits CHECK (number_last4 ~ '^[0-9]{4}$')  -- #471: last four digits only, learned from statement imports (#461); NULL = unknown
 );
+
+-- #471: one user's accounts never claim the same last four digits.
+CREATE UNIQUE INDEX account_number_last4_uniq
+    ON public.account (user_id, number_last4)
+    WHERE number_last4 IS NOT NULL;
 
 -- ------------------------------------------------------------
 -- Transactions
