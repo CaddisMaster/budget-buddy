@@ -982,3 +982,43 @@ def test_a_pdf_covering_more_than_one_account_is_refused():
     with pytest.raises(StatementError, match="more than one account"):
         lines_from_pdf(_pdf_read(accounts=2), TODAY)
 
+
+# ── #461: which account a statement belongs to ─────────────────────────────
+
+@pytest.mark.parametrize("acctid, last4", [
+    ("000123451234", "1234"),
+    ("XXXXXXXX1234", "1234"),        # masked, as most banks export it
+    ("6011-****-****-1234", "1234"),
+    ("123", None),                   # too short to name an account
+    ("", None),
+])
+def test_an_ofx_names_its_account_by_its_last_four(acctid, last4):
+    text = OFX_SGML.replace("<BANKTRANLIST>",
+                            f"<BANKACCTFROM>\n<BANKID>123\n<ACCTID>{acctid}\n"
+                            "<ACCTTYPE>CHECKING\n</BANKACCTFROM>\n<BANKTRANLIST>")
+    assert parse_ofx(text).account_last4 == last4
+
+
+def test_a_card_ofx_names_its_account_too():
+    text = OFX_XML.replace("<BANKTRANLIST>",
+                           "<CCACCTFROM><ACCTID>XXXXXXXXXXXX9876</ACCTID></CCACCTFROM><BANKTRANLIST>")
+    assert parse_ofx(text).account_last4 == "9876"
+
+
+def test_an_ofx_without_an_account_names_none():
+    assert parse_ofx(OFX_SGML).account_last4 is None
+
+
+@pytest.mark.parametrize("read_as, last4", [
+    ("1234", "1234"), ("...1234", "1234"), ("ending in 1234", "1234"),
+    ("12", None), (None, None),
+])
+def test_a_pdf_or_screenshot_names_its_account_as_the_model_read_it(read_as, last4):
+    assert lines_from_pdf({**_pdf_read(), "account_last4": read_as}, TODAY).account_last4 == last4
+    assert lines_from_screenshots([_shot()], TODAY, account_last4=read_as).account_last4 == last4
+
+
+def test_a_csv_names_no_account():
+    st = parse_csv(_csv_rows(("2026-09-01", "A", "-10.00", "90.00")), _bal(None))
+    assert st.account_last4 is None
+

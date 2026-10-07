@@ -94,6 +94,7 @@ class Statement:
     closing_balance: Decimal | None = None   # #459: OFX, a CSV's running balance, a screenshot's
     skipped: int = 0                          # rows that could not be read
     closing_date: date | None = None         # the day closing_balance applies to
+    account_last4: str | None = None         # #461: the account it names, last four digits only
 
 
 @dataclass(frozen=True)
@@ -176,6 +177,14 @@ def _bounded_ref(ref):
     return ref
 
 
+def last4(text):
+    """The last four digits of an account number as a statement shows it
+    (#461): `XXXXXXXX1234`, `6011-****-****-1234`, "ending in 1234". None when
+    fewer than four digits are there. Only these four are ever kept."""
+    digits = re.sub(r"\D", "", str(text or ""))
+    return digits[-4:] if len(digits) >= 4 else None
+
+
 def _period(lines, start=None, end=None):
     dates = [ln.date for ln in lines]
     return (start or min(dates), end or max(dates))
@@ -244,7 +253,9 @@ def parse_ofx(text):
         end = _ofx_date(_ofx_field(tranlist.group(1), "DTEND"))
     start, end = _period(lines, start, end)
     closing_date = (as_of or end) if closing is not None else None
-    return Statement(tuple(lines), start, end, closing, skipped, closing_date)
+    account = re.search(r"<(BANK|CC)ACCTFROM>(.*?)</\1ACCTFROM>", text, re.I | re.S)
+    return Statement(tuple(lines), start, end, closing, skipped, closing_date,
+                     last4(_ofx_field(account.group(2), "ACCTID")) if account else None)
 
 
 # ── CSV ──────────────────────────────────────────────────────────────────────
@@ -865,7 +876,8 @@ def screenshot_balance(raw, today):
     return amount, when
 
 
-def lines_from_screenshots(raw_lines, today, balance=None, noun="These screenshots"):
+def lines_from_screenshots(raw_lines, today, balance=None, noun="These screenshots",
+                           account_last4=None):
     """The model's lines, re-checked. A line with no readable date or amount
     cannot be shown at all and is counted as skipped; one the model flagged as
     hard to read, or with a direction it could not name, is kept but marked
@@ -894,7 +906,8 @@ def lines_from_screenshots(raw_lines, today, balance=None, noun="These screensho
         raise StatementError(f"{noun} list more than {MAX_LINES} transactions.")
     start, end = _period(lines)
     closing, closing_date = screenshot_balance(balance, today)
-    return Statement(tuple(lines), start, end, closing, skipped, closing_date)
+    return Statement(tuple(lines), start, end, closing, skipped, closing_date,
+                     last4(account_last4))
 
 
 # ── PDF statements (#460) ───────────────────────────────────────────────────
@@ -952,7 +965,8 @@ def lines_from_pdf(read, today):
         raise StatementError("This PDF holds more than one account. "
                              "Upload one account's statement at a time.")
     statement = lines_from_screenshots(read.get("lines") or [], today,
-                                       read.get("balance"), noun="This PDF")
+                                       read.get("balance"), noun="This PDF",
+                                       account_last4=read.get("account_last4"))
     period = _pdf_period(read.get("period"), today)
     if period and period[0] <= statement.start and statement.end <= period[1]:
         statement = replace(statement, start=period[0], end=period[1])

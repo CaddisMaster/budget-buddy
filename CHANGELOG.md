@@ -96,6 +96,15 @@ this project uses the `0.x` versioning scheme described in
   against printing, as many banks send them, is fine. A PDF covering more than
   one account is refused too. The whole PDF is sent to the AI to read and is
   never kept. (#460)
+- **The statement import works out which account a statement is for.** Leave
+  the account on "Work it out from the statement" and the review opens on the
+  account whose number ends in the same four digits, with a "Detected" line
+  and a way to choose another. An account learns its last four digits the
+  first time you apply an import that shows them. If you later apply that
+  account's statement to a different account, the digits move with it. A
+  statement that doesn't name its account, such as most CSVs, or one ending in
+  digits no account has yet, asks you to choose. Only the last four digits are
+  ever kept. (#461)
 - **The database can now remember which bank statement a transaction came
   from.** Nothing uses this yet; it prepares for filling in missing
   transactions from a statement export, where it lets a second import of the

@@ -22,6 +22,7 @@ suggests categories for merchants the user's own history does not answer
 Gated on `ai_enabled()` like every AI surface, even though an OFX upload needs
 the model only for categories: one gate, one place the feature appears.
 """
+import re
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -114,6 +115,44 @@ def _owned_account(account_id):
     return account
 
 
+def _detect_account(digits):
+    """The user's one account known to end in `digits` (#461), or None. The
+    unique index (sql/41) allows at most one; never another user's."""
+    if digits is None:
+        return None
+    with db_cursor() as cursor:
+        cursor.execute(
+            "SELECT account_id, account_name, type FROM account "
+            "WHERE user_id = %s AND number_last4 = %s",
+            (current_user.id, digits))
+        return cursor.fetchone()
+
+
+def _which_account(digits):
+    if digits is None:
+        return ("Which account is this statement for? It doesn't say, so choose the "
+                "account and upload it again.")
+    return (f"Which account is this statement for? None of your accounts is known to end "
+            f"in {digits} yet. Choose the account and upload it again, and Budget Buddy "
+            "will remember it.")
+
+
+def _learn_last4(cursor, account_id, digits):
+    """#461, settled with Sean: the last apply wins. The statement's last four
+    digits MOVE onto the account it was applied to, cleared from any other of
+    this user's accounts first (sql/41's unique index requires that order).
+    Anything but exactly four digits from the posted form is ignored."""
+    if not re.fullmatch(r"[0-9]{4}", digits or ''):
+        return
+    cursor.execute(
+        "UPDATE account SET number_last4 = NULL "
+        "WHERE user_id = %s AND number_last4 = %s AND account_id <> %s",
+        (current_user.id, digits, account_id))
+    cursor.execute(
+        "UPDATE account SET number_last4 = %s WHERE account_id = %s AND user_id = %s",
+        (digits, account_id, current_user.id))
+
+
 def _upload_form(error=None, status=200, selected=None):
     return render_template('statement_import.html',
                            accounts=_accounts(current_user.id),
@@ -144,7 +183,8 @@ def _read_screenshots(images):
     except ParseError as e:
         raise StatementError("These screenshots could not be read right now. "
                              "Try again.") from e
-    return lines_from_screenshots(read["lines"], date.today(), read.get("balance"))
+    return lines_from_screenshots(read["lines"], date.today(), read.get("balance"),
+                                  account_last4=read.get("account_last4"))
 
 
 def _read_pdf(raw):
@@ -283,17 +323,21 @@ def import_scan():
     if not ai_enabled():
         abort(404)
 
-    account = _owned_account(parse_int_param(request.form.get('account_id')))
+    # #461: the account may be left to the statement. Anything posted that is
+    # not empty must still be one of the user's accounts.
+    chosen = (request.form.get('account_id') or '').strip()
+    account = _owned_account(parse_int_param(chosen)) if chosen else None
+    selected = account.account_id if account else None
 
     # Refuse an oversized body before Werkzeug is asked to hold it all.
     # (Werkzeug spools a large part to a temporary file that is deleted when
     # the request ends; nothing here writes the upload anywhere.)
     if (request.content_length or 0) > MAX_UPLOAD_BYTES + 64_000:
-        return _upload_form(TOO_LARGE, 413, account.account_id)
+        return _upload_form(TOO_LARGE, 413, selected)
     raws = _uploads()
     if not raws or not all(raws):
         return _upload_form("Choose a statement file or screenshots to upload.", 400,
-                            account.account_id)
+                            selected)
 
     kinds = [image_type(raw) for raw in raws]
     from_screenshots = all(kinds)
@@ -301,24 +345,30 @@ def import_scan():
         if len(raws) == 1 and is_pdf(raws[0]):
             # #460: by its bytes, never its name ("statement.pdf" may be a CSV).
             if len(raws[0]) > MAX_PDF_BYTES:
-                return _upload_form(TOO_LARGE, 413, account.account_id)
+                return _upload_form(TOO_LARGE, 413, selected)
             statement = _read_pdf(raws[0])
         elif from_screenshots:
             # #447: screenshots, read by the model.
             if len(raws) > MAX_IMAGES:
                 return _upload_form(f"Send at most {MAX_IMAGES} screenshots at a time.",
-                                    400, account.account_id)
+                                    400, selected)
             if any(len(raw) > MAX_IMAGE_BYTES for raw in raws):
-                return _upload_form(TOO_LARGE, 413, account.account_id)
+                return _upload_form(TOO_LARGE, 413, selected)
             statement = _read_screenshots(list(zip(kinds, raws, strict=True)))
         elif len(raws) == 1:
             if len(raws[0]) > MAX_FILE_BYTES:
-                return _upload_form(TOO_LARGE, 413, account.account_id)
+                return _upload_form(TOO_LARGE, 413, selected)
             statement = _read_statement(raws[0])
         else:
-            return _upload_form(ONE_KIND, 400, account.account_id)
+            return _upload_form(ONE_KIND, 400, selected)
     except StatementError as e:
-        return _upload_form(str(e), 400, account.account_id)
+        return _upload_form(str(e), 400, selected)
+
+    detected = account is None
+    if detected:
+        account = _detect_account(statement.account_last4)
+        if account is None:
+            return _upload_form(_which_account(statement.account_last4), 200)
 
     ledger = _ledger(account.account_id, statement.start, statement.end)
     reviews = match_lines(statement.lines, ledger)
@@ -372,6 +422,7 @@ def import_scan():
         expense_categories=[c for c in categories if c.kind == 'expense'],
         income_categories=[c for c in categories if c.kind == 'income'],
         adjustments=adjustments_within(ledger, statement.start, statement.end),
+        detected=detected,
         unlisted=unlisted,
         still_pending=still_pending,
         match_days=MATCH_DAYS,
@@ -662,6 +713,7 @@ def import_apply():
                      account.account_id, line['date'], line['type'], line['ref'],
                      current_user.id))
                 added += cursor.rowcount
+            _learn_last4(cursor, account.account_id, form.get('number_last4'))
     except psycopg2.Error:
         current_app.logger.exception("Statement import apply failed")
         flash(GENERIC_ERROR)
