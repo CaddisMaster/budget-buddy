@@ -105,6 +105,15 @@ this project uses the `0.x` versioning scheme described in
   statement that doesn't name its account, such as most CSVs, or one ending in
   digits no account has yet, asks you to choose. Only the last four digits are
   ever kept. (#461)
+- **Tell the statement import what balance to check.** The upload form now has
+  an optional closing balance and the date it applies to (today by default).
+  Use it for a statement that carries no balance, as most CSVs don't, or to
+  check against the current balance in your bank's app. After applying, your
+  ledger is compared with it the same way as a statement's own balance; for a
+  card, enter the amount you owe. If you enter one, it's used even when the
+  file has its own, and the review says which balance it will check. The
+  figure isn't saved; the Accounts page check-in is still the place to record
+  a balance. (#474)
 - **The database can now remember which bank statement a transaction came
   from.** Nothing uses this yet; it prepares for filling in missing
   transactions from a statement export, where it lets a second import of the

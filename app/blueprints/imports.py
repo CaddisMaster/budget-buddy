@@ -23,6 +23,7 @@ Gated on `ai_enabled()` like every AI surface, even though an OFX upload needs
 the model only for categories: one gate, one place the feature appears.
 """
 import re
+from dataclasses import replace
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -73,6 +74,7 @@ from app.statements import (
     looks_binary,
     looks_like_ofx,
     match_lines,
+    money,
     parse_csv,
     parse_ofx,
     proposed_names,
@@ -153,10 +155,39 @@ def _learn_last4(cursor, account_id, digits):
         (digits, account_id, current_user.id))
 
 
+def _typed_balance(form):
+    """((amount, date), None), (None, None) when left blank, or (None, error):
+    the closing balance the user typed on the upload form (#474). Checked
+    BEFORE the file is read, so a bad value costs no model call. The amount
+    reads like a statement's (`$1,234.56`, `-12.00`, `(12.00)`; never NaN);
+    a blank date means today, and a future one is refused."""
+    raw = (form.get('balance') or '').strip()
+    if not raw:
+        return None, None
+    amount = money(raw)
+    if amount is None:
+        return None, ("The balance you entered couldn't be read. Enter it as a number, "
+                      "like 1,234.56.")
+    raw_date = (form.get('balance_date') or '').strip()
+    try:
+        when = date.fromisoformat(raw_date) if raw_date else date.today()
+    except ValueError:
+        return None, "The balance's date couldn't be read."
+    if when > date.today():
+        return None, "The balance's date can't be in the future."
+    return (amount, when), None
+
+
 def _upload_form(error=None, status=200, selected=None):
+    # A typed balance (#474) is echoed back, so an error elsewhere (or #461's
+    # "which account?") never makes the user type it twice.
+    posted = request.form if request.method == 'POST' else {}
     return render_template('statement_import.html',
                            accounts=_accounts(current_user.id),
-                           error=error, selected=selected), status
+                           error=error, selected=selected,
+                           balance=posted.get('balance', ''),
+                           balance_date=posted.get('balance_date') or date.today().isoformat(),
+                           today=date.today().isoformat()), status
 
 
 def _read_statement(raw):
@@ -329,6 +360,10 @@ def import_scan():
     account = _owned_account(parse_int_param(chosen)) if chosen else None
     selected = account.account_id if account else None
 
+    typed, typed_error = _typed_balance(request.form)
+    if typed_error:
+        return _upload_form(typed_error, 400, selected)
+
     # Refuse an oversized body before Werkzeug is asked to hold it all.
     # (Werkzeug spools a large part to a temporary file that is deleted when
     # the request ends; nothing here writes the upload anywhere.)
@@ -369,6 +404,13 @@ def import_scan():
         account = _detect_account(statement.account_last4)
         if account is None:
             return _upload_form(_which_account(statement.account_last4), 200)
+
+    # #474: a balance the user typed is used even over the file's own; they
+    # entered it on purpose. The review says which one will be checked.
+    if typed:
+        statement = replace(statement, closing_balance=typed[0], closing_date=typed[1])
+    balance_source = ('typed' if typed else
+                      'statement' if statement.closing_balance is not None else 'none')
 
     ledger = _ledger(account.account_id, statement.start, statement.end)
     reviews = match_lines(statement.lines, ledger)
@@ -423,6 +465,7 @@ def import_scan():
         income_categories=[c for c in categories if c.kind == 'income'],
         adjustments=adjustments_within(ledger, statement.start, statement.end),
         detected=detected,
+        balance_source=balance_source,
         unlisted=unlisted,
         still_pending=still_pending,
         match_days=MATCH_DAYS,
@@ -539,7 +582,9 @@ def _balance_message(account, form):
             (current_user.id, account.account_id, closing_date))
         balance = Decimal(cursor.fetchone().balance)
     gap = compare_balance(balance, closing, account.type == 'Credit Card')
-    figure = (f"the statement's closing balance of {_signed_dollars(closing)} on "
+    whose = ("the balance you entered" if form.get('balance_source') == 'typed'
+             else "the statement's closing balance")
+    figure = (f"{whose} of {_signed_dollars(closing)} on "
               f"{closing_date:%b} {closing_date.day}, {closing_date.year}")
     if gap == 0:
         return f"The ledger agrees with {figure}."

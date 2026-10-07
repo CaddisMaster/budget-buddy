@@ -984,3 +984,73 @@ def test_a_screenshots_digits_detect_its_account(client_a, users, ai_stubbed):
     ai_stubbed["shot_last4"] = "...1234"
     body = _undetermined(client_a, PNG, "shot.png").get_data(as_text=True)
     assert _review_account(body) == discover
+
+
+# ── #474: a balance the user types ─────────────────────────────────────────
+
+def _typed(client, account_id, payload, balance, balance_date="", filename="s.ofx"):
+    return client.post("/transactions/import",
+                       data={"account_id": str(account_id), "balance": balance,
+                             "balance_date": balance_date,
+                             "statement": (io.BytesIO(payload), filename)},
+                       content_type="multipart/form-data")
+
+
+def _hidden(body, name):
+    found = re.search(rf'<input type="hidden" name="{name}" value="([^"]*)">', body)
+    return found.group(1) if found else None
+
+
+def _ofx_closing(closing):
+    return _ofx_for("1234").replace(b"</BANKTRANLIST>\n",
+                                    f"</BANKTRANLIST>\n<LEDGERBAL>\n<BALAMT>{closing}\n"
+                                    f"<DTASOF>{TODAY:%Y%m%d}\n</LEDGERBAL>\n".encode())
+
+
+def test_a_blank_balance_leaves_the_files_own(client_a, checking, ai_stubbed):
+    body = _typed(client_a, checking, _ofx_closing("500.00"), "").get_data(as_text=True)
+    assert _hidden(body, "closing_balance") == "500.00"
+    assert 'data-balance-source="statement"' in body
+
+
+def test_a_typed_balance_with_no_date_applies_today(client_a, checking, ai_stubbed):
+    body = _typed(client_a, checking, _ofx_for("1234"), "(12.34)").get_data(as_text=True)
+    assert (_hidden(body, "closing_balance"), _hidden(body, "closing_date")) == (
+        "-12.34", TODAY.isoformat())
+    assert _hidden(body, "balance_source") == "typed"
+
+
+def test_a_cards_amount_owed_can_be_typed_as_printed(client_a, users, ai_stubbed):
+    visa = create_account(users["a"]["id"], "Visa", "Credit Card")
+    body = _typed(client_a, visa, _ofx_for("1234", amount="-4.50"), "$4.50").get_data(
+        as_text=True)
+    form = MultiDict(re.findall(r'<input type="(?:hidden|checkbox)" name="(\w+)" value="([^"]*)"',
+                                body))
+    form.setlist("description_0", ["Coffee"])
+    said = _flash_after(client_a, client_a.post("/transactions/import/apply", data=form))
+    assert "agrees with the balance you entered of $4.50" in said, said
+
+
+@pytest.mark.parametrize("raw_date", ["not-a-date", "2026-02-30"])
+def test_a_malformed_balance_date_is_refused_unread(client_a, checking, ai_stubbed, raw_date):
+    resp = _typed(client_a, checking, _csv((TODAY, "COFFEE", "-4.50")), "12.00", raw_date,
+                  "s.csv")
+    assert resp.status_code == 400 and ai_stubbed["mapping"] == []
+
+
+def test_no_balance_anywhere_says_so(client_a, checking, ai_stubbed):
+    body = _typed(client_a, checking, _csv((TODAY, "COFFEE", "-4.50")), "", "",
+                  "s.csv").get_data(as_text=True)
+    assert 'data-balance-source="none"' in body
+
+
+def test_a_typed_balance_survives_being_asked_again(client_a, ai_stubbed):
+    """#461's "which account?" re-shows the form: the balance is not lost."""
+    body = client_a.post("/transactions/import",
+                         data={"account_id": "", "balance": "917.83",
+                               "balance_date": TODAY.isoformat(),
+                               "statement": (io.BytesIO(_csv((TODAY, "COFFEE", "-4.50"))),
+                                             "s.csv")},
+                         content_type="multipart/form-data").get_data(as_text=True)
+    assert "Which account is this statement for?" in body
+    assert 'name="balance" id="import-balance" inputmode="decimal"\n               value="917.83"' in body

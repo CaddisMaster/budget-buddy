@@ -28,6 +28,21 @@
         You'll see what's already in Budget Buddy and what's missing, and nothing is added
         until you confirm.
     </p>
+    {# #474 — the balance to check after applying, for a statement that carries
+       none (most CSVs) or to check against the bank's current balance. #}
+    <label for="import-balance">Closing balance <span class="field-hint">(optional)</span></label>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+        <input type="text" name="balance" id="import-balance" inputmode="decimal"
+               value="{{ balance }}" placeholder="1,234.56" aria-describedby="import-balance-hint"
+               style="flex:1 1 9rem">
+        <input type="date" name="balance_date" value="{{ balance_date }}" max="{{ today }}"
+               aria-label="Date the balance applies to" style="flex:1 1 9rem">
+    </div>
+    <p class="field-hint" id="import-balance-hint">
+        The balance from the statement or your bank's app, and the date it applies to.
+        After applying, Budget Buddy checks your ledger against it. Leave it empty to use the
+        statement's own balance, if it has one. For a card, enter the amount you owe.
+    </p>
     <p class="field-hint">
         Nothing you upload is kept. For a CSV, its first few rows are sent to the AI to work
         out which column is which. Screenshots, and the whole of a PDF statement, are sent to

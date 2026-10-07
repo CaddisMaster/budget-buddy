@@ -24,6 +24,16 @@
 <p class="field-hint" data-detected>Detected: {{ account.account_name }} (…{{ statement.account_last4 }}).
   <a href="{{ url_for('imports.import_form') }}">Not this account? Choose another and upload again.</a></p>
 {% endif %}
+{# #474 — which balance apply will check, and where it came from. #}
+{% if statement.closing_balance is not none %}
+{% set b = statement.closing_balance %}
+<p class="field-hint" data-balance-source="{{ balance_source }}">Balance to check after applying:
+  {{ '-' if b < 0 else '' }}${{ b|abs|money }} on {{ statement.closing_date.strftime('%b %d, %Y') }},
+  {{ 'entered by you' if balance_source == 'typed' else 'from the statement' }}.</p>
+{% else %}
+<p class="field-hint" data-balance-source="none">No balance to check: this statement doesn't
+  carry one. You can enter one on the upload form next time.</p>
+{% endif %}
 {# #458 — what Apply will do, counted from statements.review_plan(). The
    data-apply-summary listener in base.html recounts it as boxes and selects
    change. #}
@@ -146,6 +156,7 @@
   {% if statement.closing_balance is not none %}
   <input type="hidden" name="closing_balance" value="{{ statement.closing_balance }}">
   <input type="hidden" name="closing_date" value="{{ statement.closing_date.isoformat() }}">
+  <input type="hidden" name="balance_source" value="{{ balance_source }}">
   {% endif %}
   {# #459 — the ledger-only rows, so apply can name one that explains a gap. #}
   {% for row in unlisted %}<input type="hidden" name="unlisted" value="{{ row.id }}">
