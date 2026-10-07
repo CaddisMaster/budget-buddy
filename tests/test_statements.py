@@ -32,6 +32,7 @@ from app.statements import (
     parse_ofx,
     resolve_date,
     sample_rows,
+    unlisted_rows,
     validate_mapping,
 )
 
@@ -572,3 +573,63 @@ def test_an_uncategorised_row_and_a_nameless_line_teach_nothing():
     rows = [HistRow(10, _on(1), "KROGER", None), HistRow(11, _on(1), "#1234", 1)]
     reviews = [_review(0, "KROGER #9"), _review(1, "#5678")]
     assert history_categories(reviews, rows, KINDS) == {}
+
+
+# ── unlisted_rows (#457) ────────────────────────────────────────────────────
+#
+# The statement covers Sep 1 to Sep 30, so with MATCH_DAYS = 3 its last three
+# days (28, 29, 30) are left out: a purchase made then usually posts next time.
+
+START, END = _on(1), _on(30)
+
+
+def _unlisted(lines, ledger):
+    return unlisted_rows(match_lines(lines, ledger), ledger, START, END)
+
+
+def test_a_row_no_line_matched_is_unlisted():
+    gym = _row(1, _on(10), "30.00")
+    assert _unlisted([_line(_on(5), "2000.00", "in")], [gym]) == ([gym], [])
+
+
+def test_a_matched_row_is_not_unlisted_whatever_its_status():
+    recorded = _row(1, _on(1), "1500.00")
+    pending = _row(2, _on(8), "20.00", pending=True)
+    possible = _row(3, _on(12), "40.00")
+    lines = [_line(_on(1), "1500.00"), _line(_on(8), "20.00"), _line(_on(12), "42.00")]
+    assert [r.status for r in match_lines(lines, [recorded, pending, possible])] == [
+        "recorded", "pending", "possible"]
+    assert _unlisted(lines, [recorded, pending, possible]) == ([], [])
+
+
+def test_entered_twice_leaves_exactly_one_copy_unlisted():
+    first, second = _row(1, _on(3), "4.50"), _row(2, _on(3), "4.50")
+    unlisted, _pending = _unlisted([_line(_on(3), "4.50")], [first, second])
+    assert unlisted == [second]
+
+
+@pytest.mark.parametrize("day, shown", [(27, True), (28, False), (30, False)])
+def test_the_last_match_days_of_the_period_are_left_out(day, shown):
+    row = _row(1, _on(day), "50.00")
+    assert _unlisted([_line(_on(5), "2000.00", "in")], [row])[0] == ([row] if shown else [])
+
+
+@pytest.mark.parametrize("when, shown", [
+    (date(2026, 8, 31), False), (_on(1), True), (date(2026, 10, 1), False)])
+def test_rows_outside_the_period_are_left_out(when, shown):
+    row = _row(1, when, "30.00")
+    assert _unlisted([_line(_on(15), "2000.00", "in")], [row])[0] == ([row] if shown else [])
+
+
+def test_a_balance_check_in_is_never_unlisted():
+    adjustment = _row(1, _on(15), "25.00", adjustment=True)
+    assert _unlisted([_line(_on(5), "2000.00", "in")], [adjustment]) == ([], [])
+
+
+def test_an_unmatched_pending_row_is_still_pending_not_unlisted():
+    early = _row(1, _on(10), "20.00", pending=True)
+    late = _row(2, _on(29), "9.00", pending=True)
+    outside = _row(3, date(2026, 10, 1), "9.00", pending=True)
+    assert _unlisted([_line(_on(5), "2000.00", "in")], [early, late, outside]) == (
+        [], [early, late])
+

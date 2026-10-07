@@ -51,6 +51,15 @@ this project uses the `0.x` versioning scheme described in
   there for a genuinely separate charge. A re-import then recognises the
   updated entry. One side of a transfer is never offered for updating, since
   changing it alone would unbalance the pair. (#456)
+- **The statement review shows what your ledger has that the statement
+  doesn't.** Below the lines, a new section lists entries in that account and
+  period that no statement line matched: something entered twice, a mistyped
+  amount, or a charge that was cancelled. Each links to the entry in History.
+  Entries from the statement's last three days aren't listed, since those
+  usually post on the next statement. Balance check-ins aren't listed either,
+  and pending entries appear separately under "Still pending". The section
+  only lists entries and never changes them. It is left out for screenshots,
+  which may not cover every day you scrolled past. (#457)
 - **The database can now remember which bank statement a transaction came
   from.** Nothing uses this yet; it prepares for filling in missing
   transactions from a statement export, where it lets a second import of the

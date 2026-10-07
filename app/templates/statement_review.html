@@ -113,4 +113,43 @@
     <a href="{{ url_for('transactions.transactions') }}" class="btn">Cancel</a>
   </div>
 </form>
+
+{# #457 — the ledger's side of the reconcile: rows in the statement period that
+   no line matched (statements.unlisted_rows). Listed only, never acted on: each
+   links to the row's place in History, where it can be edited or deleted.
+   Left out for screenshots, whose period is only what was scrolled past. #}
+{% macro ledger_rows(rows, attr) %}
+<div class="table-wrapper">
+<table>
+  <thead><tr><th>Date</th><th>Description</th><th>Amount</th><th></th></tr></thead>
+  <tbody>
+  {% for row in rows %}
+  <tr {{ attr }}="{{ row.id }}">
+    <td>{{ row.transaction_date.strftime('%b %d') }}</td>
+    <td>{{ row.description or 'untitled' }}</td>
+    <td>{{ '+' if row.transaction_type == 'income' else '−' }}${{ row.amount|money }}</td>
+    <td><a href="{{ url_for('transactions.transactions', account=account.account_id, month=row.transaction_date.strftime('%Y-%m'), search=row.description or None) }}">Find in History</a></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endmacro %}
+
+{% if unlisted %}
+<section class="review-section" data-section="unlisted">
+  <h2>In your ledger but not on this statement</h2>
+  <p class="field-hint">Check these for something entered twice, a mistyped amount, or a charge
+    that was cancelled. Entries from the statement's last {{ match_days }} days aren't listed,
+    since those usually appear on the next statement.</p>
+  {{ ledger_rows(unlisted, 'data-unlisted') }}
+</section>
+{% endif %}
+{% if still_pending %}
+<section class="review-section" data-section="still-pending">
+  <h2>Still pending</h2>
+  <p class="field-hint">Marked pending in your ledger, and not on this statement yet.</p>
+  {{ ledger_rows(still_pending, 'data-still-pending') }}
+</section>
+{% endif %}
 {% endblock %}
