@@ -23,19 +23,37 @@ Nginx on the host, with everything else in Docker.
 | Domain | Serves | Backed by |
 |---|---|---|
 | `budget.seandesmet.com` | Budget Buddy | Docker → `127.0.0.1:5001` |
+| `learn.seandesmet.com` | Orbit Ops — **a separate app since #478**, `CaddisMaster/orbit-ops`, deployed to `/opt/orbit-ops` | Docker → `127.0.0.1:5002` (its Postgres is not published) |
 | `seandesmet.com` | Static landing page | Nginx directly, from `/var/www/seandesmet.com` — **a separate repo since #299**, `CaddisMaster/seandesmet.com` |
 
-**The Droplet runs Budget Buddy alone.** It previously also hosted Mealie and
-Uptime Kuma; both were retired on 2026-07-27, along with their Nginx sites and
-TLS certificates. Their data was archived to the maintainer's machine first.
-Anything that restarts Docker or rewrites Nginx now affects only this app —
-which is a meaningful simplification, since the old warning about collateral
-damage to unrelated stacks no longer applies.
+**The Droplet hosts two apps** (since 2026-10-08, #478): Budget Buddy and
+**Orbit Ops**, each with its own compose project, its own Postgres container,
+its own deploy directory and its own Nginx site. Orbit Ops's operations are in
+*its* `RUNBOOK.md`; this file covers the host and Budget Buddy.
+
+⚠️ **The collateral-damage warning is back.** Restarting the Docker daemon,
+rebooting, `nginx -s reload` with a broken config, or any host-wide
+`docker system prune` affects **both** apps. Before doing any of them, check
+`https://learn.seandesmet.com/healthz` as well as Budget Buddy's, and again after.
+Inside `/opt/budget-buddy`, `docker compose` commands only touch Budget Buddy's
+own containers (compose scopes by project directory).
+
+**Ports in use on 127.0.0.1:** `5001` (Budget Buddy web), `5432` (Budget Buddy
+db), `5002` (Orbit Ops web). Pick another for anything new.
+
+**Memory:** 2 GB for both. Orbit Ops caps its `web` and `db` containers at
+256 MB each. Check `free -m` and `docker stats --no-stream` after either app
+adds a service.
+
+Budget Buddy ran **alone** from 2026-07-27, when Mealie and Uptime Kuma were
+retired along with their Nginx sites and TLS certificates (their data was
+archived to the maintainer's machine first), until Orbit Ops arrived.
 
 Their DNS records were removed from Squarespace the same day, so those hostnames
 no longer resolve at all (verified NXDOMAIN via both `8.8.8.8` and `1.1.1.1`).
-**Three names point at this Droplet and no others:** `seandesmet.com`,
-`www.seandesmet.com`, and `budget.seandesmet.com`.
+**Four names point at this Droplet and no others:** `seandesmet.com`,
+`www.seandesmet.com`, `budget.seandesmet.com`, and (from #478)
+`learn.seandesmet.com`.
 
 Every container binds to `127.0.0.1` only. This is deliberate and load-bearing:
 **Docker publishes ports by writing iptables rules that bypass ufw entirely**, so
