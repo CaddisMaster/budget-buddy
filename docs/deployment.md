@@ -160,9 +160,11 @@
   failure together and absence is the only remaining signal.
 - 📕 **`RUNBOOK.md` (committed) is the operational source of truth** — topology, the full Nginx
   config, TLS/certbot, prod compose, backup + **restore** procedure, and a rebuild-from-nothing
-  checklist. Read it before touching anything on the server. **The Droplet now runs Budget Buddy
-  ALONE** — Mealie and Uptime Kuma were retired 2026-07-27 (data archived first), so restarting
-  Docker or rewriting Nginx no longer has collateral effects. Disk 30%, RAM ~0.5 GB of 2 GB.
+  checklist. Read it before touching anything on the server. ⚠️ **The Droplet hosts Orbit Ops too
+  (since 2026-10-08, #478)** — `learn.seandesmet.com`, `/opt/orbit-ops`, `127.0.0.1:5002`. So
+  restarting Docker, rebooting or rewriting Nginx **has collateral effects again**: check both
+  apps' `/healthz` before and after (RUNBOOK §1). Mealie and Uptime Kuma were retired 2026-07-27.
+  Disk 30%, RAM ~0.5 GB of 2 GB before Orbit Ops; it caps itself at 512 MB.
   **External monitoring is a DigitalOcean Uptime check on `/healthz`** (one free check, 1-min
   interval, off-box) — it replaced the retired Uptime Kuma, which had been watching a page that
   returns 200 during a database outage. Two settings matter: watch `/healthz`, and accept only
