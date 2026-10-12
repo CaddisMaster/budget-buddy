@@ -5,20 +5,56 @@
 
 ## Current Status
 
-▶️ **NEXT SESSION: run Sean's real Discover export through the import at localhost**, then release
-prep for `0.13.0`. ✅ **Statement import is built** (2026-10-07): the `0.13.0` milestone holds 0 open
-issues, so Sean's condition for cutting it (2026-10-06) is met on scope. 🛑 **But no real bank file
-has been through it.** Sean pulled a Discover report (9/22 to 10/07); an empty "Discover" Credit
-Card account was added to the dev `sean` user for the test. Every line will show as missing, and
-the balance check needs an opening balance (a check-in) or a typed balance (#474) to mean
-anything. 🛑 **Before or at that deploy, add RUNBOOK §3's Nginx `location = /transactions/import
-{ client_max_body_size 16m; }` block on the Droplet**, or screenshot and PDF import fail with a
-413. **#36** stays date-parked. Prod runs **`0.12.0`** (2026-10-05). ⚠️ The `Acceptance criteria`
-check is **still not a required status check** (last re-checked 2026-10-02).
+▶️ **NEXT SESSION: #483 before Sunday 2026-10-18**, then Sean's post-deploy checks. Prod runs
+**`0.13.0`** (shipped 2026-10-12). 🛑 **#483: the weekly digest goes out twice**, because the
+`worker` service doesn't set `SCHEDULER_IN_PROCESS: "0"`, so `flask run-scheduler` loads an app
+that starts its own scheduler and then starts a second one. 0.13.0 does not change that; the next
+digest is Sunday 10/18 18:00. It is the only open item on `0.13.1`. ⏳ **Not yet checked by Sean:**
+his real Discover export through the import **in production** (the first real bank file, and the
+first live call on `anthropic` 1.12.1), a real phone screenshot, a multi-page PDF (only one page
+was ever timed: 5.9 s against a 12-page cap), and #437's device list on his phone. ⚠️ **The
+Droplet's login banner says `System restart required`**: a reboot takes Budget Buddy and Orbit
+Ops down together, so schedule it on its own. **#36** stays date-parked. ⚠️ The `Acceptance
+criteria` check is **still not a required status check** (last re-checked 2026-10-02).
+
+### The 2026-10-12 session: `0.13.0` shipped
+
+| PR | Issue | |
+|---|---|---|
+| #481 | — | Dependabot: `anthropic` 1.12.1, `pydantic` 2.14.0, MarkupSafe, `resend`. Tested on a **rebuilt** container: 99 scenarios, 1742 passed |
+| #480 | — | Dependabot: `claude-code-action` 1.0.248 |
+| #484 | **#482** | Cut `0.13.0`: two What's-new blocks (statement import; notification devices), Sean's call |
+| this PR | **#485** | this record |
+
+- **Sean chose to cut before trying the real Discover export**, so a bug it finds becomes a
+  `0.13.1`. The export check moved from localhost to production.
+- ✅ **The Nginx step was proven from outside, before and after, with no Droplet access.** A 2 MB
+  `POST /transactions/import` from the VM got **Nginx's own 413 page** before the edit, still 413
+  after the file was saved but not yet reloaded, then the **app's 404** after `nginx -t && systemctl
+  reload nginx` (0.12.0 had no such route), and the app's **400** (no CSRF token) once 0.13.0
+  was up. A response that names Nginx versus one from the app discriminates; a bare "not 413" would
+  not. Sean edited in `nano`, and pasting the file back for a read before reloading was cheap. The
+  site file is `/etc/nginx/sites-available/budget-buddy`, backed up first to
+  `/root/budget-buddy.nginx.bak-2026-10-12`. Orbit Ops (learn.seandesmet.com) answered after the
+  reload.
+- ✅ **#433's first real run passed.** The deploy log read: `shipping docker-compose.yml 60a8265f…
+  from 5c70955` → `received … (matches 0.13.0)` → `installed …`, and `up -d --remove-orphans`
+  recreated only `web` and `worker`; `db` stayed `Up 2 months`. Then `backup ok` (43,595 bytes) →
+  `applying 39…, 40…, 41… ok` → `running version 0.13.0` → `worker version 0.13.0` → `Nothing to
+  apply for phase after-pull` → `Announced 0.13.0 to 3 device(s).` Live `/healthz` 200.
+- ⚠️ **`gh release create --target` needs the FULL sha.** A short one fails with
+  `Release.target_commitish is invalid`, and nothing is created. The Release was published with
+  `--target $(git rev-parse origin/main)` after confirming `main` was still the prep commit.
+- **Dependabot bumps never get a changelog entry** (checked against #428 for 0.12.0); they are
+  named in the Release notes instead. The suite's **586 warnings** are the same count on `main`
+  and on #481, so a bump that adds a deprecation would show as a changed number.
+- **#483 was filed by a second, concurrent session** and moved to a new `0.13.1` milestone, so
+  two milestones were open for the hour before ship. ✅ **`0.13.0` was closed on ship day**
+  (42/42).
 
 ### The 2026-10-07 session: statement import finished
 
-On `main`, **not deployed**. Ships with `0.13.0`:
+✅ **Shipped in `0.13.0` (2026-10-12).**
 
 | PR | Issue | |
 |---|---|---|
@@ -57,7 +93,7 @@ On `main`, **not deployed**. Ships with `0.13.0`:
 
 ### The 2026-10-06 session: making the import work like a reconcile in a session
 
-On `main`, **not deployed**. Ships with `0.13.0`:
+✅ **Shipped in `0.13.0` (2026-10-12).**
 
 | PR | Issue | |
 |---|---|---|
@@ -91,7 +127,7 @@ On `main`, **not deployed**. Ships with `0.13.0`:
 
 ### The 2026-10-05 evening: the compose file ships itself, and statement import
 
-On `main`, **not deployed**. Ships with `0.13.0`:
+✅ **Shipped in `0.13.0` (2026-10-12).**
 
 | PR | Issue | |
 |---|---|---|
@@ -124,11 +160,11 @@ On `main`, **not deployed**. Ships with `0.13.0`:
   purchases correctly. Sonnet 5 read a mock banking-app screenshot exactly in 6.4 s, `+$2,150.00`
   included, and the line already in the ledger matched.
 - 🛑 **Nginx's 1 MB default** (no `client_max_body_size` in prod) refuses phone screenshots before
-  the app sees them. RUNBOOK §3's scoped block is a **manual 0.13.0 deploy step**, not yet done.
+  the app sees them. RUNBOOK §3's scoped block was added on 2026-10-12, before the 0.13.0 deploy.
 
 ### The 2026-10-05 afternoon: a release nobody's phone heard, and what it took to see why
 
-On `main`, **not deployed** — ships with `0.13.0`:
+✅ **Shipped in `0.13.0` (2026-10-12).**
 
 | PR | Issue | |
 |---|---|---|
