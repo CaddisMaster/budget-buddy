@@ -302,35 +302,23 @@ server itself — **read it before touching anything on the Droplet.**
 
 ## Current status
 
-▶️ **NEXT UP: try Sean's real Discover export at localhost, then release prep for `0.13.0`.**
-✅ **Statement import is built** (2026-10-07): the `0.13.0` milestone has no open issues. 🛑 **But
-no real bank file has been through it** — every test and live model call used generated files.
-Sean pulled a Discover report covering 9/22 to 10/07 for exactly that; an empty "Discover" card
-account was added to the dev `sean` user for it. **#36** stays date-parked. Prod runs **`0.12.0`**
-(2026-10-05). `main` carries, **not deployed**:
-- **three migrations**, all additive and before-pull: `sql/39` (#438), `sql/40` (#444),
-  `sql/41` (#471, `account.number_last4`);
-- **a new dependency**, `pypdf` (#460), proven to install in the shipped image by CI's in-image run;
-- the device list and Home's push prompt (#437);
-- the deploy shipping its own compose file (#433);
-- **statement import**: #445 OFX/CSV, #446 transfers, #447 screenshots, #454 categories from
-  history, #455 clean names, #456 updating an entry, #457 ledger-only entries, #458 summary-first
-  review, #459 balance for every format, #460 PDF, #461 account detection, #474 a typed balance;
-- the runbook fix #432, and the records.
-
-🛑 **A MANUAL STEP BEFORE OR AT THAT DEPLOY:** production Nginx has no `client_max_body_size`, so
-its 1 MB default refuses phone screenshots. Add RUNBOOK §3's `location = /transactions/import`
-block on the Droplet first. ⚠️ **First real checks after the deploy:**
-- #433's copy and `db` guard (the `db` service is unchanged since `v0.7.0`, so it should pass);
-- #437 on Sean's phone;
-- a real screenshot import, which proves the Nginx step, and a real multi-page PDF (only ONE page
-  was ever timed: 5.9 s, against a 12-page cap and a 90 s seam timeout).
+▶️ **NEXT UP: #483 before Sunday 2026-10-18, the digest sent twice.** The `worker` service runs two
+schedulers because it doesn't set `SCHEDULER_IN_PROCESS: "0"`. It is the only open item on
+`0.13.1`. ✅ **Prod runs `0.13.0`, shipped 2026-10-12** (27 PRs; three additive migrations
+`sql/39`–`41`; `pypdf`; statement import #445–#474; the device list #437). The deploy log is in
+`docs/status.md`: **#433's compose copy passed on its first real run** and left `db` untouched,
+and RUNBOOK §3's Nginx upload block was added first and proven from outside (a 2 MB POST went
+from Nginx's 413 to the app's response). ⏳ **Not yet checked by Sean:** his real Discover
+export **in production** (the first real bank file, and the first live call on `anthropic`
+1.12.1), a real phone screenshot, a multi-page PDF, and #437 on his phone. ⚠️ The Droplet's
+banner says `System restart required`; a reboot takes Orbit Ops down too. **#36** stays
+date-parked.
 
 🛑 **THE MAC HAS NO CLONE OF THIS REPO** (2026-10-05). Every Droplet step runs from the Mac, and
 every line of code lives in the VM. So "scp it from your clone" copies whatever file is in the
 Mac shell's directory. A `diff` against that file is then vacuous, and at 0.12.0 it printed
-`identical` over the stale v0.11.0 compose file. #433 (merged, ships in `0.13.0`) makes the
-workflows copy it themselves; until then, and as break-glass afterwards, use RUNBOOK §5's recipe:
+`identical` over the stale v0.11.0 compose file. #433 (shipped in `0.13.0`, proven on its first deploy) makes the
+workflows copy it themselves; as break-glass, use RUNBOOK §5's recipe:
 a download pinned to a tag, checked against a hash taken from the repo at both ends. **Before
 handing Sean commands for the Mac, check what exists there**, and give one command per copy box.
 Rolling back past #402 still needs the old compose file first (RUNBOOK §5).
@@ -356,7 +344,7 @@ ported from the app layer into SQL keeps its shape and loses its meaning. `docs/
 the rule; `docs/status.md` carries the session.
 
 
-⚠️ **The open milestone is `0.13.0`**: 0 open, 39 closed as of 2026-10-07 (statement import complete). Close it on ship day. ✅ **`0.12.0` was closed on ship day** (2026-10-05, 24/24). ✅ **`0.10.0` was closed ON SHIP DAY** (2026-09-11) at
+⚠️ **The open milestone is `0.13.1`** (#483). ✅ **`0.13.0` was closed on ship day** (2026-10-12, 42/42). ✅ **`0.12.0` was closed on ship day** (2026-10-05, 24/24). ✅ **`0.10.0` was closed ON SHIP DAY** (2026-09-11) at
 `open=0, closed=25`, with its nine open items moved to `0.11.0` first — the corrective landing, and
 the shape every milestone but `0.9.0`'s has closed at. `0.9.0` was closed 2026-09-03, late: it
 shipped on 2026-09-02 but was left open to hold a backlog, so **seven commits landed after the
@@ -370,7 +358,7 @@ easy to get wrong.
 describes the last session rather than the current tree, and it asserts rather than going quiet.
 **Reconcile against `git log` and `gh issue list` at the start of every session.**
 
-- ✅ **Prod runs `0.12.0`, shipped 2026-10-05** (23 PRs, no new env vars, no migrations, **the
+- ✅ **`0.12.0`, shipped 2026-10-05** (23 PRs, no new env vars, no migrations, **the
   compose file changed**). The **first** deploy failed at step 3c (`service "worker" is not
   running`), because the Droplet still held the v0.11.0 compose file. Production stayed up on
   0.12.0 with the safe single-worker path. After a tag-pinned, hash-checked copy, the failed job
