@@ -30,6 +30,14 @@ Every combination has to be safe:
                               RUNBOOK §5: restore the pre-#402 compose file
                               before rolling back across #402
 
+⚠️ **The worker is a process that imports the app too (#483).** `flask
+run-scheduler` loads `app/__init__.py` to find the command, and that runs the
+in-process start like any other import. The table above only asked about web,
+and 0.12.0's compose file set the switch on web alone, so the worker ran two
+schedulers and the Sunday digest went out twice. Compose now sets it on the
+worker as well, and `run_scheduler_command()` stops an in-process scheduler it
+finds, so neither file can bring the second one back on its own.
+
 What must never happen is two schedulers: every one of them would run every
 job. That is why the worker count lives in compose next to the switch that
 turns web's scheduler off, rather than in the image.
@@ -81,13 +89,18 @@ def runs_in_this_process():
     return scheduler_enabled() and os.getenv('SCHEDULER_IN_PROCESS', '1') != '0'
 
 
+_in_process = None
+
+
 def start_in_process():
     """The pre-#402 path: a daemon thread inside the web process. Only safe
     with exactly one gunicorn worker — see the module docstring."""
     from apscheduler.schedulers.background import BackgroundScheduler
 
+    global _in_process
     scheduler = add_jobs(BackgroundScheduler(timezone=TIMEZONE, daemon=True))
     scheduler.start()
+    _in_process = scheduler
     return scheduler
 
 
@@ -102,6 +115,15 @@ def run_scheduler_command():
         click.echo('Scheduler disabled (ENABLE_DIGEST_SCHEDULER is not 1); idling.')
         while True:
             time.sleep(3600)
+
+    # ⚠️ Loading the app to find this command ran the in-process start, which
+    # compose prevents only by setting SCHEDULER_IN_PROCESS=0 on this service.
+    # 0.12.0's compose file did not, and the worker ran every job twice (#483).
+    # So this process stops that one rather than trusting the file.
+    if _in_process is not None and _in_process.running:
+        _in_process.shutdown(wait=False)
+        click.echo('Stopped the in-process scheduler the import started '
+                   '(set SCHEDULER_IN_PROCESS=0 on this service).')
 
     from apscheduler.schedulers.blocking import BlockingScheduler
 

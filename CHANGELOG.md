@@ -8,6 +8,15 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Fixed
+
+- **The weekly digest is sent once again, not twice.** Since 0.12.0 the
+  background worker ran two copies of its scheduler, so every scheduled job ran
+  twice, and the Sunday digest arrived twice. The worker now runs one, and stops
+  a second one if it finds it. Each digest run also claims a user's week before
+  writing or sending anything, so overlapping runs can never send the same
+  email twice. A send that fails is still retried by the next run. (#483)
+
 ## [0.13.0] - 2026-10-12
 
 ### Added

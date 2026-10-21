@@ -9,14 +9,16 @@ the model narrates once (ai.generate_digest) — only here it's delivered by ema
 
 The runner send_weekly_digests() is triggered two ways: the guarded APScheduler
 job in app/__init__.py (prod), and the `flask send-digests` CLI (manual/local
-testing). It is idempotent — a given week goes out at most once per user, guarded
-by users.last_digest_sent_on — and per-user failures are isolated so one bad send
-never aborts the batch. Opt-in + email address are set on the Profile page.
+testing). It is idempotent — a given week goes out at most once per user, because
+each run CLAIMS the user's week in users.last_digest_sent_on before it sends, and
+hands the claim back if the send fails (#483) — and per-user failures are isolated
+so one bad send never aborts the batch. Opt-in + email address are set on the Profile page.
 """
 import os
 from datetime import date, timedelta
 
 import click
+import psycopg2
 from flask import Blueprint, render_template
 from flask.cli import with_appcontext
 
@@ -129,14 +131,48 @@ def compute_digest_facts(user_id, *, today=None):
 
 def _recipients(cursor, period_start):
     """Users due a digest: opted in, with an email, and not already sent for the
-    current week (last_digest_sent_on before this week's Sunday). → [(id, email)]."""
+    current week (last_digest_sent_on before this week's Sunday).
+    → rows of (id, email, last_digest_sent_on)."""
     cursor.execute("""
-        SELECT id, email FROM users
+        SELECT id, email, last_digest_sent_on FROM users
         WHERE weekly_digest = true AND email IS NOT NULL AND email <> ''
           AND (last_digest_sent_on IS NULL OR last_digest_sent_on < %s)
         ORDER BY id
     """, (period_start,))
     return cursor.fetchall()
+
+
+def _claim(user_id, today, period_start):
+    """Take this week's digest for one user, before anything is paid for or
+    sent. True if this run got it; False if another run already has (#483).
+
+    ⚠️ The marker used to be written only AFTER the send, so two runs that
+    both read the user as due both sent: check-then-act. The conditional
+    UPDATE is the check and the act in one statement. A second run blocks on
+    the row lock, re-reads the row once the first commits, and matches nothing.
+    """
+    with db_cursor(commit=True) as cursor:
+        cursor.execute("""
+            UPDATE users SET last_digest_sent_on = %s
+            WHERE id = %s
+              AND (last_digest_sent_on IS NULL OR last_digest_sent_on < %s)
+            RETURNING id
+        """, (today, user_id, period_start))
+        return cursor.fetchone() is not None
+
+
+def _release(user_id, today, previous):
+    """Hand a claim back after a failed send, so the next run retries the user
+    rather than skipping them for the week. Only undoes this run's own stamp."""
+    from app import app  # local import to avoid an import cycle at module load
+    try:
+        with db_cursor(commit=True) as cursor:
+            cursor.execute(
+                "UPDATE users SET last_digest_sent_on = %s "
+                "WHERE id = %s AND last_digest_sent_on = %s",
+                (previous, user_id, today))
+    except psycopg2.Error:
+        app.logger.exception('Could not release the digest claim for user %s', user_id)
 
 
 def send_weekly_digests(*, today=None):
@@ -155,8 +191,15 @@ def send_weekly_digests(*, today=None):
         recipients = _recipients(cursor, period_start)
 
     sent = 0
-    for user_id, email in recipients:
+    taken = 0  # due, but another run claimed them first
+    for row in recipients:
+        user_id = row.id
+        claimed = delivered = False
         try:
+            if not _claim(user_id, today, period_start):
+                taken += 1
+                continue
+            claimed = True
             facts = compute_digest_facts(user_id, today=today)
             narrative = generate_digest(facts)
 
@@ -186,21 +229,23 @@ def send_weekly_digests(*, today=None):
                 html = render_template('emails/weekly_digest.html',
                                        narrative=narrative, facts=facts,
                                        agent_run=agent_run)
-            mailer.send_email(email, DIGEST_SUBJECT, html, reply_to=reply_to)
-            with db_cursor(commit=True) as cursor:
-                cursor.execute(
-                    "UPDATE users SET last_digest_sent_on = %s WHERE id = %s",
-                    (today, user_id))
+            mailer.send_email(row.email, DIGEST_SUBJECT, html, reply_to=reply_to)
+            delivered = True
             sent += 1
         except (ParseError, mailer.MailError) as e:
             app.logger.warning('Weekly digest skipped for user %s: %s', user_id, e)
         except Exception as e:  # never let one user break the batch
             app.logger.exception('Weekly digest failed for user %s: %s', user_id, e)
+        if claimed and not delivered:
+            _release(user_id, today, row.last_digest_sent_on)
     # #151 — recorded AFTER the batch, so /settings reports a job that finished.
     # Counts recipients as well as sends: "0 sent of 0 due" is a healthy week,
     # "0 sent of 3 due" is not, and the panel should be able to tell them apart.
+    # A user another run claimed is that run's to count, not this one's: two
+    # overlapping runs would otherwise report "sent 0 of 1 due" for a user who
+    # got their email.
     record_job_run(WEEKLY_DIGEST,
-                   f'sent {sent} of {len(recipients)} due')
+                   f'sent {sent} of {len(recipients) - taken} due')
     return sent
 
 
