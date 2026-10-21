@@ -13,9 +13,12 @@ register every step twice, which behave reports as an ambiguous step. Shared
 STEPS go in `steps/common_steps.py`, which no other file imports.
 """
 import re
+import threading
 from datetime import date, timedelta
 
 from behave import register_type
+
+from tests.helpers import warm_the_pool
 
 HX = {"HX-Request": "true"}
 
@@ -70,3 +73,29 @@ register_type(Who=_who)
 def _user(context, who):
     return context.users[who.lower()]
 
+
+# ── Races ───────────────────────────────────────────────────────────────────
+
+def race(context, workers):
+    """Start every worker on one barrier so they hit the same window together.
+
+    Each call holds its own connection, so this is real interleaving against
+    whatever the code under test serialises on (a `FOR UPDATE` lock, a claim). The
+    pool is warmed first so no thread starts behind the others (#401).
+    """
+    warm_the_pool(len(workers))
+    barrier = threading.Barrier(len(workers))
+    context.errors = []
+
+    def run(work):
+        barrier.wait()
+        try:
+            work()
+        except Exception as err:  # surfaced by "no run failed"
+            context.errors.append(err)
+
+    threads = [threading.Thread(target=run, args=(work,)) for work in workers]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()

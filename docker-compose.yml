@@ -115,6 +115,12 @@ services:
     env_file:
       - .env
     command: ["flask", "run-scheduler"]
+    environment:
+      # `flask run-scheduler` imports the app to find the command, and that
+      # import starts the in-process scheduler unless this is 0. Without it the
+      # worker ran two, and every job twice (#483). run-scheduler also stops
+      # one it finds, so an older compose file is safe too.
+      SCHEDULER_IN_PROCESS: "0"
     depends_on:
       - db
     logging:

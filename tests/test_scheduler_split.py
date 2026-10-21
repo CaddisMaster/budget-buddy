@@ -170,6 +170,69 @@ def test_the_worker_idles_rather_than_exiting_when_switched_off(monkeypatch):
     assert "idling" in result.output
 
 
+# --- the worker process runs ONE scheduler (#483) -----------------------------
+
+
+def _worker_env_value(name):
+    """A variable's value in the worker service's `environment:`, or None."""
+    m = re.search(rf'^\s*{name}:\s*"?([^"\n]*)"?\s*$', _uncommented(_services()["worker"]), re.M)
+    return m.group(1) if m else None
+
+
+def _schedulers_when_the_worker_starts(monkeypatch, scheduler_in_process):
+    """Boot the worker the way its container does, and count the schedulers
+    running when `run-scheduler`'s own one starts.
+
+    `flask run-scheduler` imports the `app` package to find the command, and
+    that import runs `app/__init__.py`'s in-process start. Both halves are
+    replayed here in that order, with the deployment's switch on as `.env` has
+    it on the Droplet."""
+    from apscheduler.schedulers.blocking import BlockingScheduler
+    from click.testing import CliRunner
+
+    monkeypatch.setenv("ENABLE_DIGEST_SCHEDULER", "1")
+    if scheduler_in_process is None:
+        monkeypatch.delenv("SCHEDULER_IN_PROCESS", raising=False)
+    else:
+        monkeypatch.setenv("SCHEDULER_IN_PROCESS", scheduler_in_process)
+    monkeypatch.setattr(jobs, "mail_enabled", lambda: False)
+
+    # What `import app` does.
+    background = jobs.start_in_process() if jobs.runs_in_this_process() else None
+    counted = []
+
+    def fake_start(self, *args, **kwargs):
+        counted.append(1 + (background is not None and background.running))
+
+    monkeypatch.setattr(BlockingScheduler, "start", fake_start)
+    try:
+        result = CliRunner().invoke(jobs.run_scheduler_command)
+    finally:
+        if background is not None and background.running:
+            background.shutdown(wait=False)
+    assert result.exception is None, result.output
+    assert counted, "run-scheduler never started its scheduler"
+    return counted[0]
+
+
+@pytest.mark.skipif(not COMPOSE.exists(), reason=_NOT_IN_IMAGE)
+@pytest.mark.criterion(483, "The worker runs each scheduled job once")
+def test_the_worker_runs_one_scheduler_with_its_compose_environment(monkeypatch):
+    """The 0.12.0 defect: compose turned the in-process scheduler off on `web`
+    only, so the worker's import started one and `run-scheduler` a second, and
+    every job ran twice. The second Sunday digest is how it showed."""
+    switch = _worker_env_value("SCHEDULER_IN_PROCESS")
+    assert switch == "0", "the worker's import would start an in-process scheduler"
+    assert _schedulers_when_the_worker_starts(monkeypatch, switch) == 1
+
+
+def test_the_worker_runs_one_scheduler_even_without_the_compose_switch(monkeypatch):
+    """The compose file reaches the Droplet separately from the image, so the
+    worker must not depend on it: with the switch missing, as on the compose
+    file that shipped #483, `run-scheduler` still ends up the only scheduler."""
+    assert _schedulers_when_the_worker_starts(monkeypatch, None) == 1
+
+
 # --- /settings still sees the deployment's switch (#151) ----------------------
 
 

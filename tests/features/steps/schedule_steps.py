@@ -8,7 +8,6 @@ HOW. The pytest twins these replaced were deleted in #395.
 call every one `step_impl`, which ruff reports as F811 (redefinition) — and
 silencing that rule would also hide a real redefinition somewhere else.
 """
-import threading
 from datetime import date
 
 from behave import given, register_type, then, when
@@ -17,8 +16,8 @@ from app.blueprints.reminders import materialize_all_users
 from app.blueprints.schedules import run_due_schedules
 from app.blueprints.transactions import VALID_FREQUENCIES
 from app.db import get_db_connection
-from tests.features.support import HX, _pattern, _user
-from tests.helpers import count_posted_from_schedules, create_schedule, fetch_schedule, warm_the_pool
+from tests.features.support import HX, _pattern, _user, race
+from tests.helpers import count_posted_from_schedules, create_schedule, fetch_schedule
 
 # ⚠️ Constrained types, not bare `{}`. parse's default field is a lazy `.+?`
 # that happily spans spaces, so "has a paused monthly expense schedule" also
@@ -71,35 +70,10 @@ def when_due_schedules_run(context, who):
     run_due_schedules(_user(context, who)["id"])
 
 
-def _race(context, workers):
-    """Start every worker on one barrier so they hit the same window together.
-
-    Each call holds its own connection, so this is real interleaving against
-    the `FOR UPDATE` row lock — the property the two scenarios exist for. The
-    pool is warmed first so no thread starts behind the others (#401).
-    """
-    warm_the_pool(len(workers))
-    barrier = threading.Barrier(len(workers))
-    context.errors = []
-
-    def run(work):
-        barrier.wait()
-        try:
-            work()
-        except Exception as err:  # surfaced by "no run failed"
-            context.errors.append(err)
-
-    threads = [threading.Thread(target=run, args=(work,)) for work in workers]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
-
-
 @when("{pages:d} page loads run user {who:Who}'s due schedules at the same instant")
-def when_page_loads_race(context, pages, who):
+def when_page_loadsrace(context, pages, who):
     uid = _user(context, who)["id"]
-    _race(context, [lambda: run_due_schedules(uid)] * pages)
+    race(context, [lambda: run_due_schedules(uid)] * pages)
 
 
 @when("{pages:d} page loads and {jobs:d} daily jobs run at the same instant")
@@ -107,7 +81,7 @@ def when_page_loads_race_the_daily_job(context, pages, jobs):
     # The page loads act for user A, whose schedule the scenario set up; the
     # daily job acts for everybody, which is what makes it a real race.
     uid = _user(context, "A")["id"]
-    _race(context, [lambda: run_due_schedules(uid)] * pages + [materialize_all_users] * jobs)
+    race(context, [lambda: run_due_schedules(uid)] * pages + [materialize_all_users] * jobs)
 
 
 @when("user {who:Who} creates a {frequency:Freq} {kind:Kind} schedule starting {start:Rel}")
@@ -137,11 +111,6 @@ def then_posted(context, count, who):
 def then_next_due_moved_on(context):
     next_due = fetch_schedule(context.schedule_id)[2]
     assert next_due > date.today(), f"next_due is {next_due}, not after today"
-
-
-@then("no run failed")
-def then_no_run_failed(context):
-    assert context.errors == [], f"runs raised: {context.errors!r}"
 
 
 @then("user {who:Who} has {count:d} schedule")
