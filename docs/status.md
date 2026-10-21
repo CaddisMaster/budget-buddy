@@ -5,17 +5,47 @@
 
 ## Current Status
 
-▶️ **NEXT SESSION: #483 before Sunday 2026-10-18**, then Sean's post-deploy checks. Prod runs
-**`0.13.0`** (shipped 2026-10-12). 🛑 **#483: the weekly digest goes out twice**, because the
-`worker` service doesn't set `SCHEDULER_IN_PROCESS: "0"`, so `flask run-scheduler` loads an app
-that starts its own scheduler and then starts a second one. 0.13.0 does not change that; the next
-digest is Sunday 10/18 18:00. It is the only open item on `0.13.1`. ⏳ **Not yet checked by Sean:**
+▶️ **NEXT SESSION: the review issues, in this order: #491 → #490 → #492 → #489 → #493**, then
+Sean's post-deploy checks. Prod runs **`0.13.0`** (shipped 2026-10-12). ✅ **#483 is fixed on
+`main` (#494) but NOT deployed** — production still sends the digest twice until `0.13.1` ships.
+Sean lifted the 2026-10-18 deadline: no rush. ⏳ **Not yet checked by Sean:**
 his real Discover export through the import **in production** (the first real bank file, and the
 first live call on `anthropic` 1.12.1), a real phone screenshot, a multi-page PDF (only one page
 was ever timed: 5.9 s against a 12-page cap), and #437's device list on his phone. ⚠️ **The
 Droplet's login banner says `System restart required`**: a reboot takes Budget Buddy and Orbit
 Ops down together, so schedule it on its own. **#36** stays date-parked. ⚠️ The `Acceptance
 criteria` check is **still not a required status check** (last re-checked 2026-10-02).
+
+### The 2026-10-21 session: an outside review, and #483 fixed
+
+| PR | Issue | |
+|---|---|---|
+| #494 | **#483** | The worker runs one scheduler; the digest claims each user's week before sending |
+| this PR | **#495** | this record |
+
+- **An outside architecture review** (an untracked `budget-buddy-review.md`, read at `79a1595`)
+  became five issues: **#489** services layer, **#490** app factory, **#491** named rows,
+  **#492** a CI check that `schema.sql` matches its migration, **#493** a docs sweep. Every
+  factual claim checked out. Three prescriptions were narrowed rather than adopted, and each
+  issue says so in an "Explicitly not proposed" line: no SQLAlchemy and no `psycopg_pool`
+  (psycopg 3 only), no Alembic, and comments that explain a live trap stay. The review's
+  "process outgrowing the product" point was left out (a learning project), and so was
+  cross-repo tooling (an orbit-ops question as much as this repo's).
+- **#483's cause was the #402 matrix's blind spot:** it asked what the import does in `web`, never
+  in `worker`, which is also a process that imports the app. Fixed in two layers that each
+  stand alone: the compose switch on the worker, and `run_scheduler_command()` stopping an
+  in-process scheduler it finds, so the new image is safe on the Droplet's current compose file.
+  The digest's check-then-act became a conditional `UPDATE … RETURNING` claim, released on a
+  failed send.
+- ✅ **Mutated separately, each caught by its own test.** The race scenario
+  (`weekly_digest.feature`) caught a condition-less claim **20/20**, and passed the fix **20/20**.
+  In real containers, the worker reported one OS thread both with the fixed compose environment
+  and with `SCHEDULER_IN_PROCESS=1` (the old file's state).
+- **After the `0.13.1` deploy:** `docker compose logs worker` should show `Scheduler running`
+  and **no** `Stopped the in-process scheduler` line. That line would mean the Droplet's
+  compose file is stale, which #433 should have made impossible.
+- The local dev `worker` had been crash-looping on an image built before `pypdf`.
+  `docker compose up -d --build web worker` fixed it. Rebuild both, not just `web`.
 
 ### The 2026-10-12 session: `0.13.0` shipped
 
