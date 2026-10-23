@@ -5,16 +5,58 @@
 
 ## Current Status
 
-▶️ **NEXT SESSION: the review issues, in this order: #491 → #490 → #492 → #489 → #493**, then
-Sean's post-deploy checks. Prod runs **`0.13.0`** (shipped 2026-10-12). ✅ **#483 is fixed on
-`main` (#494) but NOT deployed** — production still sends the digest twice until `0.13.1` ships.
-Sean lifted the 2026-10-18 deadline: no rush. ⏳ **Not yet checked by Sean:**
+▶️ **NEXT SESSION: #489** (services layer, the largest of the review issues), **then #493**
+(the docs sweep), then the container-hardening issues **#497 → #498 → #499**; **#500** (Postgres)
+is a scheduled operation and gets no milestone until Sean picks a date. Dependabot **#487** and
+**#488** have waited since 2026-10-19 (rebuild the container before testing #488). Prod runs
+**`0.13.0`** (shipped 2026-10-12). **On `main`, NOT deployed, all `0.13.1` content:** #483 (the
+digest sent once, #494), #491 (rows read by name, #501), #490 (the app factory, #502) and #492
+(CI compares `schema.sql` with what the migrations build, #503). Production still sends the
+digest twice until `0.13.1` ships; cutting it is Sean's call, with no deadline. ⚠️ **`0.13.1`
+changes `docker-compose.yml`** (#490: web runs `app.wsgi:app`); the deploy ships it (#433) and
+`db` is untouched, so the guard passes. **After that deploy:** `docker compose logs worker`
+shows `Scheduler running`, and that is the whole check. ⏳ **Not yet checked by Sean:**
 his real Discover export through the import **in production** (the first real bank file, and the
 first live call on `anthropic` 1.12.1), a real phone screenshot, a multi-page PDF (only one page
 was ever timed: 5.9 s against a 12-page cap), and #437's device list on his phone. ⚠️ **The
 Droplet's login banner says `System restart required`**: a reboot takes Budget Buddy and Orbit
 Ops down together, so schedule it on its own. **#36** stays date-parked. ⚠️ The `Acceptance
-criteria` check is **still not a required status check** (last re-checked 2026-10-02).
+criteria` check is **still not a required status check** (re-checked 2026-10-23).
+
+### The 2026-10-23 session: three review issues merged, and a hardening review filed
+
+| PR | Issue | |
+|---|---|---|
+| #501 | **#491** | Rows read by column name everywhere; an AST scan keeps positional reads out |
+| #502 | **#490** | `create_app()` starts no scheduler; `app/wsgi.py` is gunicorn's entry and the only scheduler start |
+| #503 | **#492** | CI compares the migrated database with a fresh `schema.sql` one, object by object |
+| this PR | **#504** | this record |
+
+- **An outside container-hardening review** (an untracked
+  `budget-buddy-container-hardening-handoff.md`, read at `b14ba7d`, still untracked and never
+  committed) became four issues: **#497** root-owned code, **#498** runtime lockdown, **#499**
+  scan/SBOM/signing, **#500** the Postgres window. Its diagnosis held. Corrected on filing:
+  its "done when" wanted `/healthz` to report the version (a standing decision says never;
+  `/settings` does), it named `test_hardening.py` for compose assertions (that file is HTTP
+  hardening), the `$HOME` check belongs to #498 not the optional `nologin` item, tmpfs is
+  charged to `mem_limit`, and #499's scan starts report-only.
+- **#491's issue listed about half the sites.** An AST scan found ~30 in 12 files (Ask tools,
+  every chart payload, the schedule loops). Scope was commented on the issue first.
+- **#490 kept the old-compose matrix row** rather than retiring it: pre-#402 files run the
+  image's new CMD, and 0.12/0.13 files' `app:app` resolves through a lazy module attribute that
+  builds via the factory and starts nothing. #483's shutdown-in-`run-scheduler` was deleted as
+  unreachable. ⚠️ **Never add a root `wsgi.py`/`app.py`**: Flask's CLI imports those first.
+  Verified on the built image in five boots by counting `APScheduler` threads. A mutation
+  showed `@with_appcontext` on `run-scheduler` changed nothing (Flask's CLI pushes the context
+  itself), so it went.
+- **#492 compares catalog facts as sets**, not a `pg_dump` diff: column order is free, names
+  and grants are compared. Replayed against `sql/38`–`41`'s real commits first (all match); a
+  `schema.sql` carrying #314's `amount = amount` fails, naming each constraint. The script is in
+  the classifier's `sql` filter. It ran for real on its own PR in Actions.
+- **Found for #498:** gunicorn writes a control socket to `/home/appuser/.gunicorn/` at
+  startup, which `read_only: true` would break. Commented on the issue.
+- **Milestones:** #490, #491 and #492 were filed without one (as were #489 and #493) and were
+  put on `0.13.1` once merged, so the milestone records what that release carries.
 
 ### The 2026-10-21 session: an outside review, and #483 fixed
 
@@ -41,9 +83,9 @@ criteria` check is **still not a required status check** (last re-checked 2026-1
   (`weekly_digest.feature`) caught a condition-less claim **20/20**, and passed the fix **20/20**.
   In real containers, the worker reported one OS thread both with the fixed compose environment
   and with `SCHEDULER_IN_PROCESS=1` (the old file's state).
-- **After the `0.13.1` deploy:** `docker compose logs worker` should show `Scheduler running`
-  and **no** `Stopped the in-process scheduler` line. That line would mean the Droplet's
-  compose file is stale, which #433 should have made impossible.
+- ~~**After the `0.13.1` deploy:** no `Stopped the in-process scheduler` line.~~ ⚠️
+  **Superseded 2026-10-23 by #490**, which deleted the code that printed it. The check is now
+  `Scheduler running` in the worker log; see Current Status.
 - The local dev `worker` had been crash-looping on an image built before `pypdf`.
   `docker compose up -d --build web worker` fixed it. Rebuild both, not just `web`.
 
