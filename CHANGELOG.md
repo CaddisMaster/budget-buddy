@@ -17,6 +17,16 @@ this project uses the `0.x` versioning scheme described in
   writing or sending anything, so overlapping runs can never send the same
   email twice. A send that fails is still retried by the next run. (#483)
 
+### Changed
+
+- **Database rows are read by column name everywhere, never by position.**
+  About thirty places across twelve files read a row as `row[1]`, unpacked it
+  into a tuple, or built History's rows with `HistoryRow(*row)`, so adding or
+  reordering a column in a query silently shifted every value after it. They
+  now read `row.amount`, and History's rows are built by name, so an unknown
+  column fails loudly instead. A test scans `app/` so the positional shapes
+  cannot come back. No visible change. (#491)
+
 ## [0.13.0] - 2026-10-12
 
 ### Added

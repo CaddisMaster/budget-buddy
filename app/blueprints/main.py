@@ -242,7 +242,7 @@ def category_slot_map(cursor, user_id, year, month):
     category_order = {row.name: i for i, row in enumerate(cursor.fetchall())}
     slots = {}
     for direction in ('expense', 'income'):
-        rows = [{'category': r[0], 'total': float(r[1])}
+        rows = [{'category': r.name, 'total': float(r.total)}
                 for r in _category_totals(cursor, user_id, direction, year, month)]
         drawn = assign_series_slots(fold_chart_tail(rows), category_order)
         slots[direction] = {r['category']: r['slot']
@@ -570,14 +570,18 @@ def index():
     # Both doughnut payloads fold their tail (#108) — the two pill-toggle views
     # share one canvas, one palette and one slot map, so both need it.
     spending_data = fold_chart_tail(
-        [{'category': r[0], 'total': float(r[1])} for r in spending])
+        [{'category': r.name, 'total': float(r.total)} for r in spending])
     income_by_category_data = fold_chart_tail(
-        [{'category': r[0], 'total': float(r[1])} for r in income_by_category])
-    cash_flow_data = [{'month': r[0], 'income': float(r[1]), 'expenses': float(r[2])} for r in cash_flow]
-    net_balance_data = [{'month': r[0], 'balance': float(r[1])} for r in net_balance_trend]
-    account_data = [{'account': r[0], 'balance': float(r[1])} for r in account_balances]
+        [{'category': r.name, 'total': float(r.total)} for r in income_by_category])
+    cash_flow_data = [{'month': r.month, 'income': float(r.income), 'expenses': float(r.expenses)}
+                      for r in cash_flow]
+    net_balance_data = [{'month': r.month, 'balance': float(r.running_balance)}
+                        for r in net_balance_trend]
+    account_data = [{'account': r.account_name, 'balance': float(r.balance)}
+                    for r in account_balances]
     budget_chart_data = [{'category': r.category, 'budget': float(r.budget), 'actual': float(r.actual)} for r in budget_data]
-    day_of_week_data = [{'day': r[1].strip(), 'total': float(r[2])} for r in spending_by_day]
+    day_of_week_data = [{'day': r.day_name.strip(), 'total': float(r.total)}
+                        for r in spending_by_day]
     # Each drawn row carries its OWN palette slot (#111), assigned per view so
     # the two are guaranteed internally distinct. This replaced a shared
     # name→slot map, which could not express "these two views colour the same
@@ -608,8 +612,8 @@ def index():
 
     # v10.6 hero — income/expenses/net for the current view (a single selected
     # month, or all time). Derived from cash_flow (already fetched) — no extra query.
-    hero_income = sum(float(r[1]) for r in cash_flow)
-    hero_expenses = sum(float(r[2]) for r in cash_flow)
+    hero_income = sum(float(r.income) for r in cash_flow)
+    hero_expenses = sum(float(r.expenses) for r in cash_flow)
     summary = {
         'income': hero_income,
         'expenses': hero_expenses,

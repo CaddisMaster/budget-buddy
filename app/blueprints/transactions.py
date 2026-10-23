@@ -43,15 +43,24 @@ FREQUENCY_LABELS = {
 
 
 # The History row shape: the 13-column history SELECT plus the per-page
-# running balance appended in _load_history. Field names mirror the SELECT, and
-# it is built POSITIONALLY (HistoryRow(*t, running_balance)) — so a column added
-# to that SELECT must be added here in the same place, or every field after it
-# silently shifts and Jinja renders the wrong value with no error.
+# running balance appended in _load_history. Field names mirror the SELECT's
+# column names, and history_row() builds it from those NAMES (#491), so the
+# SELECT's column order does not matter. A column added to the SELECT but not
+# here raises TypeError at the first request rather than shifting fields.
 HistoryRow = namedtuple('HistoryRow', (
     'id amount description category_name account_name transaction_date '
     'transaction_type is_recurring frequency is_adjustment is_transfer '
     'transfer_group_id is_pending running_balance'
 ))
+
+
+def history_row(row, running_balance):
+    """One HistoryRow from a history SELECT row, matched by column name.
+
+    It used to be `HistoryRow(*row, running_balance)`: built by position, so a
+    column added to the SELECT shifted every field after it, and nothing raised.
+    """
+    return HistoryRow(**row._asdict(), running_balance=running_balance)
 
 # Hand-built rows for the edit error/re-render paths — field names mirror the
 # edit GET's SELECT so real rows and fakes render identically.
@@ -315,7 +324,7 @@ def _load_history(user_id, selected_month, search, page, account_id=None,
             running_balance += t.amount
         else:
             running_balance -= t.amount
-        transactions_with_balance.append(HistoryRow(*t, running_balance))
+        transactions_with_balance.append(history_row(t, running_balance))
     transactions_with_balance.reverse()
     # Pin pending rows to the top of PAGE 1 (#86, widened by #210).
     #
@@ -355,7 +364,7 @@ def _load_history(user_id, selected_month, search, page, account_id=None,
             # running_balance is None because the template renders an em dash for
             # a pending row and never reads it — a pinned row is out of date
             # order, so a balance in that cell would read as wrong.
-            pending_rows = [HistoryRow(*r, None) for r in cursor.fetchall()]
+            pending_rows = [history_row(r, None) for r in cursor.fetchall()]
     posted_rows = [t for t in transactions_with_balance if not t.is_pending]
     return pending_rows + posted_rows, total, total_pages
 

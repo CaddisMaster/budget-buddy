@@ -34,7 +34,7 @@ from app.ai import (
 )
 from app.blueprints.agent import load_agent_run, run_money_agent
 from app.blueprints.digests import send_weekly_digests
-from app.db import get_db_connection
+from app.db import db_cursor, get_db_connection
 from app.helpers import most_recent_sunday
 from tests.helpers import create_agent_run, fetch_agent_runs
 
@@ -297,12 +297,10 @@ def test_run_money_agent_is_user_isolated(users, monkeypatch):
     run_money_agent(a, today=TODAY)
 
     assert fetch_agent_runs(b) == []           # nothing written for B
-    conn = get_db_connection()
-    cur = conn.cursor()
-    assert load_agent_run(cur, b) is None
-    assert load_agent_run(cur, a)["summary"] == "Nothing notable this week."
-    cur.close()
-    conn.close()
+    # db_cursor(), as the digest passes it: rows are read by name (#491).
+    with db_cursor() as cur:
+        assert load_agent_run(cur, b) is None
+        assert load_agent_run(cur, a)["summary"] == "Nothing notable this week."
 
 
 def test_load_agent_run_specific_week_misses_stale(users):
@@ -310,12 +308,9 @@ def test_load_agent_run_specific_week_misses_stale(users):
     a = users["a"]["id"]
     create_agent_run(a, WEEK - timedelta(days=7),
                      {"summary": "old", "findings": [], "tools_used": []})
-    conn = get_db_connection()
-    cur = conn.cursor()
-    assert load_agent_run(cur, a, period_start=WEEK) is None
-    assert load_agent_run(cur, a)["summary"] == "old"   # latest still loads
-    cur.close()
-    conn.close()
+    with db_cursor() as cur:
+        assert load_agent_run(cur, a, period_start=WEEK) is None
+        assert load_agent_run(cur, a)["summary"] == "old"   # latest still loads
 
 
 # --- digest integration -------------------------------------------------------

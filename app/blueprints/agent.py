@@ -85,9 +85,9 @@ def load_agent_run(cursor, user_id, period_start=None):
     row = cursor.fetchone()
     if row is None:
         return None
-    data = json.loads(row[0])
+    data = json.loads(row.content)
     data.setdefault('findings', [])
     data.setdefault('tools_used', [])
-    data['period_start'] = row[1]
-    data['created_at'] = row[2]
+    data['period_start'] = row.period_start
+    data['created_at'] = row.created_at
     return data

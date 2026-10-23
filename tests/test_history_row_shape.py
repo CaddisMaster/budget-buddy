@@ -1,16 +1,16 @@
-"""`HistoryRow` and the two queries that fill it positionally (#309, tranche 4).
+"""`HistoryRow` and the two queries that fill it (#309, tranche 4; #491).
 
-History is the one place a database row reaches a template by POSITION rather
-than by name. `_load_history` builds every row as `HistoryRow(*t, ...)`, so the
-namedtuple's field order and the SELECT's column order are one unit: add a
-column to the query without adding a field in the same place and every field
-after it shifts by one. Nothing raises — the row still has the right number of
-values, they are just the wrong ones — and Jinja renders whatever it is handed.
+Until #491 History was the one place a database row reached a template by
+POSITION: `HistoryRow(*t, ...)`, so a column added to the query shifted every
+field after it, silently. `history_row()` now builds it by column NAME
+(`tests/test_named_rows.py` proves that), so order no longer matters, but the
+NAMES still have to agree: a query column HistoryRow does not know, or a field
+no query supplies, is a TypeError on the first request that reaches it.
 
 ⚠️ There are TWO queries, not one. The paged SELECT fills the page, and the
 page-1 pending pin (#210) runs a second SELECT through the same constructor. A
 column added to one and not the other is the same silent shift, and it would
-show only on pinned pending rows — the subset least likely to be in front of
+fail only on pinned pending rows — the subset least likely to be in front of
 whoever made the change.
 
 The file this guards says all of that in a comment. `docs/gotchas.md`'s own
@@ -47,7 +47,7 @@ def _output_names(select_list):
     """The column NAMES a cursor would report for one select list.
 
     `c.name AS category_name` is reported as `category_name`; a plain `t.amount`
-    as `amount`. That is exactly the mapping `HistoryRow(*row)` depends on.
+    as `amount`. Those are the names `history_row()` matches on.
     """
     names = []
     for column in select_list.split(","):
@@ -79,19 +79,16 @@ def test_both_history_queries_are_found():
     )
 
 
-def test_the_paged_query_matches_the_row_shape_position_for_position():
-    """The shift this guards against.
-
-    `running_balance` is the one field the query does not supply — it is
-    appended by the balance walk — so the query must match every field before
-    it, in order.
-    """
+def test_the_paged_query_supplies_exactly_the_row_fields():
+    """`running_balance` is the one field the query does not supply — the
+    balance walk appends it — so the query must name every other field, and
+    nothing else. Compared as sets: since #491 the order is free."""
     columns = _output_names(_history_select_lists()[0])
     assert HistoryRow._fields[-1] == "running_balance", (
         "running_balance is expected to be the appended field; if the shape "
         "changed, this file needs rewriting rather than adjusting"
     )
-    assert columns == list(HistoryRow._fields[:-1])
+    assert sorted(columns) == sorted(HistoryRow._fields[:-1])
 
 
 def test_the_pending_pin_query_matches_the_paged_one():
@@ -99,18 +96,16 @@ def test_the_pending_pin_query_matches_the_paged_one():
     the column list. A literal here would be a third place to keep in step —
     and the first one to go stale, since nothing renders it."""
     paged, pinned = (_output_names(s) for s in _history_select_lists())
-    assert pinned == paged
+    assert sorted(pinned) == sorted(paged)
 
 
 def test_a_column_added_to_only_one_query_would_be_caught():
     """Proves the guard can fail, rather than only that it passes.
 
     Runs the real comparison against a doctored copy of the paged select list —
-    one extra column in the middle, which is precisely the edit the comment in
-    `transactions.py` warns about and precisely the one that raises nothing at
-    runtime.
+    one extra column HistoryRow has no field for.
     """
     paged = _history_select_lists()[0]
     doctored = paged.replace("t.description,", "t.description, t.notes,", 1)
     assert doctored != paged, "sanity: the doctored select list is unchanged"
-    assert _output_names(doctored) != list(HistoryRow._fields[:-1])
+    assert sorted(_output_names(doctored)) != sorted(HistoryRow._fields[:-1])

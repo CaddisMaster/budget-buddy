@@ -64,7 +64,7 @@ def _all_subscriptions(cursor):
     """Every registered device, across every user. The one push query in this
     codebase that is intentionally not filtered by user_id."""
     cursor.execute('SELECT endpoint, p256dh, auth FROM push_subscriptions ORDER BY id')
-    return [{'endpoint': r[0], 'p256dh': r[1], 'auth': r[2]}
+    return [{'endpoint': r.endpoint, 'p256dh': r.p256dh, 'auth': r.auth}
             for r in cursor.fetchall()]
 
 

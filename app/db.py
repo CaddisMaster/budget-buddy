@@ -93,7 +93,8 @@ def return_connection(conn):
 def db_cursor(commit=False):
     """Yield a NamedTupleCursor on a pooled connection, then always return it.
 
-    Rows are namedtuples — read `row.amount` (positional `row[1]` still works).
+    Rows are namedtuples — read `row.amount`, never `row[1]` or a tuple unpack
+    (#491; tests/test_named_rows.py scans app/ for them).
     Every SELECT column therefore needs a unique, valid-identifier name; alias
     expressions and duplicate JOIN columns with AS. Pass commit=True for write
     paths (commits on a clean exit). Any exception rolls back and re-raises,

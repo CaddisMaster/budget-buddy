@@ -85,9 +85,9 @@ def profile():
         cursor.execute("SELECT created_at, email, weekly_digest FROM users WHERE id = %s",
                        (current_user.id,))
         row = cursor.fetchone()
-        created_at = row[0] if row else None
-        email = row[1] if row else None
-        weekly_digest = row[2] if row else False
+        created_at = row.created_at if row else None
+        email = row.email if row else None
+        weekly_digest = row.weekly_digest if row else False
         # A small at-a-glance summary of the user's data.
         cursor.execute("SELECT COUNT(*) FROM transactions WHERE user_id = %s", (current_user.id,))
         txn_count = cursor.fetchone()[0]
