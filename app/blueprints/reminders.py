@@ -121,14 +121,14 @@ def _due_tomorrow(user_id, today, lead_days=REMINDER_LEAD_DAYS):
             WHERE is_active = true AND user_id = %s AND next_due <= %s
               AND (end_date IS NULL OR next_due <= end_date)
         """, (user_id, window_end))
-        for (sid, desc, amount, ttype, next_due, freq, anchor,
-             second, end_date) in cursor.fetchall():
-            for due in upcoming_occurrences(next_due, freq, anchor, second,
-                                            today, window_end,
-                                            end_date=end_date):
-                items.append({'source': 'schedule', 'source_id': sid,
-                              'description': (desc or '').strip() or 'Scheduled item',
-                              'amount': float(amount), 'type': ttype, 'due': due})
+        for s in cursor.fetchall():
+            for due in upcoming_occurrences(s.next_due, s.frequency, s.anchor_day,
+                                            s.second_day, today, window_end,
+                                            end_date=s.end_date):
+                items.append({'source': 'schedule', 'source_id': s.id,
+                              'description': (s.description or '').strip() or 'Scheduled item',
+                              'amount': float(s.amount), 'type': s.transaction_type,
+                              'due': due})
 
         cursor.execute("""
             SELECT ts.id, ts.description, ts.amount, ts.next_due, ts.frequency,
@@ -141,14 +141,14 @@ def _due_tomorrow(user_id, today, lead_days=REMINDER_LEAD_DAYS):
             WHERE ts.is_active = true AND ts.user_id = %s AND ts.next_due <= %s
               AND (ts.end_date IS NULL OR ts.next_due <= ts.end_date)
         """, (user_id, window_end))
-        for (tsid, desc, amount, next_due, freq, anchor, second, end_date,
-             from_name, to_name) in cursor.fetchall():
-            label = (desc or '').strip() or f'Transfer {from_name} → {to_name}'
-            for due in upcoming_occurrences(next_due, freq, anchor, second,
-                                            today, window_end,
-                                            end_date=end_date):
-                items.append({'source': 'transfer', 'source_id': tsid,
-                              'description': label, 'amount': float(amount),
+        for ts in cursor.fetchall():
+            label = ((ts.description or '').strip()
+                     or f'Transfer {ts.from_account_name} → {ts.to_account_name}')
+            for due in upcoming_occurrences(ts.next_due, ts.frequency, ts.anchor_day,
+                                            ts.second_day, today, window_end,
+                                            end_date=ts.end_date):
+                items.append({'source': 'transfer', 'source_id': ts.id,
+                              'description': label, 'amount': float(ts.amount),
                               'type': 'transfer', 'due': due})
 
     items.sort(key=lambda i: (i['due'], i['description']))
@@ -171,7 +171,7 @@ def _claim(cursor, user_id, item):
 def _subscriptions(cursor, user_id):
     cursor.execute("SELECT endpoint, p256dh, auth FROM push_subscriptions "
                    "WHERE user_id = %s ORDER BY id", (user_id,))
-    return [{'endpoint': r[0], 'p256dh': r[1], 'auth': r[2]}
+    return [{'endpoint': r.endpoint, 'p256dh': r.p256dh, 'auth': r.auth}
             for r in cursor.fetchall()]
 
 
@@ -288,10 +288,10 @@ def _posted_variable_bills(user_id, today, lookback=POSTED_LOOKBACK_DAYS):
               AND t.transaction_date <= %s
             ORDER BY t.transaction_date, t.id
         """, (user_id, today - timedelta(days=lookback), today))
-        return [{'source': 'posted', 'source_id': tid,
-                 'description': (desc or '').strip() or 'Scheduled bill',
-                 'amount': float(amount), 'due': posted_on}
-                for tid, desc, amount, posted_on in cursor.fetchall()]
+        return [{'source': 'posted', 'source_id': t.id,
+                 'description': (t.description or '').strip() or 'Scheduled bill',
+                 'amount': float(t.amount), 'due': t.transaction_date}
+                for t in cursor.fetchall()]
 
 
 def _posted_notification(item):

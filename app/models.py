@@ -37,7 +37,8 @@ class User(UserMixin):
             )
             row = cursor.fetchone()
         if row:
-            return User(row[0], row[1], row[2], row[3], row[4])
+            return User(row.id, row.username, row.password_hash, row.is_admin,
+                        row.session_token)
         return None
 
     @staticmethod
@@ -50,5 +51,6 @@ class User(UserMixin):
             )
             row = cursor.fetchone()
         if row:
-            return User(row[0], row[1], row[2], row[3], row[4])
+            return User(row.id, row.username, row.password_hash, row.is_admin,
+                        row.session_token)
         return None

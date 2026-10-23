@@ -124,10 +124,10 @@ def _resolve_category(cursor, user_id, name):
     cursor.execute("SELECT id, name, kind FROM categories WHERE user_id = %s", (user_id,))
     rows = cursor.fetchall()
     target = str(name or '').strip().lower()
-    for cid, cname, ckind in rows:
-        if cname.strip().lower() == target:
-            return cid, cname, ckind
-    valid = ', '.join(sorted(r[1] for r in rows)) or '(none)'
+    for r in rows:
+        if r.name.strip().lower() == target:
+            return r.id, r.name, r.kind
+    valid = ', '.join(sorted(r.name for r in rows)) or '(none)'
     raise _ToolError(f"No category named {name!r}. Your categories are: {valid}")
 
 
@@ -137,7 +137,7 @@ def _t_list_categories(user_id, args):
     with db_cursor() as cursor:
         cursor.execute("SELECT name, kind FROM categories WHERE user_id = %s ORDER BY name",
                        (user_id,))
-        cats = [{"name": r[0], "kind": r[1]} for r in cursor.fetchall()]
+        cats = [{"name": r.name, "kind": r.kind} for r in cursor.fetchall()]
     return {"categories": cats}
 
 
@@ -209,7 +209,7 @@ def _t_search_transactions(user_id, args):
         # don't see that transfer" about rows plainly visible in History.
         cursor.execute("""
             SELECT t.transaction_date, t.description, t.amount, t.transaction_type,
-                   c.name
+                   c.name AS category_name
             FROM transactions t
             LEFT JOIN categories c ON t.category_id = c.id
             WHERE t.user_id = %s
@@ -219,11 +219,11 @@ def _t_search_transactions(user_id, args):
             LIMIT %s
         """, (user_id, f'%{text}%', start, end, limit))
         txns = [{
-            "date": r[0].isoformat() if r[0] else None,
-            "description": r[1],
-            "amount": _money(r[2]),
-            "type": r[3],
-            "category": r[4],
+            "date": r.transaction_date.isoformat() if r.transaction_date else None,
+            "description": r.description,
+            "amount": _money(r.amount),
+            "type": r.transaction_type,
+            "category": r.category_name,
         } for r in cursor.fetchall()]
     return {"matches": txns, "count": len(txns)}
 
@@ -240,7 +240,7 @@ def _t_recent_transactions(user_id, args):
     with db_cursor() as cursor:
         cursor.execute("""
             SELECT t.transaction_date, t.description, t.amount, t.transaction_type,
-                   c.name, t.is_transfer, t.is_adjustment
+                   c.name AS category_name, t.is_transfer, t.is_adjustment
             FROM transactions t
             LEFT JOIN categories c ON t.category_id = c.id
             WHERE t.user_id = %s
@@ -249,13 +249,13 @@ def _t_recent_transactions(user_id, args):
             LIMIT %s
         """, (user_id, start, end, limit))
         txns = [{
-            "date": r[0].isoformat() if r[0] else None,
-            "description": r[1],
-            "amount": _money(r[2]),
-            "type": r[3],
-            "category": r[4],
-            "is_transfer": r[5],
-            "is_adjustment": r[6],
+            "date": r.transaction_date.isoformat() if r.transaction_date else None,
+            "description": r.description,
+            "amount": _money(r.amount),
+            "type": r.transaction_type,
+            "category": r.category_name,
+            "is_transfer": r.is_transfer,
+            "is_adjustment": r.is_adjustment,
         } for r in cursor.fetchall()]
     return {"transactions": txns, "count": len(txns)}
 
@@ -279,11 +279,11 @@ def _t_upcoming_scheduled(user_id, args):
             ORDER BY next_due
         """, (user_id, today))
         items = [{
-            "description": r[0],
-            "amount": _money(r[1]),
-            "type": r[2],
-            "frequency": r[3],
-            "next_due": r[4].isoformat() if r[4] else None,
+            "description": r.description,
+            "amount": _money(r.amount),
+            "type": r.transaction_type,
+            "frequency": r.frequency,
+            "next_due": r.next_due.isoformat() if r.next_due else None,
         } for r in cursor.fetchall()]
     return {"scheduled": items}
 

@@ -85,8 +85,8 @@ def _to_date_totals(cursor, user_id, year, month, cutoff):
         AND EXTRACT(MONTH FROM transaction_date) = %s
         AND transaction_date <= %s
     """, (user_id, year, month, cutoff))
-    income, expenses = cursor.fetchone()
-    return float(income), float(expenses)
+    row = cursor.fetchone()
+    return float(row.income), float(row.expenses)
 
 
 def _history_by_day(cursor, user_id, month_first):
@@ -96,14 +96,14 @@ def _history_by_day(cursor, user_id, month_first):
     from dateutil.relativedelta import relativedelta
     window_start = month_first - relativedelta(months=HISTORY_MONTHS)
     cursor.execute("""
-        SELECT EXTRACT(DAY FROM transaction_date)::int AS dom, SUM(amount)
+        SELECT EXTRACT(DAY FROM transaction_date)::int AS dom, SUM(amount) AS total
         FROM transactions
         WHERE user_id = %s AND transaction_type = 'expense'
         AND is_adjustment = false AND is_transfer = false
         AND transaction_date >= %s AND transaction_date < %s
         GROUP BY dom
     """, (user_id, window_start, month_first))
-    return {int(r[0]): float(r[1]) for r in cursor.fetchall()}
+    return {int(r.dom): float(r.total) for r in cursor.fetchall()}
 
 
 def _remaining_scheduled(cursor, user_id, today, month_last):
@@ -119,8 +119,10 @@ def _remaining_scheduled(cursor, user_id, today, month_last):
           AND (end_date IS NULL OR next_due <= end_date)
     """, (user_id,))
     items = []
-    for (desc, amount, ttype, freq, anchor_day, second_day,
-         next_due, end_date) in cursor.fetchall():
+    for s in cursor.fetchall():
+        desc, amount, ttype = s.description, s.amount, s.transaction_type
+        freq, anchor_day, second_day = s.frequency, s.anchor_day, s.second_day
+        next_due, end_date = s.next_due, s.end_date
         # #32: a schedule that finishes mid-month contributes only the
         # occurrences up to its end date — projecting past it would forecast
         # bills that can never be charged.

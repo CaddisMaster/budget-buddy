@@ -76,7 +76,7 @@ def category_spending(cursor, user_id, year, month, limit=None):
         sql += " LIMIT %s"
         params.append(limit)
     cursor.execute(sql, params)
-    return [(r[0], float(r[1])) for r in cursor.fetchall()]
+    return [(r.name, float(r.total)) for r in cursor.fetchall()]
 
 
 def _income_expense(cursor, user_id, year, month):
@@ -91,8 +91,8 @@ def _income_expense(cursor, user_id, year, month):
         AND EXTRACT(YEAR FROM transaction_date) = %s
         AND EXTRACT(MONTH FROM transaction_date) = %s
     """, (user_id, year, month))
-    income, expenses = cursor.fetchone()
-    return float(income), float(expenses)
+    row = cursor.fetchone()
+    return float(row.income), float(row.expenses)
 
 
 def compute_month_facts(user_id, year, month):
@@ -206,8 +206,8 @@ def load_read(cursor, user_id, year, month):
     row = cursor.fetchone()
     if row is None:
         return None
-    data = json.loads(row[0])
-    data['created_at'] = row[1]
+    data = json.loads(row.content)
+    data['created_at'] = row.created_at
     return data
 
 

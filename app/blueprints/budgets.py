@@ -89,7 +89,7 @@ def build_budget_row(cursor, user_id, category_id):
     cat = cursor.fetchone()
     if cat is None:
         return None
-    cid, name = cat
+    cid, name = cat.id, cat.name
     cursor.execute("SELECT amount FROM budgets WHERE category_id = %s AND user_id = %s",
                    (cid, user_id))
     srow = cursor.fetchone()
@@ -139,7 +139,7 @@ def compute_budget_suggestions(user_id):
             HAVING COUNT(DISTINCT month) >= 1
         """, (user_id,))
         rows = cursor.fetchall()
-    return {row[0]: float(row[1]) for row in rows}
+    return {row.category_id: float(row.suggested_budget) for row in rows}
 
 
 def compute_budget_vs_actual(user_id, year=None, month=None):
@@ -197,9 +197,8 @@ def compute_budget_vs_actual(user_id, year=None, month=None):
 def load_budget_rows(user_id):
     """Build the cockpit rows for every category — extracted from the budgets()
     view so the review-apply route can re-render the whole table. Returns
-    (rows, all_categories); each row keeps the exact tuple shape
-    (category_id, name, effective, is_set, suggested, actual_this_month) that
-    partials/_budget_row.html indexes into."""
+    (rows, all_categories); each row is a BudgetRow, which
+    partials/_budget_row.html reads by field name."""
     today = datetime.today()
     with db_cursor() as cursor:
         cursor.execute(
@@ -207,9 +206,9 @@ def load_budget_rows(user_id):
             (user_id,))
         all_categories = cursor.fetchall()
         cursor.execute("SELECT category_id, amount FROM budgets WHERE user_id = %s", (user_id,))
-        saved = {row[0]: float(row[1]) for row in cursor.fetchall()}
+        saved = {row.category_id: float(row.amount) for row in cursor.fetchall()}
         cursor.execute("""
-            SELECT category_id, COALESCE(SUM(amount), 0)
+            SELECT category_id, COALESCE(SUM(amount), 0) AS total
             FROM transactions
             WHERE user_id = %s AND transaction_type = 'expense'
             AND is_adjustment = false AND is_transfer = false
@@ -218,7 +217,7 @@ def load_budget_rows(user_id):
             AND category_id IS NOT NULL
             GROUP BY category_id
         """, (user_id, today.year, today.month))
-        actuals = {row[0]: float(row[1]) for row in cursor.fetchall()}
+        actuals = {row.category_id: float(row.total) for row in cursor.fetchall()}
 
     suggestions = compute_budget_suggestions(user_id)
     rows = []
@@ -403,10 +402,13 @@ def load_budget_report(user_id, today=None):
             AND t.transaction_date >= %s AND t.transaction_date < %s
             GROUP BY t.category_id, c.name, DATE_TRUNC('month', t.transaction_date)
         """, (user_id, start, end))
-        spend_rows = cursor.fetchall()
+        # build_budget_report() is pure and takes plain tuples; build them by
+        # name here, at the boundary, so its tuple order is the only one.
+        spend_rows = [(r.category_id, r.name, r.month, r.monthly_total)
+                      for r in cursor.fetchall()]
         cursor.execute("SELECT category_id, amount FROM budgets WHERE user_id = %s",
                        (user_id,))
-        saved = {cid: float(amount) for cid, amount in cursor.fetchall()}
+        saved = {r.category_id: float(r.amount) for r in cursor.fetchall()}
     return build_budget_report(months, spend_rows, saved)
 
 
@@ -530,7 +532,7 @@ def budget_review_scan():
         all_categories = cursor.fetchall()
         cursor.execute("SELECT category_id, amount FROM budgets WHERE user_id = %s",
                        (current_user.id,))
-        saved = {row[0]: int(row[1]) for row in cursor.fetchall()}
+        saved = {row.category_id: int(row.amount) for row in cursor.fetchall()}
 
     try:
         review = propose_budgets(facts, all_categories)
