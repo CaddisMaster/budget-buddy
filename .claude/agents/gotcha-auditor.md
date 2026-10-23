@@ -51,7 +51,7 @@ where a natural-looking change ships a silent bug:
 - **`is_pending` is a display flag and the opposite of `is_adjustment`.** It
   must NOT be added to the `is_adjustment = false AND is_transfer = false`
   filter lists. Check whether the diff added it to any.
-- **The scheduler's jobs each carry their own gate** (`app/__init__.py`):
+- **The scheduler's jobs each carry their own gate** (`app/scheduler.py`):
   digest ← `mail_enabled()`, reminders ← `push_enabled()`, materialization ←
   nothing. Collapsing these into one condition is a regression.
 - **Due-runner SELECTs are `FOR UPDATE`.** Removing the lock is a real race,

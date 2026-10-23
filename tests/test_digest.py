@@ -216,7 +216,7 @@ def _keys(monkeypatch):
     monkeypatch.setattr(ai, "_call_agent_model", _no_agent)
 
 
-def test_send_delivers_to_opted_in_and_sets_marker(users, monkeypatch, _keys):
+def test_send_delivers_to_opted_in_and_sets_marker(users, monkeypatch, _keys, app_context):
     a, b = users["a"]["id"], users["b"]["id"]
     _set_digest(a, email="a@test.dev", weekly_digest=True, last_sent=None)
     _set_digest(b, email="b@test.dev", weekly_digest=False)   # opted out
@@ -232,7 +232,7 @@ def test_send_delivers_to_opted_in_and_sets_marker(users, monkeypatch, _keys):
     assert _last_sent(b)[2] is None                 # untouched
 
 
-def test_send_is_idempotent_within_the_week(users, monkeypatch, _keys):
+def test_send_is_idempotent_within_the_week(users, monkeypatch, _keys, app_context):
     a = users["a"]["id"]
     _set_digest(a, email="a@test.dev", weekly_digest=True, last_sent=None)
     monkeypatch.setattr(ai, "_call_digest_model", _DigestSeam())
@@ -245,7 +245,7 @@ def test_send_is_idempotent_within_the_week(users, monkeypatch, _keys):
     assert "a@test.dev" not in rseam2.sent_to
 
 
-def test_send_one_failure_does_not_abort_batch(users, monkeypatch, _keys):
+def test_send_one_failure_does_not_abort_batch(users, monkeypatch, _keys, app_context):
     a, b = users["a"]["id"], users["b"]["id"]
     _set_digest(a, email="a@test.dev", weekly_digest=True, last_sent=None)
     _set_digest(b, email="b@test.dev", weekly_digest=True, last_sent=None)

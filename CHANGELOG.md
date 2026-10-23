@@ -26,6 +26,14 @@ this project uses the `0.x` versioning scheme described in
   now read `row.amount`, and History's rows are built by name, so an unknown
   column fails loudly instead. A test scans `app/` so the positional shapes
   cannot come back. No visible change. (#491)
+- **Starting the app no longer decides whether to run the scheduled jobs.**
+  The app is now built by `create_app()`, which never starts a scheduler, and
+  each way of running it decides for itself. The web server's entry point is
+  `app.wsgi:app`, and it starts the old in-process scheduler only when nothing
+  hands the jobs to the worker. The worker's `flask run-scheduler` starts its
+  own. Before this, merely loading the app could start one, which is how the
+  worker came to run two and send the digest twice. Older compose files that
+  name `app:app` still work. No visible change. (#490)
 
 ## [0.13.0] - 2026-10-12
 

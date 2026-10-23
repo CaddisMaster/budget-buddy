@@ -69,7 +69,7 @@ you are invoking so the orchestrator knows why it bounced:
 - **AI seams** — `_call_*_model` in `ai.py`, `_call_resend`, `_call_webpush`, `_call_github`
 - **Exception handling** — which errors are caught, and what a handler surfaces
 - The **coupled `ORDER BY` pair** in `_load_history`
-- The **scheduler's per-job gates** in `app/__init__.py`
+- The **scheduler's per-job gates** in `app/scheduler.py`
 
 These are excluded by the delegation policy in `docs/delegation.md`, not by your
 judgement. A task

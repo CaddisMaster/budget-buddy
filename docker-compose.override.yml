@@ -43,7 +43,7 @@ services:
     # source file changes. Kept in full rather than as a fragment so it is
     # obvious this is the production command with one flag added.
     command: ["gunicorn", "--workers", "1", "--threads", "4", "--timeout", "120",
-              "--reload", "--bind", "0.0.0.0:5000", "app:app"]
+              "--reload", "--bind", "0.0.0.0:5000", "app.wsgi:app"]
   # #402 — the worker runs from local source too, or compose would try to pull
   # the ghcr image. With ENABLE_DIGEST_SCHEDULER unset in a local .env it idles.
   worker:

@@ -20,7 +20,8 @@ Every combination has to be safe:
 
     new image + old compose   no SCHEDULER_IN_PROCESS, and the image's default
                               of ONE gunicorn worker, so the in-process
-                              scheduler runs exactly as before
+                              scheduler runs exactly as before (the image's
+                              CMD is `app.wsgi:app`, which starts it)
     new image + new compose   web: several workers, no scheduler;
                               worker: the scheduler, once
     old image + new compose   (a rollback across #402) the old image ignores
@@ -31,12 +32,16 @@ Every combination has to be safe:
                               before rolling back across #402
 
 ⚠️ **The worker is a process that imports the app too (#483).** `flask
-run-scheduler` loads `app/__init__.py` to find the command, and that runs the
-in-process start like any other import. The table above only asked about web,
-and 0.12.0's compose file set the switch on web alone, so the worker ran two
-schedulers and the Sunday digest went out twice. Compose now sets it on the
-worker as well, and `run_scheduler_command()` stops an in-process scheduler it
-finds, so neither file can bring the second one back on its own.
+run-scheduler` loads the `app` package to find the command. Before #490 that
+import started the in-process scheduler, and 0.12.0's compose file switched it
+off on web alone, so the worker ran two schedulers and the Sunday digest went
+out twice. Since #490 importing or building the app starts nothing: only
+`app/wsgi.py`, gunicorn's entry, ever calls `start_in_process()`. Compose
+still sets the switch on the worker, as documentation of intent.
+
+(`run_scheduler_command()` used to stop an in-process scheduler it found, as
+#483's second layer. #490 made that state unreachable, so it was deleted
+rather than kept as an untestable guard.)
 
 What must never happen is two schedulers: every one of them would run every
 job. That is why the worker count lives in compose next to the switch that
@@ -63,21 +68,33 @@ def scheduler_enabled():
     return os.getenv('ENABLE_DIGEST_SCHEDULER') == '1'
 
 
-def add_jobs(scheduler):
-    """Register every scheduled job on `scheduler`. Shared by both runners, so
-    the in-process thread and the worker can never disagree about the jobs."""
+def _in_app_context(app, job):
+    """`job`, run inside `app`'s context. A scheduler thread has none of its
+    own, and the jobs read `current_app` (the digest renders a template)."""
+    def run():
+        with app.app_context():
+            return job()
+    run.__name__ = job.__name__
+    return run
+
+
+def add_jobs(scheduler, app):
+    """Register every scheduled job on `scheduler`, each run inside `app`'s
+    context. Shared by both runners, so the in-process thread and the worker
+    can never disagree about the jobs."""
     from app.blueprints.digests import send_weekly_digests
     from app.blueprints.reminders import run_daily_tasks
 
     if mail_enabled():
         # The users.last_digest_sent_on guard + misfire_grace_time make it safe
         # across restarts. Sunday 18:00 America/New_York.
-        scheduler.add_job(send_weekly_digests, 'cron', day_of_week='sun', hour=18,
+        scheduler.add_job(_in_app_context(app, send_weekly_digests), 'cron',
+                          day_of_week='sun', hour=18,
                           id='weekly_digest', replace_existing=True,
                           misfire_grace_time=3600)
     # Daily 18:00 — the evening before a bill is due. reminder_log makes the
     # send idempotent per occurrence across restarts and re-runs.
-    scheduler.add_job(run_daily_tasks, 'cron', hour=18,
+    scheduler.add_job(_in_app_context(app, run_daily_tasks), 'cron', hour=18,
                       id='daily_tasks', replace_existing=True,
                       misfire_grace_time=3600)
     return scheduler
@@ -89,18 +106,14 @@ def runs_in_this_process():
     return scheduler_enabled() and os.getenv('SCHEDULER_IN_PROCESS', '1') != '0'
 
 
-_in_process = None
-
-
-def start_in_process():
+def start_in_process(app):
     """The pre-#402 path: a daemon thread inside the web process. Only safe
-    with exactly one gunicorn worker — see the module docstring."""
+    with exactly one gunicorn worker — see the module docstring. Called from
+    `app/wsgi.py` and nowhere else (#490)."""
     from apscheduler.schedulers.background import BackgroundScheduler
 
-    global _in_process
-    scheduler = add_jobs(BackgroundScheduler(timezone=TIMEZONE, daemon=True))
+    scheduler = add_jobs(BackgroundScheduler(timezone=TIMEZONE, daemon=True), app)
     scheduler.start()
-    _in_process = scheduler
     return scheduler
 
 
@@ -116,18 +129,15 @@ def run_scheduler_command():
         while True:
             time.sleep(3600)
 
-    # ⚠️ Loading the app to find this command ran the in-process start, which
-    # compose prevents only by setting SCHEDULER_IN_PROCESS=0 on this service.
-    # 0.12.0's compose file did not, and the worker ran every job twice (#483).
-    # So this process stops that one rather than trusting the file.
-    if _in_process is not None and _in_process.running:
-        _in_process.shutdown(wait=False)
-        click.echo('Stopped the in-process scheduler the import started '
-                   '(set SCHEDULER_IN_PROCESS=0 on this service).')
-
     from apscheduler.schedulers.blocking import BlockingScheduler
+    from flask import current_app
 
-    scheduler = add_jobs(BlockingScheduler(timezone=TIMEZONE))
+    # The CLI built the app to find this command, and Flask's CLI pushes its
+    # context for every command (Flask >= 2.2), so current_app is that app.
+    # The jobs run in its context. (@with_appcontext was tried and removed: a
+    # mutation showed it changed nothing.)
+    scheduler = add_jobs(BlockingScheduler(timezone=TIMEZONE),
+                         current_app._get_current_object())
     jobs = ', '.join(job.id for job in scheduler.get_jobs())
     click.echo(f'Scheduler running: {jobs}')
     scheduler.start()

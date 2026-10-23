@@ -267,7 +267,7 @@ def test_both_timestamps_are_naive(cleanup_jobs):
 # ⚠️ These write the REAL job name, which every worker shares. They therefore
 # assert only that a recent row EXISTS — true whoever wrote last, so no race.
 
-def test_the_daily_job_records_itself(users):
+def test_the_daily_job_records_itself(users, app_context):
     run_daily_tasks()
     with db_cursor() as cursor:
         cursor.execute("SELECT last_run_at, summary, now()::timestamp AS checked_at "
@@ -278,7 +278,7 @@ def test_the_daily_job_records_itself(users):
     assert 'materialized' in row.summary
 
 
-def test_the_daily_job_reports_as_on_schedule_after_running(users):
+def test_the_daily_job_reports_as_on_schedule_after_running(users, app_context):
     run_daily_tasks()
     with db_cursor() as cursor:
         rows = load_job_runs(cursor)

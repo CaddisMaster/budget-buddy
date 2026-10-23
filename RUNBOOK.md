@@ -300,7 +300,7 @@ services:
     env_file:
       - .env
     command: ["gunicorn", "--workers", "2", "--threads", "4", "--timeout", "120",
-              "--bind", "0.0.0.0:5000", "app:app"]
+              "--bind", "0.0.0.0:5000", "app.wsgi:app"]
     environment:
       SCHEDULER_IN_PROCESS: "0"
       RATELIMIT_STORAGE_URI: redis://redis:6379

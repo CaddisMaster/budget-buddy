@@ -19,7 +19,7 @@ from datetime import date, timedelta
 
 import click
 import psycopg2
-from flask import Blueprint, render_template
+from flask import Blueprint, current_app, render_template
 from flask.cli import with_appcontext
 
 from app import mailer
@@ -164,7 +164,6 @@ def _claim(user_id, today, period_start):
 def _release(user_id, today, previous):
     """Hand a claim back after a failed send, so the next run retries the user
     rather than skipping them for the week. Only undoes this run's own stamp."""
-    from app import app  # local import to avoid an import cycle at module load
     try:
         with db_cursor(commit=True) as cursor:
             cursor.execute(
@@ -172,17 +171,17 @@ def _release(user_id, today, previous):
                 "WHERE id = %s AND last_digest_sent_on = %s",
                 (previous, user_id, today))
     except psycopg2.Error:
-        app.logger.exception('Could not release the digest claim for user %s', user_id)
+        current_app.logger.exception('Could not release the digest claim for user %s', user_id)
 
 
 def send_weekly_digests(*, today=None):
     """Send the weekly digest to every user due one, idempotently. Returns the
     number of digests actually sent. Each user is isolated in try/except so one
-    failure (bad data, model error, send error) never aborts the batch. Callable
-    with no request/app context (the scheduler thread) — establishes its own app
-    context for template rendering and never touches current_user.
+    failure (bad data, model error, send error) never aborts the batch. Needs
+    an app context but no request: the scheduler runs it inside its app's
+    (#490), and `flask send-digests` inside the CLI's. Never touches
+    current_user.
     """
-    from app import app  # local import to avoid an import cycle at module load
     today = today or date.today()
     period_start = most_recent_sunday(today)
     reply_to = os.getenv('DIGEST_REPLY_TO') or None
@@ -222,20 +221,19 @@ def send_weekly_digests(*, today=None):
                 if agent_run is None:
                     agent_run = run_money_agent(user_id, today=today)
             except ParseError as e:
-                app.logger.warning('Money agent skipped for user %s: %s',
-                                   user_id, e)
+                current_app.logger.warning('Money agent skipped for user %s: %s',
+                                           user_id, e)
 
-            with app.app_context():
-                html = render_template('emails/weekly_digest.html',
-                                       narrative=narrative, facts=facts,
-                                       agent_run=agent_run)
+            html = render_template('emails/weekly_digest.html',
+                                   narrative=narrative, facts=facts,
+                                   agent_run=agent_run)
             mailer.send_email(row.email, DIGEST_SUBJECT, html, reply_to=reply_to)
             delivered = True
             sent += 1
         except (ParseError, mailer.MailError) as e:
-            app.logger.warning('Weekly digest skipped for user %s: %s', user_id, e)
+            current_app.logger.warning('Weekly digest skipped for user %s: %s', user_id, e)
         except Exception as e:  # never let one user break the batch
-            app.logger.exception('Weekly digest failed for user %s: %s', user_id, e)
+            current_app.logger.exception('Weekly digest failed for user %s: %s', user_id, e)
         if claimed and not delivered:
             _release(user_id, today, row.last_digest_sent_on)
     # #151 — recorded AFTER the batch, so /settings reports a job that finished.

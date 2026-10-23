@@ -58,7 +58,7 @@ EXPOSE 5000
 # letting a slow request run concurrently with others. --timeout 120 gives the
 # v10.3 Ask tool-use loop room for several sequential model calls (the default
 # 30s killed the worker mid-loop → the HTMX request hung).
-CMD ["gunicorn", "--workers", "1", "--threads", "4", "--timeout", "120", "--bind", "0.0.0.0:5000", "app:app"]
+CMD ["gunicorn", "--workers", "1", "--threads", "4", "--timeout", "120", "--bind", "0.0.0.0:5000", "app.wsgi:app"]
 
 # Local development only — selected by docker-compose.override.yml, which is
 # never used on the Droplet. Carries the test dependencies so `./test.sh` does

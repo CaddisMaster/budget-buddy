@@ -19,7 +19,7 @@ extension), then curl with a cookie jar. CSRF is ON in the real app.
 
 ```bash
 docker compose exec -T web python -c "
-from app import app, bcrypt
+from app import bcrypt
 import app.db as db
 h = bcrypt.generate_password_hash('verify-pass-123').decode()
 conn = db.get_db_connection(); cur = conn.cursor()

@@ -24,8 +24,7 @@ neither prefix can start the other.
 sharding layer is ever written, this prefix has to become per-shard exactly the
 way conftest's became per-worker.
 """
-from app import app as flask_app
-from app import limiter
+from app import create_app, limiter
 from tests.helpers import (
     PASSWORD,
     _create_user,
@@ -45,12 +44,9 @@ def before_all(context):
     # A user present before the first scenario means this is a real database,
     # not the one test.sh just built (#400). Raising here aborts the whole run.
     refuse_a_database_that_holds_users()
-    flask_app.config["TESTING"] = True
-    flask_app.config["WTF_CSRF_ENABLED"] = False  # no token plumbing in tests
-    if not flask_app.secret_key:
-        flask_app.secret_key = "behave-secret"
+    # no token plumbing in tests
+    context.app = create_app({"TESTING": True, "WTF_CSRF_ENABLED": False})
     limiter.enabled = False
-    context.app = flask_app
 
 
 def before_scenario(context, scenario):

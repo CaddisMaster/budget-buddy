@@ -13,6 +13,7 @@ import app.ai as ai
 import app.mailer as mailer
 from app.ai import ParseError, _Digest
 from app.blueprints.digests import send_weekly_digests
+from app.scheduler import _in_app_context
 from tests.features.support import _user, race
 from tests.helpers import _connection
 
@@ -75,16 +76,22 @@ def when_saves_profile_again(context, who):
     assert response.status_code == 302, response.status_code
 
 
+def _as_scheduled(context):
+    """The digest wrapped exactly as the scheduler wraps it: inside the app's
+    context, which each thread pushes for itself (#490)."""
+    return _in_app_context(context.app, send_weekly_digests)
+
+
 @when("the weekly digest job runs")
 def when_digest_runs(context):
     _stub_the_outside_world(context)
-    send_weekly_digests()
+    _as_scheduled(context)()
 
 
 @when("the weekly digest job runs twice at the same time")
 def when_digest_runs_twice(context):
     _stub_the_outside_world(context)
-    race(context, [send_weekly_digests, send_weekly_digests])
+    race(context, [_as_scheduled(context), _as_scheduled(context)])
 
 
 @then("user {who:Who} has been sent {count:d} digest")

@@ -432,7 +432,7 @@ def test_materialize_posts_for_a_user_who_never_logged_in(users):
     assert count_transactions_like(a, "seed-schedule") == 3
 
 
-def test_materialize_runs_even_when_push_unconfigured(users, monkeypatch):
+def test_materialize_runs_even_when_push_unconfigured(users, monkeypatch, app_context):
     """THE gating trap. The daily job carries materialization as well as
     reminders; hanging the whole thing off a third-party key would mean a
     missing VAPID (or Resend) credential silently stops the ledger updating."""
