@@ -16,8 +16,7 @@ from datetime import date
 
 import pytest
 
-from app import app as flask_app
-from app import limiter
+from app import create_app, limiter
 from tests.helpers import (
     PASSWORD,
     _create_user,
@@ -88,12 +87,18 @@ def pytest_configure(config):
 
 def app():
     _wait_for_db()
-    flask_app.config["TESTING"] = True
-    flask_app.config["WTF_CSRF_ENABLED"] = False  # no token plumbing in tests
-    if not flask_app.secret_key:
-        flask_app.secret_key = "pytest-secret"
+    # no token plumbing in tests
+    flask_app = create_app({"TESTING": True, "WTF_CSRF_ENABLED": False})
     limiter.enabled = False  # the 60/min cap would trip a fast test run
     return flask_app
+
+
+@pytest.fixture
+def app_context(app):
+    """An app context with no request, as the scheduler gives a job (#490).
+    The jobs read `current_app`, so a test calling one directly needs this."""
+    with app.app_context():
+        yield app
 
 
 @pytest.fixture

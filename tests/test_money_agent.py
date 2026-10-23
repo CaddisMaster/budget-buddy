@@ -346,7 +346,7 @@ def _digest_keys(monkeypatch):
         lambda *a, **k: ai._Digest(summary="Week recap.", tips=[]))
 
 
-def test_digest_includes_findings_section(users, monkeypatch, _digest_keys):
+def test_digest_includes_findings_section(users, monkeypatch, _digest_keys, app_context):
     a = users["a"]["id"]
     _set_digest(a, "agent-a@test.dev")
     monkeypatch.setattr(ai, "_call_agent_model",
@@ -362,7 +362,7 @@ def test_digest_includes_findings_section(users, monkeypatch, _digest_keys):
     assert len(fetch_agent_runs(a)) == 1       # the run was cached too
 
 
-def test_digest_reuses_this_weeks_cached_run(users, monkeypatch, _digest_keys):
+def test_digest_reuses_this_weeks_cached_run(users, monkeypatch, _digest_keys, app_context):
     a = users["a"]["id"]
     _set_digest(a, "agent-a@test.dev")
     create_agent_run(a, WEEK, {"summary": "Already ran this week.",
@@ -378,7 +378,7 @@ def test_digest_reuses_this_weeks_cached_run(users, monkeypatch, _digest_keys):
     assert "Already ran this week." in rseam.html_by_to["agent-a@test.dev"]
 
 
-def test_digest_still_sends_when_agent_fails(users, monkeypatch, _digest_keys):
+def test_digest_still_sends_when_agent_fails(users, monkeypatch, _digest_keys, app_context):
     a = users["a"]["id"]
     _set_digest(a, "agent-a@test.dev")
     monkeypatch.setattr(ai, "_call_agent_model", _AgentSeam(boom=True))

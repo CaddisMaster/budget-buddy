@@ -9,8 +9,12 @@ import re
 
 import pytest
 
-from app import app as flask_app
+from app import create_app
 from tests.conftest import USER_A
+
+# Read at COLLECTION, to parametrize over every route, so it cannot be the
+# session fixture. Building a second app is cheap and starts nothing (#490).
+flask_app = create_app()
 
 # The main pages, for the render smoke test below. This one is deliberately a
 # hand-picked list — it is about which pages are worth rendering, not about

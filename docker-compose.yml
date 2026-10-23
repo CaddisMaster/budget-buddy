@@ -71,7 +71,7 @@ services:
     # exactly as before. Two schedulers would run every job twice — see
     # app/scheduler.py for the whole old/new matrix.
     command: ["gunicorn", "--workers", "2", "--threads", "4", "--timeout", "120",
-              "--bind", "0.0.0.0:5000", "app:app"]
+              "--bind", "0.0.0.0:5000", "app.wsgi:app"]
     environment:
       # The worker hosts the jobs, so web must not (#402). NOT an override of
       # .env's ENABLE_DIGEST_SCHEDULER: /settings reads that in this process to

@@ -26,7 +26,7 @@ ceiling to worry about. Sending nothing is what deletes that whole surface
 rather than guarding it.
 """
 import click
-from flask import Blueprint
+from flask import Blueprint, current_app
 from flask.cli import with_appcontext
 
 from app import pusher
@@ -116,9 +116,7 @@ def announce_release_command(version):
     The version is the only input, and it comes from the workflow's own tag
     rather than from anything a human typed at release time.
     """
-    from app import app
-
-    sent = broadcast_release(version, logger=app.logger)
+    sent = broadcast_release(version, logger=current_app.logger)
     if not pusher.push_enabled():
         click.echo('Push is not configured; announced nothing.')
         return

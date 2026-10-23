@@ -410,7 +410,7 @@ def test_a_transient_failure_keeps_the_subscription(users, monkeypatch):
 
 # --- the daily job ----------------------------------------------------------
 
-def test_the_daily_job_runs_the_alert_pass(users, monkeypatch):
+def test_the_daily_job_runs_the_alert_pass(users, monkeypatch, app_context):
     """Materialize FIRST, then alert — which is what lets a bill posted by this
     very run be alerted on the same run, with no wait until tomorrow."""
     a = users["a"]["id"]

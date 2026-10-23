@@ -7,7 +7,6 @@ import logging
 
 from flask.logging import default_handler
 
-from app import app as flask_app
 from app import logs
 from tests import run_behave
 
@@ -17,32 +16,32 @@ def _capture():
     return buffer, logs.handler.setStream(buffer)
 
 
-def test_the_app_logger_is_at_info_and_the_root_is_not_lowered():
+def test_the_app_logger_is_at_info_and_the_root_is_not_lowered(app):
     """The pair that makes INFO reach the log without flooding it with library
     INFO: the app's own loggers at INFO, the root left at Python's WARNING."""
-    assert flask_app.logger.level == logging.INFO
+    assert app.logger.level == logging.INFO
     assert logging.getLogger("app.blueprints.ask").getEffectiveLevel() == logging.INFO
     assert logs.handler in logging.getLogger().handlers
 
 
-def test_an_app_line_is_written_once():
+def test_an_app_line_is_written_once(app):
     """Flask's own stderr handler is removed from app.logger. Left in place,
     every app line is written twice: once by it, once by the root handler."""
-    assert default_handler not in flask_app.logger.handlers
+    assert default_handler not in app.logger.handlers
     buffer, previous = _capture()
     try:
-        flask_app.logger.warning("logged-once-marker")
+        app.logger.warning("logged-once-marker")
     finally:
         logs.handler.setStream(previous)
     assert buffer.getvalue().count("logged-once-marker") == 1
 
 
-def test_a_line_outside_a_request_carries_a_dash():
+def test_a_line_outside_a_request_carries_a_dash(app):
     """The worker and CLI commands log with no request. The filter must not
     raise there, since a raising filter loses the line."""
     buffer, previous = _capture()
     try:
-        flask_app.logger.warning("outside-a-request")
+        app.logger.warning("outside-a-request")
     finally:
         logs.handler.setStream(previous)
     assert "[WARNING] [-] app: outside-a-request" in buffer.getvalue()

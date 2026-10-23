@@ -43,7 +43,7 @@ bad row never aborts the batch.
 from datetime import date, timedelta
 
 import click
-from flask import Blueprint
+from flask import Blueprint, current_app
 from flask.cli import with_appcontext
 
 from app import pusher
@@ -322,15 +322,15 @@ def run_daily_tasks(*, today=None):
     merely tidy, it is what lets a bill posted by this very job be alerted on the
     same run. Returns (users_materialized, reminders_sent, alerts_sent).
     """
-    from app import app  # local import to avoid an import cycle at module load
     from app.jobs import DAILY, record_job_run
+    logger = current_app.logger
     today = today or date.today()
-    users = materialize_all_users(logger=app.logger)
-    sent = send_due_reminders(today=today, logger=app.logger)
-    alerts = send_posted_bill_alerts(today=today, logger=app.logger)
+    users = materialize_all_users(logger=logger)
+    sent = send_due_reminders(today=today, logger=logger)
+    alerts = send_posted_bill_alerts(today=today, logger=logger)
     summary = (f'materialized {users} user(s), sent {sent} reminder(s), '
                f'{alerts} bill alert(s)')
-    app.logger.info('Daily tasks: %s', summary)
+    logger.info('Daily tasks: %s', summary)
     # #151 — recorded AFTER the work, so /settings reports a job that finished
     # rather than one that started. Never raises; see app/jobs.py.
     record_job_run(DAILY, summary)
