@@ -34,6 +34,15 @@ this project uses the `0.x` versioning scheme described in
   own. Before this, merely loading the app could start one, which is how the
   worker came to run two and send the digest twice. Older compose files that
   name `app:app` still work. No visible change. (#490)
+- **CI now proves `schema.sql` builds the same database the migrations do.**
+  It used to check only that `schema.sql` was edited alongside a new
+  migration, so any edit passed, even one that spelled a constraint
+  differently. The Migrations job now applies a pull request's migrations to
+  the previous schema and compares the result, object by object, with a fresh
+  database built from the new `schema.sql`. That covers types, nullability,
+  defaults, constraints, indexes, sequences and grants, and the failure names
+  the object that differs. A data-only migration no longer has to touch
+  `schema.sql`. (#492)
 
 ## [0.13.0] - 2026-10-12
 
