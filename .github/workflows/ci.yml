@@ -126,7 +126,9 @@ jobs:
           # classifies as sql=false, every step in the job skips, and it reports
           # SUCCESS — which is indistinguishable from having actually checked
           # anything. That is precisely how #159 stayed invisible.
-          if matches '^(sql/|scripts/migrate\.py$|\.github/workflows/ci\.yml$)'; then
+          # scripts/check_schema_matches.py (#492) is here for the same reason:
+          # the job runs it, so a change to it alone must run the job.
+          if matches '^(sql/|scripts/migrate\.py$|scripts/check_schema_matches\.py$|\.github/workflows/ci\.yml$)'; then
             sql=true
           else
             sql=false
@@ -269,6 +271,11 @@ jobs:
     # migration added in this pull request applies cleanly to the schema
     # PRODUCTION would apply it to.
     #
+    # #492 then compares the pair that CAN be built: that migrated database
+    # against HEAD's schema.sql loaded fresh. Not the whole chain, which cannot
+    # replay, but exactly the delta this pull request introduces, which is the
+    # only place drift can enter.
+    #
     # ⚠️ This comment used to say "yields 4 tables of 13". #309 measured it and
     # got different figures — the counts were true when written and every
     # migration since has moved them. sql/schema.sql's header carries the
@@ -286,11 +293,11 @@ jobs:
     #
     # Baselining against the merge base's file list instead makes the new
     # migration genuinely pending. Loading the merge base's schema.sql is the
-    # other half: the "reflected in schema.sql" step further down forces this
-    # pull request to carry the change in schema.sql as well, so building from
-    # HEAD's copy would apply the migration to a database that ALREADY contains
-    # what it adds — a parse-and-no-op that asserts idempotency against the
-    # post-migration schema rather than anything about a deploy.
+    # other half: the "schema.sql builds what the migrations build" step further
+    # down forces this pull request to carry the change in schema.sql as well,
+    # so building from HEAD's copy would apply the migration to a database that
+    # ALREADY contains what it adds — a parse-and-no-op that asserts idempotency
+    # against the post-migration schema rather than anything about a deploy.
     #
     # A pleasant consequence: a legitimately NON-idempotent migration is fine
     # here, because it lands on a schema that genuinely lacks the object. This
@@ -470,31 +477,24 @@ jobs:
             exit 1
           fi
 
-      - name: A new migration must also be reflected in schema.sql
+      - name: schema.sql builds what the migrations build
         if: needs.changes.result != 'success' || needs.changes.outputs.sql == 'true'
         run: |
-          # The drift this catches: adding sql/NN without updating schema.sql,
-          # so a fresh database silently lacks what production has. Compares
-          # against the merge base rather than the whole history.
-          git fetch --no-tags --depth=1 origin "${{ github.base_ref || 'main' }}" || true
-          base=$(git merge-base HEAD FETCH_HEAD 2>/dev/null || echo "")
-          [ -z "$base" ] && { echo "no merge base — skipping"; exit 0; }
-
-          added=$(git diff --name-only --diff-filter=A "$base" HEAD -- 'sql/[0-9]*.sql' || true)
-          if [ -z "$added" ]; then
-            echo "No new migration in this change."
-            exit 0
-          fi
-          echo "New migration(s): $added"
-
-          if git diff --name-only "$base" HEAD -- sql/schema.sql | grep -q .; then
-            echo "schema.sql updated alongside it."
-          else
-            echo "::error::$added was added but sql/schema.sql was not updated."
-            echo "schema.sql builds fresh databases (dev, CI, a rebuilt server)."
-            echo "Leaving it behind means a fresh database silently lacks this change."
-            exit 1
-          fi
+          # #492. `budget` is the merge base's schema.sql with this pull
+          # request's migrations applied: what production becomes. `freshcheck`
+          # (built above) is HEAD's schema.sql alone: what every fresh database
+          # becomes. Any difference between them is drift, named object by
+          # object. scripts/check_schema_matches.py says what is compared and
+          # why it is not a pg_dump diff.
+          #
+          # This replaced a step that only checked schema.sql was TOUCHED
+          # alongside a new migration, which any edit passed: a typo'd type, a
+          # missing constraint, a CHECK spelled differently. It also failed a
+          # data-only migration that rightly left schema.sql alone.
+          #
+          # On a push to main both sides come from HEAD's schema.sql, so this
+          # matches by construction; the pull request run is the one that gates.
+          python scripts/check_schema_matches.py --migrated budget --fresh freshcheck
 
       # The job still reports success, so the required check is satisfied.
       - name: No schema changes

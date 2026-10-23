@@ -394,6 +394,14 @@ A schema change therefore means **two edits**: a new numbered migration
 fresh clone and a live deployment converge on the same schema. Updating only one
 is the classic mistake here.
 
+CI checks the two agree, not merely that both were edited (#492). It builds the
+previous `schema.sql`, applies your migration, and compares the result against
+your `schema.sql` loaded fresh: every column's type, nullability and default,
+every constraint and index by name and definition, and every grant. A
+difference fails the `Migrations` job and names the object. Column order is
+free, because a migration can only append a column. Run it locally with
+`scripts/check_schema_matches.py`; its docstring says what it compares and why.
+
 Prefer **additive** migrations — new columns and tables — over drops. Additive
 changes can be applied before the new code ships; drops cannot, because the old
 code is still selecting those columns until the moment it is replaced.
