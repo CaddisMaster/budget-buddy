@@ -64,6 +64,10 @@ this project uses the `0.x` versioning scheme described in
   `app/services/accounts.py`.** Ask and the month read imported them from the
   accounts page's module. The accounts page still offers the two credit-card
   helpers to its templates. No visible change. (#489)
+- **The check that a posted category or account belongs to you moved to
+  `app/services/ownership.py`.** Transactions, schedules and the statement
+  import all run it before saving; the other two imported it from the
+  transactions page's module. No visible change. (#489)
 
 ## [0.13.0] - 2026-10-12
 
