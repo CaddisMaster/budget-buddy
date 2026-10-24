@@ -26,7 +26,7 @@ from pathlib import Path
 
 import pytest
 
-from app.blueprints.main import PALETTE_SIZE
+from app.services.chart_palette import PALETTE_SIZE
 from tests.helpers import create_category, create_transaction
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

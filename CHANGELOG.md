@@ -71,6 +71,10 @@ this project uses the `0.x` versioning scheme described in
 - **Naming a notification device for Profile moved to
   `app/services/devices.py`.** Profile imported it from the push module. No
   visible change. (#489)
+- **Choosing each category's chart colour moved to
+  `app/services/chart_palette.py`.** Home's chart and the categories page's
+  colour swatch must agree, so both run it; the categories page imported it
+  from Home's module, lazily, to dodge a cycle. No visible change. (#489)
 
 ## [0.13.0] - 2026-10-12
 

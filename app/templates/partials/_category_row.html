@@ -8,7 +8,7 @@
    edit row's colspan, which is the shape that broke a table once already.
 
    ⚠️ `colour_slots` is the slot each category is ACTUALLY drawn in this month
-   (main.category_slot_map), never `creation_index % 8` — that is the preferred
+   (chart_palette.category_slot_map), never `creation_index % 8` — that is the preferred
    slot, which differs from the drawn one exactly when a collision happens.
    A category absent from the map is NOT charted this month, and says so rather
    than claiming a hue. `|default({})` keeps a row swap from raising if a render
