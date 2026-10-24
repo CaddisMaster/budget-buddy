@@ -76,7 +76,7 @@ security boundary), `digests`, `imports` (statement import, #445).
 projection's arithmetic), `agent` (the money agent, run inside the weekly digest),
 `recurrence` (pure next-due and occurrence-walking date maths) `budgets` (spend vs budget,
 the budget-change log) `accounts` (the balance query, credit utilization and interest) and `ownership`
-(`validate_category_account`, the write-side FK guard). ⚠️ **A
+(`validate_category_account`, the write-side FK guard) and `devices` (a push device's label). ⚠️ **A
 blueprint imports from a service, never from another blueprint, and a service imports no
 blueprint.** The move is in progress: `tests/test_module_boundaries.py` allowlists the edges
 that predate the rule, and fails on a new one **and** on a listed one that has gone.

@@ -4,13 +4,13 @@ from flask import Blueprint, flash, redirect, render_template, request, session,
 from flask_login import current_user, login_required, login_user, logout_user
 
 from app import bcrypt, limiter
-from app.blueprints.push import UNKNOWN_DEVICE, endpoint_fingerprint
 from app.db import db_cursor
 from app.github import feedback_enabled
 from app.mailer import mail_enabled
 from app.models import User
 from app.pusher import public_key as push_public_key
 from app.pusher import push_enabled
+from app.services.devices import UNKNOWN_DEVICE, endpoint_fingerprint
 
 bp = Blueprint('auth', __name__)
 

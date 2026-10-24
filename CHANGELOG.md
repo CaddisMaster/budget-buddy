@@ -68,6 +68,9 @@ this project uses the `0.x` versioning scheme described in
   `app/services/ownership.py`.** Transactions, schedules and the statement
   import all run it before saving; the other two imported it from the
   transactions page's module. No visible change. (#489)
+- **Naming a notification device for Profile moved to
+  `app/services/devices.py`.** Profile imported it from the push module. No
+  visible change. (#489)
 
 ## [0.13.0] - 2026-10-12
 

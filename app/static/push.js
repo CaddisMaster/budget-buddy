@@ -96,7 +96,7 @@
   };
 
   /* Profile marks its own row: hash the endpoint the way the server did
-   * (push.endpoint_fingerprint) so the endpoint never has to be in the HTML. */
+   * (services/devices.endpoint_fingerprint) so the endpoint never has to be in the HTML. */
   const fingerprint = async (endpoint) => {
     if (!(window.crypto && crypto.subtle)) return null;
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(endpoint));

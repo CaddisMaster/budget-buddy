@@ -15,7 +15,7 @@ from datetime import date
 import pytest
 
 from app.blueprints.auth import _seen_phrase
-from app.blueprints.push import device_label
+from app.services.devices import device_label
 
 MAC_SAFARI = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
               "(KHTML, like Gecko) Version/26.6.2 Safari/605.1.15")
