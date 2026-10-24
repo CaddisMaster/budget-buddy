@@ -27,8 +27,8 @@ import calendar
 from datetime import date
 
 from app.blueprints.budgets import compute_budget_vs_actual
-from app.blueprints.transactions import compute_next_due
 from app.db import db_cursor
+from app.services.recurrence import compute_next_due
 
 # Day-weighted projection guards. Below this much trailing spend, or this small a
 # cumulative fraction (≈ the first day or two of a month), the curve is too noisy

@@ -8,7 +8,7 @@ from datetime import date
 
 import pytest
 
-from app.blueprints.transactions import compute_next_due
+from app.services.recurrence import compute_next_due
 
 # --- Fixed-interval frequencies ------------------------------------------
 

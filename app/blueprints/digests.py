@@ -29,6 +29,7 @@ from app.db import db_cursor
 from app.helpers import most_recent_sunday
 from app.jobs import WEEKLY_DIGEST, record_job_run
 from app.services.agent import load_agent_run, run_money_agent
+from app.services.recurrence import upcoming_occurrences
 
 bp = Blueprint('digests', __name__)
 
@@ -43,11 +44,10 @@ def _upcoming_scheduled(user_id, today, days=UPCOMING_DAYS):
     """Every scheduled income/expense (schedules) and transfer
     (transfer_schedules) occurrence falling in [today, today+days] — the
     bills/paychecks/transfers coming up this week. Enumerates occurrences with
-    the main.py occurrence walker rather than reading next_due once, so a weekly
+    services/recurrence.py's walker rather than reading next_due once, so a weekly
     bill landing twice inside the window is counted twice. Projection only (no
     materialization). User-scoped. Returns [{description, amount, type, due},
     ...] sorted by due; type is one of 'income' | 'expense' | 'transfer'."""
-    from app.blueprints.main import upcoming_occurrences  # lazy: avoids import cycle
     window_end = today + timedelta(days=days)
     # The walker's window is start-EXCLUSIVE; the digest window includes today.
     window_start = today - timedelta(days=1)

@@ -48,6 +48,7 @@ from flask.cli import with_appcontext
 
 from app import pusher
 from app.db import db_cursor
+from app.services.recurrence import upcoming_occurrences
 
 bp = Blueprint('reminders', __name__)
 
@@ -104,12 +105,11 @@ def materialize_all_users(*, logger=None):
 def _due_tomorrow(user_id, today, lead_days=REMINDER_LEAD_DAYS):
     """Every scheduled item falling in the reminder window for one user.
 
-    Reuses main.upcoming_occurrences (which honours #32's end_date), so a bill
+    Reuses recurrence.upcoming_occurrences (which honours #32's end_date), so a bill
     that will never be charged is never reminded about. The walker's window is
     start-EXCLUSIVE, so window_start = today gives exactly the days after today.
     Returns [{source, source_id, description, amount, type, due}, ...].
     """
-    from app.blueprints.main import upcoming_occurrences  # lazy: import cycle
 
     window_end = today + timedelta(days=lead_days)
     items = []
