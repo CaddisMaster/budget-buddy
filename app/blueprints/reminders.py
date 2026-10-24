@@ -48,6 +48,7 @@ from flask.cli import with_appcontext
 
 from app import pusher
 from app.db import db_cursor
+from app.services.due_runners import run_due_schedules, run_due_transfers
 from app.services.recurrence import upcoming_occurrences
 
 bp = Blueprint('reminders', __name__)
@@ -84,8 +85,6 @@ def _users_with_schedules(cursor):
 def materialize_all_users(*, logger=None):
     """Run both due-runners for every user with active schedules. Returns the
     number of users processed without error. Never gated on push/mail config."""
-    from app.blueprints.schedules import run_due_schedules
-    from app.blueprints.transfers import run_due_transfers
 
     with db_cursor() as cursor:
         user_ids = _users_with_schedules(cursor)

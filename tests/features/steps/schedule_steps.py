@@ -13,8 +13,8 @@ from datetime import date
 from behave import given, register_type, then, when
 
 from app.blueprints.reminders import materialize_all_users
-from app.blueprints.schedules import run_due_schedules
 from app.db import get_db_connection
+from app.services.due_runners import run_due_schedules
 from app.services.recurrence import VALID_FREQUENCIES
 from tests.features.support import HX, _pattern, _user, race
 from tests.helpers import count_posted_from_schedules, create_schedule, fetch_schedule

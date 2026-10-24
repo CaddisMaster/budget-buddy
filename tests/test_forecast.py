@@ -190,7 +190,7 @@ def test_forecast_materialized_schedule_not_double_counted(users):
     today = date.today()
     acct = create_account(a, "fc-dc")
     create_schedule(a, acct, 2222, "monthly", today, transaction_type="income")
-    from app.blueprints.schedules import run_due_schedules
+    from app.services.due_runners import run_due_schedules
     run_due_schedules(a)   # materializes today's occurrence + advances next_due
     fc = compute_forecast(a, today.year, today.month)
     assert fc["income_to_date"] >= 2222        # now a real transaction

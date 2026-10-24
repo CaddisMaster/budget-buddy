@@ -29,8 +29,8 @@ from app.blueprints.reminders import (
     run_daily_tasks,
     send_posted_bill_alerts,
 )
-from app.blueprints.schedules import run_due_schedules
 from app.db import get_db_connection
+from app.services.due_runners import run_due_schedules
 from tests.conftest import TEST_PREFIX
 from tests.helpers import create_account, create_schedule, create_transaction
 

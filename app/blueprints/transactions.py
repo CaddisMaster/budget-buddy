@@ -22,6 +22,7 @@ from app.helpers import (
     parse_positive_amount,
     recent_months,
 )
+from app.services.due_runners import run_due_schedules, run_due_transfers
 from app.services.ownership import validate_category_account
 from app.services.recurrence import FREQUENCY_LABELS
 
@@ -317,8 +318,6 @@ def render_history_tbody():
 @bp.route('/transactions')
 @login_required
 def transactions():
-    from app.blueprints.schedules import run_due_schedules  # lazy: avoids import cycle
-    from app.blueprints.transfers import run_due_transfers
     run_due_schedules(current_user.id)
     run_due_transfers(current_user.id)
     selected_month, search, account_id, page = _current_filters()

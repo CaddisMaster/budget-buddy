@@ -82,6 +82,12 @@ this project uses the `0.x` versioning scheme described in
   `app/services/chart_palette.py`.** Home's chart and the categories page's
   colour swatch must agree, so both run it; the categories page imported it
   from Home's module, lazily, to dodge a cycle. No visible change. (#489)
+- **The code that posts recurring transactions and transfers when they fall
+  due moved to `app/services/due_runners.py`.** Home, the transactions page
+  and the daily job each reached into the schedules and transfers pages'
+  modules for it, two of them lazily to dodge a cycle. That was the last
+  such lazy import, and a test now keeps the app free of them. No visible
+  change. (#489)
 
 ## [0.13.0] - 2026-10-12
 
