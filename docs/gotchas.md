@@ -103,7 +103,7 @@
   card). ⚠️ **The slot ORDER is load-bearing** — adjacent slots are the pairs a reader
   compares, and reordering breaks CVD validation (verified: red beside magenta, violet beside
   blue both fail)
-- **A drawn slice's slot comes from `main.assign_series_slots()`** (#111), computed
+- **A drawn slice's slot comes from `chart_palette.assign_series_slots()`** (#111; `app/services/chart_palette.py` since #489, was `main.py`), computed
   server-side **per view** and carried on each payload row as `slot`. Creation order is the
   PREFERENCE (earliest-created wins a contested slot); anything displaced takes the lowest
   free one, so **no two slices on screen ever share a hue**. ⚠️ There is deliberately NO
@@ -115,10 +115,10 @@
   reverse **because the fold caps the drawn set at `PALETTE_SIZE` real slices against 8 hues**,
   so probing for a free slot always succeeds. Do not restore `% PALETTE.length` colouring.
   ⚠️ **`fold_chart_tail`'s limit and `assign_series_slots`' palette are ONE number now**
-  (`main.PALETTE_SIZE`, #257) and must not be re-split: a limit ABOVE the palette means more
+  (`chart_palette.PALETTE_SIZE`, #257) and must not be re-split: a limit ABOVE the palette means more
   drawn rows than hues, pass 2 finds no free slot, and the collision this exists to prevent
   comes back
-- ⚠️ **The fold cuts at `main.PALETTE_SIZE` (8), NOT at 6** — changed in #257, and the old
+- ⚠️ **The fold cuts at `chart_palette.PALETTE_SIZE` (8), NOT at 6** — changed in #257, and the old
   number is the thing to watch for in older comments. #108 chose six because *"a doughnut is
   past its readable limit around six slices"*; **#223 deleted the doughnut**, and a
   server-rendered list of ranked bars is no less readable at eight rows than at six. The
@@ -126,11 +126,11 @@
   two categories folded into grey every month and one had never been drawn once in five.
   **Before defending a constant, check the thing it was chosen for still exists.**
   `/categories`' swatch (#257) depends on this: at six, most categories had no colour to show
-- **The chart folds to top-`PALETTE_SIZE` + "Other"** (#108/#110/#257) via pure `main.fold_chart_tail()`, in the
+- **The chart folds to top-`PALETTE_SIZE` + "Other"** (#108/#110/#257) via pure `chart_palette.fold_chart_tail()`, in the
   **payload builder, NOT the SQL rollup** — every other surface needs complete per-category
   figures, and the card total comes from `cash_flow` so the fold can't move it. Applied to BOTH
   pill views (one canvas, one palette, one slot map). ⚠️ **`/categories` must read a category's
-  colour from `main.category_slot_map()`, never from `creation_index % PALETTE_SIZE`** (#257):
+  colour from `chart_palette.category_slot_map()`, never from `creation_index % PALETTE_SIZE`** (#257):
   the latter is the *preferred* slot, which a category receives only when nothing contests it,
   so the swatch would disagree with the chart exactly when a collision occurred — and silently.
   Verified: against that shortcut, `/categories` claims slot 2 for a category the chart draws in

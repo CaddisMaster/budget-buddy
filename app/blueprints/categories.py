@@ -8,6 +8,7 @@ from flask_login import current_user, login_required
 from app.db import db_cursor
 from app.helpers import GENERIC_ERROR, hx_toast, is_htmx
 from app.services.budgets import record_budget_change
+from app.services.chart_palette import PALETTE_SIZE, category_slot_map
 
 bp = Blueprint('categories', __name__)
 
@@ -34,7 +35,7 @@ def _colour_slots(categories):
     """{category_id: slot} — the palette slot each category is ACTUALLY drawn in
     on Home this month. A category missing from the map is not charted.
 
-    ⚠️ Runs the real chart pipeline via `main.category_slot_map`, deliberately
+    ⚠️ Runs the real chart pipeline via `chart_palette.category_slot_map`, deliberately
     NOT `creation_index % PALETTE_SIZE`. The latter is the *preferred* slot,
     which a category only receives when nothing contests it — so the swatch
     would disagree with the chart exactly when a collision occurred, and
@@ -51,7 +52,6 @@ def _colour_slots(categories):
     other view reports where it really appears instead of claiming it is
     uncharted.
     """
-    from app.blueprints.main import category_slot_map  # lazy: avoids import cycle
     today = date.today()
     with db_cursor() as cursor:
         by_direction = category_slot_map(cursor, current_user.id, today.year, today.month)
@@ -121,7 +121,6 @@ def categories():
         return redirect(url_for('categories.categories'))
 
     cats = _all_categories()
-    from app.blueprints.main import PALETTE_SIZE  # lazy: avoids import cycle
     return render_template('categories.html', categories=cats,
                            colour_slots=_colour_slots(cats),
                            palette_size=PALETTE_SIZE)

@@ -236,7 +236,7 @@
    ranked bars, readable at a glance and without one. Rendered SERVER-SIDE from
    the same rows that build the chart payload, so a Jinja typo is caught by a
    content assertion rather than rendering as an empty string.
-   ⚠️ Colour still comes from the row's own `slot` (main.py's
+   ⚠️ Colour still comes from the row's own `slot` (chart_palette's
    assign_series_slots, #111) — slots are 0-indexed and the tokens are 1-based,
    hence slot + 1. A folded row (#108) carries no slot and paints from the
    achromatic --series-other, which is what makes it read as "not a category". #}

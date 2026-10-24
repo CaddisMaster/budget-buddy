@@ -631,7 +631,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 
 /* #257 — the same eight palette tokens, as a swatch on /categories, so a
    category can show the colour it is actually drawn in on Home.
-   ⚠️ The slot comes from the server (main.category_slot_map), which runs the
+   ⚠️ The slot comes from the server (chart_palette.category_slot_map), which runs the
    real fold + assignment. Do NOT reimplement it as `creation_index % 8` in a
    template: that is the PREFERRED slot, and it differs from the drawn one
    precisely when two categories contest a hue — a swatch that is usually right

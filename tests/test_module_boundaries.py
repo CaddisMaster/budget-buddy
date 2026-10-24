@@ -36,7 +36,6 @@ LAYERS = ("blueprints", "services")
 # 2026-10-24. Each PR in the series deletes the lines it makes false.
 ALLOWED_EDGES = {
     "blueprints.ask -> blueprints.insights",
-    "blueprints.categories -> blueprints.main",
     "blueprints.digests -> blueprints.insights",
     "blueprints.main -> blueprints.goals",
     "blueprints.main -> blueprints.insights",
@@ -54,7 +53,6 @@ ALLOWED_EDGES = {
 
 # Files under app/ and how many "# lazy" markers each holds.
 ALLOWED_LAZY = {
-    "blueprints/categories.py": 2,
     "blueprints/main.py": 1,
     "blueprints/transactions.py": 1,
 }

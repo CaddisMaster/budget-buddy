@@ -15,7 +15,7 @@ import re
 from datetime import date
 from pathlib import Path
 
-from app.blueprints.main import PALETTE_SIZE, assign_series_slots, fold_chart_tail
+from app.services.chart_palette import PALETTE_SIZE, assign_series_slots, fold_chart_tail
 from tests.helpers import create_category, create_transaction
 
 # --- the redirect -------------------------------------------------------------
