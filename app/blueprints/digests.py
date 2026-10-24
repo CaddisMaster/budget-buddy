@@ -24,11 +24,11 @@ from flask.cli import with_appcontext
 
 from app import mailer
 from app.ai import ParseError, generate_digest
-from app.blueprints.agent import load_agent_run, run_money_agent
 from app.blueprints.insights import compute_month_facts
 from app.db import db_cursor
 from app.helpers import most_recent_sunday
 from app.jobs import WEEKLY_DIGEST, record_job_run
+from app.services.agent import load_agent_run, run_money_agent
 
 bp = Blueprint('digests', __name__)
 
@@ -208,7 +208,7 @@ def send_weekly_digests(*, today=None):
             # a dashboard card the user could trigger themselves, and this
             # comment still said so — #232 deleted the card and the /agent/run
             # route, so the digest is the ONLY thing that writes agent_runs now
-            # (see app/blueprints/agent.py). The cache still earns its place: a
+            # (see app/services/agent.py). The cache still earns its place: a
             # re-run of the send inside the same week reuses the row rather than
             # paying twice.
             # Its own try/except: one flaky investigation must not cost the user

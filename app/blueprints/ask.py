@@ -32,10 +32,10 @@ from app.blueprints.accounts import (
     monthly_interest,
 )
 from app.blueprints.budgets import compute_budget_vs_actual
-from app.blueprints.forecasts import compute_forecast
 from app.blueprints.insights import category_spending, compute_month_facts
 from app.db import db_cursor
 from app.helpers import hx_toast
+from app.services.forecasts import compute_forecast
 
 bp = Blueprint('ask', __name__)
 

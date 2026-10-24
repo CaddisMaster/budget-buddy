@@ -1,4 +1,4 @@
-"""Tests for the month-ahead projection arithmetic (blueprints/forecasts.py).
+"""Tests for the month-ahead projection arithmetic (services/forecasts.py).
 
 Was "v10.2 Forecast" — a cached AI card with its own route. #232 removed the
 card, the route and the narration; the ARITHMETIC survived and now feeds the one
@@ -6,7 +6,7 @@ month read (insights.build_read_facts) and the `month_projection` Ask tool, so
 these tests cover more surface than they used to, not less.
 
 No model seam is stubbed here because none is reached: nothing in
-blueprints/forecasts.py calls Claude. The narration tests that used to live
+services/forecasts.py calls Claude. The narration tests that used to live
 below moved to test_month_read.py.
 """
 import calendar
@@ -15,7 +15,7 @@ from datetime import date, timedelta
 import pytest
 from dateutil.relativedelta import relativedelta
 
-from app.blueprints.forecasts import compute_forecast, project_expenses
+from app.services.forecasts import compute_forecast, project_expenses
 from tests.helpers import create_account, create_budget, create_category, create_schedule, create_transaction
 
 

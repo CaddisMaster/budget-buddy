@@ -7,7 +7,6 @@ from flask_login import current_user, login_required
 
 from app import limiter
 from app.blueprints.budgets import compute_budget_vs_actual
-from app.blueprints.forecasts import compute_forecast
 from app.blueprints.goals import build_goals_view
 from app.blueprints.insights import (
     _prev_month,
@@ -20,6 +19,7 @@ from app.db import db_cursor
 from app.helpers import ai_enabled, parse_month_param, recent_months
 from app.pusher import public_key as push_public_key
 from app.pusher import push_enabled
+from app.services.forecasts import compute_forecast
 
 bp = Blueprint('main', __name__)
 
