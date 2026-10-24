@@ -6,11 +6,11 @@ from flask_login import current_user, login_required
 
 from app.db import db_cursor
 from app.helpers import GENERIC_ERROR, hx_toast, is_htmx, parse_int_param, parse_positive_amount
+from app.services.due_runners import run_due_transfers
 from app.services.recurrence import (
     FREQUENCY_LABELS,
     VALID_FREQUENCIES,
     compute_initial_semimonthly_due,
-    compute_next_due,
 )
 
 bp = Blueprint('transfers', __name__)
@@ -249,54 +249,6 @@ def delete_transfer(group_id):
 # legs sharing one transfer_group_id, is_transfer=true) on each due date going
 # forward. Reuses the schedules.py date math + the paired-leg INSERT above.
 # ---------------------------------------------------------------------------
-
-def run_due_transfers(user_id):
-    """Materialize a paired transfer for every active recurring transfer whose
-    next_due has arrived, catching up (loop) if several occurrences are overdue,
-    then advance next_due past today. Scoped to the given user. The twin of
-    run_due_schedules()."""
-    today = date.today()
-    with db_cursor(commit=True) as cursor:
-        # FOR UPDATE serializes concurrent runs (same race as run_due_schedules:
-        # two threads read next_due before either advances it and each posts the
-        # same paired transfer). The second run blocks until the first commits,
-        # re-evaluates next_due <= today, and finds nothing due.
-        cursor.execute("""
-            SELECT id, amount, description, from_account_id, to_account_id,
-                   frequency, anchor_day, second_day, next_due, end_date
-            FROM transfer_schedules
-            WHERE is_active = true AND next_due <= %s AND user_id = %s
-              AND (end_date IS NULL OR next_due <= end_date)
-            FOR UPDATE
-        """, (today, user_id))
-        due = cursor.fetchall()
-        for s in due:
-            label = s.description or 'Transfer'
-            # #32: nothing materializes past the schedule's last day — including
-            # the stale-next_due catch-up case (zero iterations, no back-fill).
-            stop = min(today, s.end_date) if s.end_date is not None else today
-            cur_due = s.next_due
-            while cur_due <= stop:
-                cursor.execute("SELECT nextval('transfer_group_seq')")
-                gid = cursor.fetchone()[0]
-                # Expense leg out of the From account.
-                cursor.execute(
-                    "INSERT INTO transactions (amount, description, transaction_date, "
-                    "account_id, transaction_type, is_transfer, transfer_group_id, user_id) "
-                    "VALUES (%s, %s, %s, %s, 'expense', true, %s, %s)",
-                    (s.amount, label, cur_due, s.from_account_id, gid, user_id))
-                # Income leg into the To account.
-                cursor.execute(
-                    "INSERT INTO transactions (amount, description, transaction_date, "
-                    "account_id, transaction_type, is_transfer, transfer_group_id, user_id) "
-                    "VALUES (%s, %s, %s, %s, 'income', true, %s, %s)",
-                    (s.amount, label, cur_due, s.to_account_id, gid, user_id))
-                cur_due = compute_next_due(
-                    cur_due, s.frequency, anchor_day=s.anchor_day, second_day=s.second_day)
-            cursor.execute(
-                "UPDATE transfer_schedules SET next_due = %s WHERE id = %s AND user_id = %s",
-                (cur_due, s.id, user_id))
-
 
 def _parse_transfer_schedule_form(form, user_account_ids):
     """Validate a recurring-transfer create/edit form. Returns (errors, fields)

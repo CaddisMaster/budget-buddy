@@ -19,6 +19,7 @@ from app.pusher import public_key as push_public_key
 from app.pusher import push_enabled
 from app.services.budgets import compute_budget_vs_actual
 from app.services.chart_palette import assign_series_slots, category_totals, fold_chart_tail
+from app.services.due_runners import run_due_schedules, run_due_transfers
 from app.services.forecasts import compute_forecast
 
 bp = Blueprint('main', __name__)
@@ -179,8 +180,6 @@ def dashboard():
 @bp.route('/')
 @login_required
 def index():
-    from app.blueprints.schedules import run_due_schedules  # lazy: avoids import cycle
-    from app.blueprints.transfers import run_due_transfers
     run_due_schedules(current_user.id)
     run_due_transfers(current_user.id)
     selected_month = parse_month_param(request.args.get('month'))

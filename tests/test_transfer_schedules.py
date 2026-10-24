@@ -8,8 +8,8 @@ CSRF + rate limiter are disabled under test.
 import threading
 from datetime import date, timedelta
 
-from app.blueprints.transfers import run_due_transfers
 from app.db import get_db_connection
+from app.services.due_runners import run_due_transfers
 from tests.helpers import (
     count_transfer_schedules,
     create_account,

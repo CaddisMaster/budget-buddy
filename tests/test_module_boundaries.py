@@ -14,10 +14,11 @@ checked in BOTH directions:
   to delete its line, and the list can only shrink. Without this half the list
   would stay long after the code got better, and stop meaning anything.
 
-⚠️ The acceptance criteria's `criterion` markers are deliberately NOT here yet.
-While `ALLOWED_EDGES` holds anything, these tests do not prove "no blueprint
-imports another", and a claim on them would be false. The PR that empties both
-allowlists adds the markers.
+⚠️ Each acceptance criterion is claimed only once its allowlist is EMPTY, because
+until then the test does not prove it. `ALLOWED_LAZY` emptied in part 8, so the
+lazy-import scenario is claimed. While `ALLOWED_EDGES` holds anything, "no
+blueprint imports another" is not proven, and the PR that empties it adds that
+claim.
 
 Each detector is proven to fire on a doctored snippet first, because a scan
 that matches nothing passes against any tree.
@@ -39,23 +40,15 @@ ALLOWED_EDGES = {
     "blueprints.digests -> blueprints.insights",
     "blueprints.main -> blueprints.goals",
     "blueprints.main -> blueprints.insights",
-    "blueprints.main -> blueprints.schedules",
-    "blueprints.main -> blueprints.transfers",
-    "blueprints.reminders -> blueprints.schedules",
-    "blueprints.reminders -> blueprints.transfers",
-    "blueprints.transactions -> blueprints.schedules",
-    "blueprints.transactions -> blueprints.transfers",
     "blueprints.transfers -> blueprints.transactions",
     # Moved into services/ before what they call did. Each goes when its
     # target moves.
     "services.agent -> blueprints.ask",
 }
 
-# Files under app/ and how many "# lazy" markers each holds.
-ALLOWED_LAZY = {
-    "blueprints/main.py": 1,
-    "blueprints/transactions.py": 1,
-}
+# Files under app/ and how many "# lazy" markers each holds. Empty since
+# #489 part 8, which moved the due-runners: keep it that way.
+ALLOWED_LAZY = {}
 
 LAZY = re.compile(r"#\s*lazy\b")
 
@@ -188,6 +181,9 @@ def test_the_edge_allowlist_only_shrinks():
         "cannot come back:\n  " + "\n  ".join(sorted(gone)))
 
 
+@pytest.mark.criterion(489, "No lazy import survives to dodge a cycle")
 def test_lazy_imports_only_shrink():
-    # Both directions at once: a new marker and a removed one both fail.
+    # Both directions at once: a new marker and a removed one both fail. With
+    # ALLOWED_LAZY empty, this is the scenario itself: no marker anywhere.
+    assert ALLOWED_LAZY == {}
     assert actual_lazy() == ALLOWED_LAZY
