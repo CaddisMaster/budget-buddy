@@ -6,7 +6,7 @@ being installed — degrades to a ParseError instead of breaking app import.
 
 ⚠️ This module NEVER touches the database and is NEVER handed a user id. The
 tool-use beats (Ask, the money agent) drive their loop here and reach data only
-through a `dispatch` callback the blueprint supplies — blueprints/ask.py is the
+through a `dispatch` callback the caller supplies — services/ask_tools.py is the
 security boundary, not this file.
 
 ⚠️ The v9 natural-language quick-add (`parse_transaction_text`) was REMOVED in
@@ -162,8 +162,9 @@ def _call_month_read_model(facts, today, api_key):
 #
 #   model -> tool_use -> app runs the tool -> tool_result -> model -> answer
 #
-# The security boundary is the tool surface, which lives in blueprints/ask.py
-# (where current_user.id is bound). This module owns ONLY the conversation loop
+# The security boundary is the tool surface, which lives in services/ask_tools.py
+# (the caller binds the user id: current_user.id in /ask, the recipient's in the
+# money agent). This module owns ONLY the conversation loop
 # and its single isolated network seam — it never touches the DB and is never
 # handed a user id. `dispatch` is a callback the blueprint supplies (a closure
 # over the current user) that validates args and runs one fixed query.
@@ -792,7 +793,7 @@ _AGENT_SYSTEM = (
 def investigate_finances(tool_specs, dispatch, *, today=None):
     """Run one autonomous investigation over the user's data via the ask-tools.
 
-    `tool_specs` is the read-only tool list (blueprints/ask.py TOOL_SPECS);
+    `tool_specs` is the read-only tool list (services/ask_tools.py TOOL_SPECS);
     `dispatch(name, raw_input)` is the blueprint's per-user callback, exactly as
     in answer_question — this module never sees a user id. Returns
 
