@@ -3,23 +3,22 @@
 A schedule is NOT a ledger row. `run_due_schedules()` materializes a plain
 transaction on each due date (going forward, no back-fill) and advances next_due.
 Inline-CRUD shape mirrors blueprints/accounts.py (ownership guard → 404, db_cursor,
-hx_toast fragments). Date math is reused from blueprints/transactions.py."""
+hx_toast fragments). Date math comes from services/recurrence.py."""
 from datetime import date, datetime
 
 import psycopg2
-from dateutil.relativedelta import relativedelta
 from flask import Blueprint, abort, current_app, flash, make_response, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
-from app.blueprints.transactions import (
-    FREQUENCY_LABELS,
-    VALID_FREQUENCIES,
-    _clamp_to_month,
-    compute_next_due,
-    validate_category_account,
-)
+from app.blueprints.transactions import validate_category_account
 from app.db import db_cursor
 from app.helpers import GENERIC_ERROR, hx_toast, is_htmx, parse_int_param, parse_positive_amount
+from app.services.recurrence import (
+    FREQUENCY_LABELS,
+    VALID_FREQUENCIES,
+    compute_initial_semimonthly_due,
+    compute_next_due,
+)
 
 bp = Blueprint('schedules', __name__)
 
@@ -51,21 +50,6 @@ def pick_next_due(schedules):
     live = [s for s in schedules
             if s.is_active and not s.is_finished and s.next_due]
     return min(live, key=lambda s: s.next_due) if live else None
-
-
-def compute_initial_semimonthly_due(anchor_day, second_day, today):
-    """First semi-monthly pay day on or after `today` — never back-fills.
-    Picks the earlier of the two pay days that hasn't passed this month, else
-    rolls to the earlier pay day next month."""
-    lo, hi = sorted((anchor_day, second_day))
-    lo_date = _clamp_to_month(today.year, today.month, lo)
-    hi_date = _clamp_to_month(today.year, today.month, hi)
-    if today <= lo_date:
-        return lo_date
-    if today <= hi_date:
-        return hi_date
-    nxt = today + relativedelta(months=1)
-    return _clamp_to_month(nxt.year, nxt.month, lo)
 
 
 def run_due_schedules(user_id):

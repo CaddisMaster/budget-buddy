@@ -33,7 +33,7 @@ APP = Path(__file__).resolve().parent.parent / "app"
 LAYERS = ("blueprints", "services")
 
 # "<importer> -> <imported>", both as "<layer>.<module>". Measured on
-# 2026-10-24 with forecasts.py and agent.py already in services/.
+# 2026-10-24. Each PR in the series deletes the lines it makes false.
 ALLOWED_EDGES = {
     "blueprints.ask -> blueprints.accounts",
     "blueprints.ask -> blueprints.budgets",
@@ -42,7 +42,6 @@ ALLOWED_EDGES = {
     "blueprints.categories -> blueprints.budgets",
     "blueprints.categories -> blueprints.main",
     "blueprints.digests -> blueprints.insights",
-    "blueprints.digests -> blueprints.main",
     "blueprints.imports -> blueprints.transactions",
     "blueprints.insights -> blueprints.accounts",
     "blueprints.insights -> blueprints.budgets",
@@ -50,29 +49,23 @@ ALLOWED_EDGES = {
     "blueprints.main -> blueprints.goals",
     "blueprints.main -> blueprints.insights",
     "blueprints.main -> blueprints.schedules",
-    "blueprints.main -> blueprints.transactions",
     "blueprints.main -> blueprints.transfers",
-    "blueprints.reminders -> blueprints.main",
     "blueprints.reminders -> blueprints.schedules",
     "blueprints.reminders -> blueprints.transfers",
     "blueprints.schedules -> blueprints.transactions",
     "blueprints.transactions -> blueprints.schedules",
     "blueprints.transactions -> blueprints.transfers",
-    "blueprints.transfers -> blueprints.schedules",
     "blueprints.transfers -> blueprints.transactions",
     # Moved into services/ before what they call did. Each goes when its
     # target moves.
     "services.agent -> blueprints.ask",
     "services.forecasts -> blueprints.budgets",
-    "services.forecasts -> blueprints.transactions",
 }
 
 # Files under app/ and how many "# lazy" markers each holds.
 ALLOWED_LAZY = {
     "blueprints/categories.py": 3,
-    "blueprints/digests.py": 1,
     "blueprints/main.py": 1,
-    "blueprints/reminders.py": 1,
     "blueprints/transactions.py": 1,
 }
 

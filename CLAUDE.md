@@ -73,7 +73,8 @@ dashboard), `transactions`, `categories`, `accounts`, `budgets`, `analytics` (re
 security boundary), `digests`, `imports` (statement import, #445).
 
 **Services** (`app/services/`, #489): domain logic with no routes — `forecasts` (the month
-projection's arithmetic) and `agent` (the money agent, run inside the weekly digest). ⚠️ **A
+projection's arithmetic), `agent` (the money agent, run inside the weekly digest) and
+`recurrence` (pure next-due and occurrence-walking date maths). ⚠️ **A
 blueprint imports from a service, never from another blueprint, and a service imports no
 blueprint.** The move is in progress: `tests/test_module_boundaries.py` allowlists the edges
 that predate the rule, and fails on a new one **and** on a listed one that has gone.

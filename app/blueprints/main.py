@@ -14,7 +14,6 @@ from app.blueprints.insights import (
     load_read,
     month_worth_reading,
 )
-from app.blueprints.transactions import compute_next_due
 from app.db import db_cursor
 from app.helpers import ai_enabled, parse_month_param, recent_months
 from app.pusher import public_key as push_public_key
@@ -22,47 +21,6 @@ from app.pusher import push_enabled
 from app.services.forecasts import compute_forecast
 
 bp = Blueprint('main', __name__)
-
-
-# Pure occurrence walkers over compute_next_due — used by the weekly digest's
-# upcoming-week enumerator (digests.py imports them lazily to avoid a cycle).
-def _advance_past(occ, frequency, anchor_day, second_day, day, guard=500):
-    """First occurrence strictly after `day`, walking from `occ` with
-    compute_next_due. Pure. The guard caps runaway walks on bad data."""
-    steps = 0
-    while occ <= day and steps < guard:
-        occ = compute_next_due(occ, frequency, anchor_day=anchor_day,
-                               second_day=second_day)
-        steps += 1
-    return occ
-
-
-def upcoming_occurrences(next_due, frequency, anchor_day, second_day,
-                         window_start, window_end, guard=500, end_date=None):
-    """All occurrence dates with window_start < occ <= window_end. Pure.
-
-    Start is exclusive (anything due today was already materialized by the
-    due-runners); end is INCLUSIVE — a bill due on payday still has to be paid
-    out of this check. Each phase gets its own guard budget so a long catch-up
-    can't starve the collection loop (the forecasts._remaining_scheduled
-    precedent).
-
-    `end_date` is the schedule's optional last day (#32): nothing on or after it
-    is enumerated, so a schedule finishing mid-window is truncated rather than
-    advertised forever. It defaults to None — no end date — which is every
-    schedule created before #32 and every caller that doesn't pass one."""
-    occ = _advance_past(next_due, frequency, anchor_day, second_day,
-                        window_start, guard)
-    if end_date is not None and end_date < window_end:
-        window_end = end_date
-    out = []
-    steps = 0
-    while occ <= window_end and steps < guard:
-        out.append(occ)
-        occ = compute_next_due(occ, frequency, anchor_day=anchor_day,
-                               second_day=second_day)
-        steps += 1
-    return out
 
 
 # Doughnut tail fold (#108). A doughnut is a part-to-whole-at-a-glance form and

@@ -1,4 +1,4 @@
-"""Pure occurrence-walker tests — _advance_past / upcoming_occurrences
+"""Pure occurrence-walker tests — advance_past / upcoming_occurrences
 (main.py). The walkers forward-walk compute_next_due; the weekly digest's
 upcoming-week enumerator (digests._upcoming_scheduled) depends on their window
 semantics: start EXCLUSIVE (anything due today was already materialized by the
@@ -9,17 +9,17 @@ removal in v10.12.0 — moved here from test_safe_to_spend.py.)
 """
 from datetime import date
 
-from app.blueprints.main import _advance_past, upcoming_occurrences
+from app.services.recurrence import advance_past, upcoming_occurrences
 
 
 def test_advance_past_walks_stale_next_due():
     # Monthly anchor months in the past walks to the first occurrence after `day`.
-    occ = _advance_past(date(2026, 1, 5), "monthly", None, None, date(2026, 3, 10))
+    occ = advance_past(date(2026, 1, 5), "monthly", None, None, date(2026, 3, 10))
     assert occ == date(2026, 4, 5)
 
 
 def test_advance_past_future_occurrence_untouched():
-    occ = _advance_past(date(2026, 3, 20), "monthly", None, None, date(2026, 3, 10))
+    occ = advance_past(date(2026, 3, 20), "monthly", None, None, date(2026, 3, 10))
     assert occ == date(2026, 3, 20)
 
 

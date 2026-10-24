@@ -50,6 +50,11 @@ this project uses the `0.x` versioning scheme described in
   imports another blueprint, or a service imports a blueprint, beyond the
   imports that already existed, and that list can only get shorter. No
   visible change. (#489)
+- **The date arithmetic behind every recurring schedule now lives in one
+  place**, `app/services/recurrence.py`. Working out the next due date, the
+  first semi-monthly pay day, and every date a schedule falls on in a window
+  was split across three blueprints, which imported each other (two of them
+  lazily, to dodge a cycle) to reach it. No visible change. (#489)
 
 ## [0.13.0] - 2026-10-12
 

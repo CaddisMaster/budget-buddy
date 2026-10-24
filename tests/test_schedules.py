@@ -12,11 +12,9 @@ every one of those behaviours was broken in app/ and its scenario went red.
 """
 from datetime import date, timedelta
 
-from app.blueprints.schedules import (
-    compute_initial_semimonthly_due,
-    run_due_schedules,
-)
+from app.blueprints.schedules import run_due_schedules
 from app.db import get_db_connection
+from app.services.recurrence import compute_initial_semimonthly_due
 from tests.helpers import count_transactions_like, create_schedule, fetch_schedule
 
 HX = {"HX-Request": "true"}

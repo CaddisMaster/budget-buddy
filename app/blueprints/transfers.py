@@ -4,14 +4,14 @@ import psycopg2
 from flask import Blueprint, abort, current_app, flash, make_response, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
-from app.blueprints.schedules import compute_initial_semimonthly_due
-from app.blueprints.transactions import (
-    FREQUENCY_LABELS,
-    VALID_FREQUENCIES,
-    compute_next_due,
-)
 from app.db import db_cursor
 from app.helpers import GENERIC_ERROR, hx_toast, is_htmx, parse_int_param, parse_positive_amount
+from app.services.recurrence import (
+    FREQUENCY_LABELS,
+    VALID_FREQUENCIES,
+    compute_initial_semimonthly_due,
+    compute_next_due,
+)
 
 bp = Blueprint('transfers', __name__)
 

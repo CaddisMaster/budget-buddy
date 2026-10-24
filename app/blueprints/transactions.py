@@ -1,4 +1,3 @@
-import calendar
 import csv
 import io
 import math
@@ -7,7 +6,6 @@ from datetime import date, datetime, timedelta
 from urllib.parse import urlencode
 
 import psycopg2
-from dateutil.relativedelta import relativedelta
 from flask import Blueprint, abort, current_app, flash, make_response, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
@@ -24,22 +22,10 @@ from app.helpers import (
     parse_positive_amount,
     recent_months,
 )
+from app.services.recurrence import FREQUENCY_LABELS
 
 bp = Blueprint('transactions', __name__)
 
-# Recurring frequencies the app accepts. 'semimonthly' is the only one that
-# needs a second pay day (recur_second_day); the rest are fixed intervals.
-VALID_FREQUENCIES = ('weekly', 'biweekly', 'semimonthly', 'monthly', 'quarterly', 'annually')
-
-# Human-friendly labels for the recurring badge in the history table.
-FREQUENCY_LABELS = {
-    'weekly': 'Weekly',
-    'biweekly': 'Bi-weekly',
-    'semimonthly': 'Semi-monthly',
-    'monthly': 'Monthly',
-    'quarterly': 'Quarterly',
-    'annually': 'Annually',
-}
 
 
 # The History row shape: the 13-column history SELECT plus the per-page
@@ -123,40 +109,6 @@ def _export_kind(row):
     if row.is_adjustment:
         return 'adjustment'
     return ''
-
-
-def _clamp_to_month(year, month, day):
-    """Build a date, clamping the day to the last valid day of that month
-    (so a '31st' pay day lands on the 28th/30th in shorter months)."""
-    last_day = calendar.monthrange(year, month)[1]
-    return date(year, month, min(day, last_day))
-
-
-def compute_next_due(current, frequency, anchor_day=None, second_day=None):
-    """Return the next due date (a date) strictly after `current` for the given
-    frequency. For 'semimonthly', anchor_day and second_day are the two pay days
-    of the month (e.g. 15 and 31); the function alternates between them."""
-    if frequency == 'weekly':
-        return current + timedelta(weeks=1)
-    if frequency == 'biweekly':
-        return current + timedelta(weeks=2)
-    if frequency == 'monthly':
-        return current + relativedelta(months=1)
-    if frequency == 'quarterly':
-        return current + relativedelta(months=3)
-    if frequency == 'annually':
-        return current + relativedelta(years=1)
-    if frequency == 'semimonthly' and anchor_day and second_day:
-        lo, hi = sorted((anchor_day, second_day))
-        # Compare against the clamped date, so a "31 = last day" pay day that
-        # lands on the 28th/30th doesn't keep re-targeting the same month.
-        hi_this_month = _clamp_to_month(current.year, current.month, hi)
-        if current < hi_this_month:
-            return hi_this_month
-        nxt = current + relativedelta(months=1)
-        return _clamp_to_month(nxt.year, nxt.month, lo)
-    # Fallback keeps a recurring row moving forward even on unexpected data.
-    return current + relativedelta(months=1)
 
 
 @bp.route('/transactions/new', methods=['GET', 'POST'])
