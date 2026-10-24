@@ -7,6 +7,7 @@ from flask_login import current_user, login_required
 
 from app.db import db_cursor
 from app.helpers import GENERIC_ERROR, hx_toast, is_htmx
+from app.services.budgets import record_budget_change
 
 bp = Blueprint('categories', __name__)
 
@@ -148,7 +149,6 @@ def edit_category(category_id):
         if error:
             return render_template('partials/_category_edit_row.html',
                                    cat=CategoryRow(category_id, name, description, kind), error=error)
-        from app.blueprints.budgets import record_budget_change  # lazy: avoids import cycle
         cleared_budget = False
         try:
             with db_cursor(commit=True) as cursor:

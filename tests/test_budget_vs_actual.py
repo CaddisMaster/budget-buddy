@@ -19,7 +19,7 @@ from datetime import datetime
 
 import pytest
 
-from app.blueprints.budgets import compute_budget_vs_actual
+from app.services.budgets import compute_budget_vs_actual
 from tests.helpers import create_budget, create_category, create_transaction
 
 
