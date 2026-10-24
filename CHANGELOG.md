@@ -60,6 +60,10 @@ this project uses the `0.x` versioning scheme described in
   Ask and the categories page all read them, and each imported them from the
   budgets page's own module (the categories page lazily, to dodge a cycle).
   No visible change. (#489)
+- **The account balance query and the credit-card maths moved to
+  `app/services/accounts.py`.** Ask and the month read imported them from the
+  accounts page's module. The accounts page still offers the two credit-card
+  helpers to its templates. No visible change. (#489)
 
 ## [0.13.0] - 2026-10-12
 

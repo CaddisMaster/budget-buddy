@@ -35,13 +35,11 @@ LAYERS = ("blueprints", "services")
 # "<importer> -> <imported>", both as "<layer>.<module>". Measured on
 # 2026-10-24. Each PR in the series deletes the lines it makes false.
 ALLOWED_EDGES = {
-    "blueprints.ask -> blueprints.accounts",
     "blueprints.ask -> blueprints.insights",
     "blueprints.auth -> blueprints.push",
     "blueprints.categories -> blueprints.main",
     "blueprints.digests -> blueprints.insights",
     "blueprints.imports -> blueprints.transactions",
-    "blueprints.insights -> blueprints.accounts",
     "blueprints.main -> blueprints.goals",
     "blueprints.main -> blueprints.insights",
     "blueprints.main -> blueprints.schedules",
