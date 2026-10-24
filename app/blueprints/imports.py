@@ -42,9 +42,9 @@ from flask_login import current_user, login_required
 
 from app import limiter
 from app.ai import ParseError, classify_transactions, map_csv_columns, read_screenshots
-from app.blueprints.transactions import validate_category_account
 from app.db import db_cursor
 from app.helpers import GENERIC_ERROR, ai_enabled, parse_int_param, parse_positive_amount
+from app.services.ownership import validate_category_account
 from app.statements import (
     DATE_FORMATS,
     DESCRIPTION_MAX,
