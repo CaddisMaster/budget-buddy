@@ -88,6 +88,10 @@ this project uses the `0.x` versioning scheme described in
   modules for it, two of them lazily to dodge a cycle. That was the last
   such lazy import, and a test now keeps the app free of them. No visible
   change. (#489)
+- **The month's figures moved to `app/services/month_read.py`.** Home's month
+  read, the Ask box's month tools and the weekly digest all read them, and
+  imported them from the month read's own page module. No visible change.
+  (#489)
 
 ## [0.13.0] - 2026-10-12
 

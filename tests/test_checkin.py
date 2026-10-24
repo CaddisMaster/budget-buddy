@@ -8,8 +8,8 @@ no transaction). Non-AI — no seams to mock.
 """
 from datetime import date
 
-from app.blueprints.insights import compute_month_facts
 from app.db import get_db_connection
+from app.services.month_read import compute_month_facts
 from tests.helpers import account_balance, create_account, create_transaction
 
 HX = {"HX-Request": "true"}

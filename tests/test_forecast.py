@@ -2,7 +2,7 @@
 
 Was "v10.2 Forecast" — a cached AI card with its own route. #232 removed the
 card, the route and the narration; the ARITHMETIC survived and now feeds the one
-month read (insights.build_read_facts) and the `month_projection` Ask tool, so
+month read (month_read.build_read_facts) and the `month_projection` Ask tool, so
 these tests cover more surface than they used to, not less.
 
 No model seam is stubbed here because none is reached: nothing in

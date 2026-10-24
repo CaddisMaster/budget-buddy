@@ -22,8 +22,8 @@ from datetime import date, timedelta
 import pytest
 
 from app.blueprints import reminders
-from app.blueprints.insights import build_read_facts
 from app.blueprints.reminders import materialize_all_users
+from app.services.month_read import build_read_facts
 from tests.conftest import TEST_PREFIX
 from tests.helpers import (
     PASSWORD,

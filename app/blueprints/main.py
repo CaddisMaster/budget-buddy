@@ -7,12 +7,6 @@ from flask_login import current_user, login_required
 
 from app import limiter
 from app.blueprints.goals import build_goals_view
-from app.blueprints.insights import (
-    _prev_month,
-    compute_month_facts,
-    load_read,
-    month_worth_reading,
-)
 from app.db import db_cursor
 from app.helpers import ai_enabled, parse_month_param, recent_months
 from app.pusher import public_key as push_public_key
@@ -21,6 +15,12 @@ from app.services.budgets import compute_budget_vs_actual
 from app.services.chart_palette import assign_series_slots, category_totals, fold_chart_tail
 from app.services.due_runners import run_due_schedules, run_due_transfers
 from app.services.forecasts import compute_forecast
+from app.services.month_read import (
+    compute_month_facts,
+    load_read,
+    month_worth_reading,
+    prev_month,
+)
 
 bp = Blueprint('main', __name__)
 
@@ -400,7 +400,7 @@ def index():
     # is how the two scopes got mixed.
     hero_delta = None
     if selected_month:
-        prev_facts = compute_month_facts(current_user.id, *_prev_month(filter_year, filter_month))
+        prev_facts = compute_month_facts(current_user.id, *prev_month(filter_year, filter_month))
         hero_delta = net_change(prev_facts['net'], summary['net'])
 
     # Year over year — only when a month is selected AND last year has data;

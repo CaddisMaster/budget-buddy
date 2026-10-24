@@ -305,7 +305,7 @@ def test_utilization_facts_user_isolation(users):
 
 
 def test_month_facts_carry_credit_cards(users):
-    from app.blueprints.insights import compute_month_facts
+    from app.services.month_read import compute_month_facts
     aid = create_account(users["a"]["id"], "InsightCard", "Credit Card",
                          credit_limit=1000)
     create_transaction(users["a"]["id"], aid, 300, date.today())

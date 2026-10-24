@@ -26,7 +26,6 @@ from flask_login import current_user, login_required
 
 from app import limiter
 from app.ai import ParseError, answer_question
-from app.blueprints.insights import category_spending, compute_month_facts
 from app.db import db_cursor
 from app.helpers import hx_toast
 from app.services.accounts import (
@@ -36,6 +35,7 @@ from app.services.accounts import (
 )
 from app.services.budgets import compute_budget_vs_actual
 from app.services.forecasts import compute_forecast
+from app.services.month_read import category_spending, compute_month_facts
 
 bp = Blueprint('ask', __name__)
 
