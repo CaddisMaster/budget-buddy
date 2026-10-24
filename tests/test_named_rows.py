@@ -51,7 +51,8 @@ def _is_fetch(node):
 def positional_reads(source):
     """(line, description) for every positional row read in `source`."""
     found = []
-    for node in ast.walk(ast.parse(source)):
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
         if (isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name)
                 and node.value.id in ROW_NAMES
                 and isinstance(node.slice, ast.Constant)
@@ -69,6 +70,37 @@ def positional_reads(source):
                 if (isinstance(arg, ast.Starred) and isinstance(arg.value, ast.Name)
                         and arg.value.id in ROW_NAMES):
                     found.append((node.lineno, f"*{arg.value.id} into a call"))
+    found.extend(_unpacks_through_a_name(tree))
+    return found
+
+
+def _unpacks_through_a_name(tree):
+    """The same tuple unpack one assignment away (#513).
+
+    `due = cursor.fetchall()` then `for (sid, amount, ...) in due` is exactly
+    as positional as unpacking the call directly, and the shapes above missed
+    it in both due-runners. Scoped per function: a name only counts if THIS
+    function bound it from a fetch, so a parameter or a helper's return value
+    of the same name (`build_budget_report(spend_rows)`, `category_spending()`'s
+    plain tuples built by name) is not flagged.
+    """
+    found = []
+    for func in ast.walk(tree):
+        if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        fetched = {t.id for node in ast.walk(func)
+                   if isinstance(node, ast.Assign) and _is_fetch(node.value)
+                   for t in node.targets if isinstance(t, ast.Name)}
+        for node in ast.walk(func):
+            if (isinstance(node, (ast.For, ast.comprehension))
+                    and isinstance(node.target, ast.Tuple)
+                    and isinstance(node.iter, ast.Name) and node.iter.id in fetched):
+                found.append((getattr(node, "lineno", node.iter.lineno),
+                              f"tuple unpack over {node.iter.id} (a fetch)"))
+            elif (isinstance(node, ast.Assign) and isinstance(node.value, ast.Name)
+                  and node.value.id in fetched
+                  and any(isinstance(t, ast.Tuple) for t in node.targets)):
+                found.append((node.lineno, f"tuple unpack of {node.value.id} (a fetch)"))
     return found
 
 
@@ -111,6 +143,12 @@ def test_a_column_history_row_does_not_know_fails_loudly():
     ("x = [a for a, b in cursor.fetchall()]", "tuple unpack over fetchall()"),
     ("a, b = cursor.fetchone()", "tuple unpack of fetchone()"),
     ("HistoryRow(*t, 0)", "*t into a call"),
+    # #513: one assignment away, inside a function.
+    ("def f(c):\n    due = c.fetchall()\n    for (a, b) in due:\n        pass",
+     "tuple unpack over due (a fetch)"),
+    ("def f(c):\n    rows = c.fetchall()\n    return {a: b for a, b in rows}",
+     "tuple unpack over rows (a fetch)"),
+    ("def f(c):\n    row = c.fetchone()\n    a, b = row", "tuple unpack of row (a fetch)"),
 ])
 def test_each_positional_shape_is_detected(snippet, expected):
     """Proves the scan below can fail, one shape at a time."""
@@ -123,6 +161,10 @@ def test_each_positional_shape_is_detected(snippet, expected):
     "first = row[0]",
     "end = period[1]",
     "rows = cursor.fetchall()",
+    # #513's lookalikes: plain tuples built by name, not fetched here.
+    "def build(spend_rows):\n    for cid, total in spend_rows:\n        pass",
+    "def f(c):\n    rows = category_spending(c)\n    return [n for n, t in rows]",
+    "def f(c):\n    rows = c.fetchall()\n    for r in rows:\n        print(r.amount)",
 ])
 def test_reads_by_name_and_single_columns_are_not_flagged(snippet):
     assert positional_reads(snippet) == []

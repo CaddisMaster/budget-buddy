@@ -74,15 +74,14 @@ def run_due_schedules(user_id):
             FOR UPDATE
         """, (today, user_id))
         due = cursor.fetchall()
-        for (sid, amount, desc, cat_id, acc_id, ttype, freq,
-             anchor_day, second_day, next_due, end_date) in due:
+        for s in due:
             # #32: nothing materializes past the schedule's last day. Note this
             # also covers the nastiest case for free — a schedule whose next_due
             # went stale AND whose end_date has since passed gives zero
             # iterations, so the catch-up loop back-fills nothing on the next
             # login rather than posting months of charges that never happened.
-            stop = min(today, end_date) if end_date is not None else today
-            cur_due = next_due
+            stop = min(today, s.end_date) if s.end_date is not None else today
+            cur_due = s.next_due
             while cur_due <= stop:
                 # #191 — schedule_id is stamped on EVERY materialized row, not
                 # just a variable one. The link is what makes a posted row
@@ -95,12 +94,13 @@ def run_due_schedules(user_id):
                         (amount, description, category_id, account_id,
                          transaction_date, transaction_type, schedule_id, user_id)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, (amount, desc, cat_id, acc_id, cur_due, ttype, sid, user_id))
+                """, (s.amount, s.description, s.category_id, s.account_id, cur_due,
+                      s.transaction_type, s.id, user_id))
                 cur_due = compute_next_due(
-                    cur_due, freq, anchor_day=anchor_day, second_day=second_day)
+                    cur_due, s.frequency, anchor_day=s.anchor_day, second_day=s.second_day)
             cursor.execute(
                 "UPDATE schedules SET next_due = %s WHERE id = %s AND user_id = %s",
-                (cur_due, sid, user_id))
+                (cur_due, s.id, user_id))
 
 
 def _fetch_schedule_row(cursor, schedule_id):
