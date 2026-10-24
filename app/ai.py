@@ -62,7 +62,7 @@ def _match_id(name, rows):
 # Supersedes v10.1 "Insight" and v10.2 "Forecast", which were two cards narrating
 # two halves of one month (and, with the v10.10 money agent, three AI surfaces
 # stacked in one panel). The app still computes every figure deterministically —
-# insights.build_read_facts() merges compute_month_facts() with
+# month_read.build_read_facts() merges compute_month_facts() with
 # compute_forecast() — and the model only writes prose over them. It must NOT
 # recompute or invent numbers, so nothing it returns is ever used as a figure.
 # Kept in this module so a missing key or package degrades gracefully
@@ -84,7 +84,7 @@ class _MonthRead(BaseModel):
 def generate_month_read(facts, *, today=None):
     """Turn already-computed month figures + projection into one short read.
 
-    `facts` is the deterministic dict from insights.build_read_facts(): the
+    `facts` is the deterministic dict from month_read.build_read_facts(): the
     month's own figures at the top level, the forward projection under
     `projection`. Returns {"summary": str}. Raises ParseError on any failure (no
     key, package missing, API/output error) so the caller can fall back to the

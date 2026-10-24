@@ -50,7 +50,7 @@ def compute_budget_vs_actual(user_id, year=None, month=None):
     name collapsed two of them into a single row carrying ONE budget and BOTH
     categories' spending whenever their budget amounts were equal — reporting a
     user who was 90.00 under as 10.00 over. That figure is not merely rendered:
-    `insights.compute_month_facts()` turns a negative `remaining` into an entry
+    `month_read.compute_month_facts()` turns a negative `remaining` into an entry
     in the month read's `overruns`, which the prompt tells the model to treat as
     ground truth, so a fabricated overrun was narrated with confidence.
     Read consumers by ATTRIBUTE (`row.budget`), never by position — the id was

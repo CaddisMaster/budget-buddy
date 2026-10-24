@@ -5,7 +5,7 @@ the Insight card on Home. #232 removed the card, the `/forecasts/generate` route
 and the narration; the deterministic arithmetic here SURVIVED it and now feeds
 two callers instead of one:
 
-  * insights.build_read_facts() — the projection half of the one month read
+  * month_read.build_read_facts() — the projection half of the one month read
   * ask.py's `month_projection` tool — the same figures, on demand
 
 compute_forecast() produces month-to-date actuals, a day-weighted spend

@@ -175,7 +175,7 @@ def test_facts_user_isolation_apr(users):
 
 
 def test_month_facts_carry_interest(users):
-    from app.blueprints.insights import compute_month_facts
+    from app.services.month_read import compute_month_facts
     aid = create_account(users["a"]["id"], "InsightApr", "Credit Card", apr=12.0)
     create_transaction(users["a"]["id"], aid, 1000, date.today())
     today = date.today()
