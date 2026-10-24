@@ -43,6 +43,13 @@ this project uses the `0.x` versioning scheme described in
   defaults, constraints, indexes, sequences and grants, and the failure names
   the object that differs. A data-only migration no longer has to touch
   `schema.sql`. (#492)
+- **Five more places read a database row by position, and now read it by
+  name.** The recurring-schedule and recurring-transfer runners, and two
+  budget queries, unpacked each row into a fixed list of names, so a column
+  added to their query would have shifted every value after it, and the two
+  runners write ledger rows. The test added for #491 only caught that shape
+  directly on the database call; it now catches it one step away too. No
+  visible change. (#513)
 - **The forecast arithmetic and the money agent moved to a new `app/services/`
   package.** Neither has had a route since #232, but both still sat among the
   blueprints. They are the first two pieces of domain logic to move out, so

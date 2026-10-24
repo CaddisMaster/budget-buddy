@@ -270,13 +270,12 @@ def run_due_transfers(user_id):
             FOR UPDATE
         """, (today, user_id))
         due = cursor.fetchall()
-        for (tsid, amount, desc, from_acc, to_acc, freq,
-             anchor_day, second_day, next_due, end_date) in due:
-            label = desc or 'Transfer'
+        for s in due:
+            label = s.description or 'Transfer'
             # #32: nothing materializes past the schedule's last day — including
             # the stale-next_due catch-up case (zero iterations, no back-fill).
-            stop = min(today, end_date) if end_date is not None else today
-            cur_due = next_due
+            stop = min(today, s.end_date) if s.end_date is not None else today
+            cur_due = s.next_due
             while cur_due <= stop:
                 cursor.execute("SELECT nextval('transfer_group_seq')")
                 gid = cursor.fetchone()[0]
@@ -285,18 +284,18 @@ def run_due_transfers(user_id):
                     "INSERT INTO transactions (amount, description, transaction_date, "
                     "account_id, transaction_type, is_transfer, transfer_group_id, user_id) "
                     "VALUES (%s, %s, %s, %s, 'expense', true, %s, %s)",
-                    (amount, label, cur_due, from_acc, gid, user_id))
+                    (s.amount, label, cur_due, s.from_account_id, gid, user_id))
                 # Income leg into the To account.
                 cursor.execute(
                     "INSERT INTO transactions (amount, description, transaction_date, "
                     "account_id, transaction_type, is_transfer, transfer_group_id, user_id) "
                     "VALUES (%s, %s, %s, %s, 'income', true, %s, %s)",
-                    (amount, label, cur_due, to_acc, gid, user_id))
+                    (s.amount, label, cur_due, s.to_account_id, gid, user_id))
                 cur_due = compute_next_due(
-                    cur_due, freq, anchor_day=anchor_day, second_day=second_day)
+                    cur_due, s.frequency, anchor_day=s.anchor_day, second_day=s.second_day)
             cursor.execute(
                 "UPDATE transfer_schedules SET next_due = %s WHERE id = %s AND user_id = %s",
-                (cur_due, tsid, user_id))
+                (cur_due, s.id, user_id))
 
 
 def _parse_transfer_schedule_form(form, user_account_ids):

@@ -146,11 +146,12 @@ def load_budget_rows(user_id):
 
     suggestions = compute_budget_suggestions(user_id)
     rows = []
-    for cid, name in all_categories:
+    for cat in all_categories:
+        cid = cat.id
         is_set = cid in saved
         suggested = suggestions.get(cid)
         effective = saved[cid] if is_set else suggested
-        rows.append(BudgetRow(cid, name, effective, is_set, suggested, actuals.get(cid, 0.0)))
+        rows.append(BudgetRow(cid, cat.name, effective, is_set, suggested, actuals.get(cid, 0.0)))
     return rows, all_categories
 
 
@@ -191,10 +192,10 @@ def compute_budget_review_facts(user_id, cap=BUDGET_REVIEW_CAP):
         budget_rows = cursor.fetchall()
 
     monthly = {}   # category_id -> {"name": ..., "totals": [(month, spent), ...]}
-    for cid, name, month, total in spend_rows:
-        entry = monthly.setdefault(cid, {"name": name, "totals": []})
-        entry["totals"].append((month, float(total)))
-    saved = {cid: (name, int(amount)) for cid, name, amount in budget_rows}
+    for r in spend_rows:
+        entry = monthly.setdefault(r.category_id, {"name": r.name, "totals": []})
+        entry["totals"].append((r.month, float(r.monthly_total)))
+    saved = {r.category_id: (r.name, int(r.amount)) for r in budget_rows}
 
     current_month = datetime.today().strftime('%Y-%m')
     candidates = []
