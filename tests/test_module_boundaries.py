@@ -36,7 +36,6 @@ LAYERS = ("blueprints", "services")
 # 2026-10-24. Each PR in the series deletes the lines it makes false.
 ALLOWED_EDGES = {
     "blueprints.ask -> blueprints.insights",
-    "blueprints.auth -> blueprints.push",
     "blueprints.categories -> blueprints.main",
     "blueprints.digests -> blueprints.insights",
     "blueprints.main -> blueprints.goals",
