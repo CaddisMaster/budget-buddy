@@ -6,7 +6,7 @@ the date math deterministic.
 """
 from datetime import date
 
-from app.blueprints.goals import compute_goal_projection
+from app.services.goals import compute_goal_projection
 
 TODAY = date(2026, 1, 1)
 

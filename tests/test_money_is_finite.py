@@ -4,7 +4,7 @@ PostgreSQL's `numeric` accepts `NaN`, so every money column in this schema could
 hold one. Nothing in the app writes one today — `helpers.parse_signed_amount()`
 rejects non-finite input — but that validator is younger than the columns, and
 `accounts.monthly_interest` already says so in its own docstring ("stored values
-could predate it"). #314 takes that seriously: `goals.compute_goal_projection()`
+could predate it"). #314 takes that seriously: `services/goals.compute_goal_projection()`
 raises `ValueError: cannot convert float NaN to integer` on a NaN target, which
 is a 500 on a page the user can reach, and a NaN `credit_limit` used to turn the
 whole "Total available credit" figure into `nan`.
@@ -45,8 +45,8 @@ from pathlib import Path
 import psycopg2
 import pytest
 
-from app.blueprints.goals import compute_goal_projection
 from app.db import db_cursor
+from app.services.goals import compute_goal_projection
 from tests.helpers import create_account, create_budget, create_goal, create_schedule, create_transfer_schedule
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

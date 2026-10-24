@@ -7,8 +7,8 @@ request context); the 404 ownership guards are exercised through the routes.
 """
 from datetime import date
 
-from app.blueprints.goals import build_goals_view
 from app.db import db_cursor, get_db_connection
+from app.services.goals import build_goals_view
 from tests.helpers import create_account, create_goal, create_transaction, create_transfer, fetch_goal
 
 TODAY = date.today().isoformat()
