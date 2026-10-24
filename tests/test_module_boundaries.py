@@ -36,7 +36,6 @@ LAYERS = ("blueprints", "services")
 # "<importer> -> <imported>", both as "<layer>.<module>". Measured on
 # 2026-10-24. Each PR in the series deletes the lines it makes false.
 ALLOWED_EDGES = {
-    "blueprints.main -> blueprints.goals",
     "blueprints.transfers -> blueprints.transactions",
     # Moved into services/ before what they call did. Each goes when its
     # target moves.

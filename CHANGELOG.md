@@ -92,6 +92,9 @@ this project uses the `0.x` versioning scheme described in
   read, the Ask box's month tools and the weekly digest all read them, and
   imported them from the month read's own page module. No visible change.
   (#489)
+- **A goal's progress and projection moved to `app/services/goals.py`.** The
+  Goals page and Home's goals widget both show them, and Home imported them
+  from the Goals page's module. No visible change. (#489)
 
 ## [0.13.0] - 2026-10-12
 

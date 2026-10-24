@@ -89,12 +89,12 @@ def test_all_three_non_finite_guards_are_spelled_the_same_way():
     """One rule, one spelling (#309, tranche 2).
 
     The guard exists in three places — `credit_utilization`,
-    `monthly_interest` and `goals.compute_goal_projection`. It was written
+    `monthly_interest` and `services/goals.compute_goal_projection`. It was written
     three different ways: two as `x != x`, one not at all. Asserting the
     BEHAVIOUR at all three sites rather than the source text, because the
     spelling is a means and the rejection is the end.
     """
-    from app.blueprints.goals import compute_goal_projection
+    from app.services.goals import compute_goal_projection
 
     nan = Decimal("NaN")
     assert credit_utilization(-500.0, nan) is None

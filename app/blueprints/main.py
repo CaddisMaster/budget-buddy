@@ -6,7 +6,6 @@ from flask import Blueprint, current_app, jsonify, redirect, render_template, re
 from flask_login import current_user, login_required
 
 from app import limiter
-from app.blueprints.goals import build_goals_view
 from app.db import db_cursor
 from app.helpers import ai_enabled, parse_month_param, recent_months
 from app.pusher import public_key as push_public_key
@@ -15,6 +14,7 @@ from app.services.budgets import compute_budget_vs_actual
 from app.services.chart_palette import assign_series_slots, category_totals, fold_chart_tail
 from app.services.due_runners import run_due_schedules, run_due_transfers
 from app.services.forecasts import compute_forecast
+from app.services.goals import build_goals_view
 from app.services.month_read import (
     compute_month_facts,
     load_read,
