@@ -26,8 +26,8 @@ it, which is fine: `restore_check.py` has no expected-table list.
 import calendar
 from datetime import date
 
-from app.blueprints.budgets import compute_budget_vs_actual
 from app.db import db_cursor
+from app.services.budgets import compute_budget_vs_actual
 from app.services.recurrence import compute_next_due
 
 # Day-weighted projection guards. Below this much trailing spend, or this small a

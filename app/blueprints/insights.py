@@ -33,9 +33,9 @@ from flask_login import current_user, login_required
 from app import limiter
 from app.ai import MODEL, ParseError, generate_month_read
 from app.blueprints.accounts import credit_card_utilization_facts
-from app.blueprints.budgets import compute_budget_vs_actual
 from app.db import db_cursor
 from app.helpers import hx_toast
+from app.services.budgets import compute_budget_vs_actual
 from app.services.forecasts import compute_forecast
 
 bp = Blueprint('insights', __name__)

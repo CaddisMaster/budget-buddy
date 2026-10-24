@@ -55,6 +55,11 @@ this project uses the `0.x` versioning scheme described in
   first semi-monthly pay day, and every date a schedule falls on in a window
   was split across three blueprints, which imported each other (two of them
   lazily, to dodge a cycle) to reach it. No visible change. (#489)
+- **The month's spend-against-budget figures and the budget-change log moved
+  to `app/services/budgets.py`.** Home, the month read, the month projection,
+  Ask and the categories page all read them, and each imported them from the
+  budgets page's own module (the categories page lazily, to dodge a cycle).
+  No visible change. (#489)
 
 ## [0.13.0] - 2026-10-12
 

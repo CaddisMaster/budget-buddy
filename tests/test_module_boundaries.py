@@ -36,16 +36,12 @@ LAYERS = ("blueprints", "services")
 # 2026-10-24. Each PR in the series deletes the lines it makes false.
 ALLOWED_EDGES = {
     "blueprints.ask -> blueprints.accounts",
-    "blueprints.ask -> blueprints.budgets",
     "blueprints.ask -> blueprints.insights",
     "blueprints.auth -> blueprints.push",
-    "blueprints.categories -> blueprints.budgets",
     "blueprints.categories -> blueprints.main",
     "blueprints.digests -> blueprints.insights",
     "blueprints.imports -> blueprints.transactions",
     "blueprints.insights -> blueprints.accounts",
-    "blueprints.insights -> blueprints.budgets",
-    "blueprints.main -> blueprints.budgets",
     "blueprints.main -> blueprints.goals",
     "blueprints.main -> blueprints.insights",
     "blueprints.main -> blueprints.schedules",
@@ -59,12 +55,11 @@ ALLOWED_EDGES = {
     # Moved into services/ before what they call did. Each goes when its
     # target moves.
     "services.agent -> blueprints.ask",
-    "services.forecasts -> blueprints.budgets",
 }
 
 # Files under app/ and how many "# lazy" markers each holds.
 ALLOWED_LAZY = {
-    "blueprints/categories.py": 3,
+    "blueprints/categories.py": 2,
     "blueprints/main.py": 1,
     "blueprints/transactions.py": 1,
 }
@@ -177,9 +172,12 @@ def test_the_lazy_marker_is_seen():
 # --- the tree ---------------------------------------------------------------
 
 def test_the_scan_reads_the_real_tree():
-    # A scan that found nothing would pass the next test. main.py imports
-    # budgets at module level, which is as plain as an edge gets.
-    assert "blueprints.main -> blueprints.budgets" in actual_edges()
+    # A scan that found nothing would pass the next test. Anchored on an import
+    # the finished series keeps (a blueprint importing a service), because every
+    # edge in ALLOWED_EDGES is on its way out: this used to assert
+    # `main -> budgets`, and part 3 deleted it.
+    source = (APP / "blueprints" / "main.py").read_text()
+    assert "app.services.forecasts" in imported_modules(source, "app.blueprints")
 
 
 def test_no_new_import_crosses_a_boundary():
