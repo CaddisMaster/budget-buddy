@@ -13,7 +13,8 @@ projection and the remaining scheduled income/bills. It is pure of models and
 always has been: nothing here calls Claude, and no figure it returns was ever
 written by one.
 
-⚠️ This module no longer defines a blueprint — it has no routes.
+⚠️ It has no routes, which is why it lives in app/services/ (#489) rather than
+app/blueprints/, where it sat with no blueprint from #232 until then.
 
 ⚠️ The `forecasts` TABLE is GONE — `sql/36` dropped it alongside `goal_coach`
 once nothing referenced either. This note used to say the table "still exists"

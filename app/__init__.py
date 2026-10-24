@@ -257,12 +257,8 @@ def create_app(config=None):
     app.register_blueprint(goals.bp)
     app.register_blueprint(imports.bp)
     app.register_blueprint(schedules.bp)
-    # ⚠️ blueprints/forecasts.py and blueprints/agent.py are deliberately NOT
-    # here (#232): both lost their routes with Home's AI cards and are now plain
-    # function modules — the forecast arithmetic feeds the month read and an Ask
-    # tool, and the money agent runs inside the weekly digest. They stay under
-    # blueprints/ because that is where their callers look for them, not because
-    # they serve requests.
+    # Nothing under app/services/ is registered: forecasts.py and agent.py lost
+    # their routes with Home's AI cards (#232) and moved there in #489.
     app.register_blueprint(insights.bp)
     app.register_blueprint(ask.bp)
     app.register_blueprint(digests.bp)

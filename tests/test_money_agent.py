@@ -32,10 +32,10 @@ from app.ai import (
     _normalize_findings,
     investigate_finances,
 )
-from app.blueprints.agent import load_agent_run, run_money_agent
 from app.blueprints.digests import send_weekly_digests
 from app.db import db_cursor, get_db_connection
 from app.helpers import most_recent_sunday
+from app.services.agent import load_agent_run, run_money_agent
 from tests.helpers import create_agent_run, fetch_agent_runs
 
 TODAY = date.today()

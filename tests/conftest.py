@@ -172,7 +172,7 @@ FROZEN_DAY = 15
 def forecast_today(monkeypatch):
     """Freeze the clock `compute_forecast()` reads; yield the date it now sees.
 
-    ⚠️ Why this exists. `app/blueprints/forecasts.py` calls `date.today()`
+    ⚠️ Why this exists. `app/services/forecasts.py` calls `date.today()`
     directly, so its tests could not choose a date and five of them opened with
 
         if today.day >= days_in_month:
@@ -205,5 +205,5 @@ def forecast_today(monkeypatch):
         def today(cls):
             return frozen
 
-    monkeypatch.setattr("app.blueprints.forecasts.date", _FrozenDate)
+    monkeypatch.setattr("app.services.forecasts.date", _FrozenDate)
     return frozen

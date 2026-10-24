@@ -57,6 +57,7 @@ app/
   github.py        # outbound GitHub issue seam (stdlib urllib, NOT requests)
   jobs.py          # scheduled-job bookkeeping (job_runs); the only seam module that DOES touch the DB
   blueprints/      # all routes, one module per area, registered with NO url_prefix
+  services/        # domain logic with no routes (#489); blueprints import it, never each other
   templates/       # Jinja2, all extend base.html; partials/ = HTMX fragments; emails/ = digest
   static/          # style.css, vendored JS, PWA manifest + sw.js + icons
 sql/               # numbered migrations + schema.sql (clean single-file schema)
@@ -71,10 +72,11 @@ dashboard), `transactions`, `categories`, `accounts`, `budgets`, `analytics` (re
 `schedules`, `insights` (the month read behind Home's one AI panel), `ask` (the tool-use
 security boundary), `digests`, `imports` (statement import, #445).
 
-⚠️ `blueprints/forecasts.py` and `blueprints/agent.py` are in that directory but define **no
-blueprint** and are registered nowhere (#232): both lost their routes when Home's four AI
-surfaces became one. The forecast arithmetic feeds the month read and an Ask tool; the money
-agent runs inside the weekly digest.
+**Services** (`app/services/`, #489): domain logic with no routes — `forecasts` (the month
+projection's arithmetic) and `agent` (the money agent, run inside the weekly digest). ⚠️ **A
+blueprint imports from a service, never from another blueprint, and a service imports no
+blueprint.** The move is in progress: `tests/test_module_boundaries.py` allowlists the edges
+that predate the rule, and fails on a new one **and** on a listed one that has gone.
 
 ## Database tables
 

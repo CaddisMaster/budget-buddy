@@ -10,7 +10,7 @@ notable this week" is the expected outcome most weeks.
 run_money_agent per recipient, reusing this week's cached run if one exists).
 #232 removed the dashboard card and the `/agent/run` route along with the other
 Home AI surfaces — Sean's call was that the digest keeps its investigation and
-Home keeps one panel. This module therefore defines NO blueprint any more.
+Home keeps one panel. With no routes left it moved to app/services/ (#489).
 
 Each run is cached one-row-per-(user, week) in `agent_runs`, keyed by the week's
 Sunday (most_recent_sunday, the digest's period boundary), so a re-send never

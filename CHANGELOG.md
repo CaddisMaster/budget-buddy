@@ -43,6 +43,13 @@ this project uses the `0.x` versioning scheme described in
   defaults, constraints, indexes, sequences and grants, and the failure names
   the object that differs. A data-only migration no longer has to touch
   `schema.sql`. (#492)
+- **The forecast arithmetic and the money agent moved to a new `app/services/`
+  package.** Neither has had a route since #232, but both still sat among the
+  blueprints. They are the first two pieces of domain logic to move out, so
+  that blueprints stop importing each other. A test now fails if a blueprint
+  imports another blueprint, or a service imports a blueprint, beyond the
+  imports that already existed, and that list can only get shorter. No
+  visible change. (#489)
 
 ## [0.13.0] - 2026-10-12
 
