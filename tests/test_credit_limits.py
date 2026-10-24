@@ -13,13 +13,13 @@ from datetime import date
 from decimal import Decimal
 
 import app.blueprints.ask as ask
-from app.blueprints.accounts import (
-    _parse_credit_limit,
+from app.blueprints.accounts import _parse_credit_limit
+from app.db import get_db_connection
+from app.services.accounts import (
     credit_card_utilization_facts,
     credit_utilization,
     monthly_interest,
 )
-from app.db import get_db_connection
 from tests.helpers import create_account, create_transaction
 
 HX = {"HX-Request": "true"}
