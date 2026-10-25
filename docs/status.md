@@ -5,23 +5,91 @@
 
 ## Current Status
 
-▶️ **NEXT SESSION: #489** (services layer, the largest of the review issues), **then #493**
-(the docs sweep), then the container-hardening issues **#497 → #498 → #499**; **#500** (Postgres)
-is a scheduled operation and gets no milestone until Sean picks a date. Dependabot **#487** and
-**#488** have waited since 2026-10-19 (rebuild the container before testing #488). Prod runs
-**`0.13.0`** (shipped 2026-10-12). **On `main`, NOT deployed, all `0.13.1` content:** #483 (the
-digest sent once, #494), #491 (rows read by name, #501), #490 (the app factory, #502) and #492
-(CI compares `schema.sql` with what the migrations build, #503). Production still sends the
-digest twice until `0.13.1` ships; cutting it is Sean's call, with no deadline. ⚠️ **`0.13.1`
-changes `docker-compose.yml`** (#490: web runs `app.wsgi:app`); the deploy ships it (#433) and
-`db` is untouched, so the guard passes. **After that deploy:** `docker compose logs worker`
-shows `Scheduler running`, and that is the whole check. ⏳ **Not yet checked by Sean:**
-his real Discover export through the import **in production** (the first real bank file, and the
-first live call on `anthropic` 1.12.1), a real phone screenshot, a multi-page PDF (only one page
-was ever timed: 5.9 s against a 12-page cap), and #437's device list on his phone. ⚠️ **The
-Droplet's login banner says `System restart required`**: a reboot takes Budget Buddy and Orbit
-Ops down together, so schedule it on its own. **#36** stays date-parked. ⚠️ The `Acceptance
-criteria` check is **still not a required status check** (re-checked 2026-10-23).
+▶️ **NEXT SESSION: #493** (the docs sweep), then the container-hardening issues **#497 → #498 →
+#499**; **#500** (Postgres) is a scheduled operation and gets no milestone until Sean picks a date.
+Dependabot **#487** and **#488** have waited since 2026-10-19 (rebuild the container before testing
+#488). Prod runs **`0.13.0`** (shipped 2026-10-12). **On `main`, NOT deployed, all `0.13.1`
+content:** #483 (the digest sent once, #494), #491 (rows read by name, #501), #490 (the app
+factory, #502), #492 (CI compares `schema.sql` with what the migrations build, #503), **#489** (the
+services layer, #506–#519) and **#513** (five more positional unpacks, #514). Production still
+sends the digest twice until `0.13.1` ships; cutting it is Sean's call, with no deadline. ⚠️
+**`0.13.1` changes `docker-compose.yml`** (#490: web runs `app.wsgi:app`); the deploy ships it
+(#433) and `db` is untouched, so the guard passes. **After that deploy:** `docker compose logs
+worker` shows `Scheduler running`, and that is the whole check. #489 adds no migration, env var or
+compose change. ⏳ **Not yet checked by Sean:** his real Discover export through the import **in
+production** (the first real bank file, and the first live call on `anthropic` 1.12.1), a real
+phone screenshot, a multi-page PDF (only one page was ever timed: 5.9 s against a 12-page cap),
+and #437's device list on his phone. ⚠️ **The Droplet's login banner says `System restart
+required`**: a reboot takes Budget Buddy and Orbit Ops down together, so schedule it on its own.
+**#36** stays date-parked. ⚠️ The `Acceptance criteria` check is **still not a required status
+check** (re-checked 2026-10-23).
+
+### The 2026-10-24 session: #489 finished in twelve parts, and #513 found on the way
+
+| PR | Issue | |
+|---|---|---|
+| #506 | #489 (1) | `forecasts.py`, `agent.py` → `app/services/`; `tests/test_module_boundaries.py` |
+| #507 | #489 (2) | `services/recurrence.py`: next-due maths and the occurrence walkers |
+| #508 | #489 (3) | `services/budgets.py`: spend vs budget, the budget-change log |
+| #509 | #489 (4) | `services/accounts.py`: the balance SQL, credit utilization and interest |
+| #510 | #489 (5) | `services/ownership.py`: `validate_category_account` |
+| #511 | #489 (6) | `services/devices.py`: a push device's label |
+| #512 | #489 (7) | `services/chart_palette.py`: the fold and the slot assignment |
+| #514 | **#513** | five positional unpacks one assignment from a fetch; the scan now sees them |
+| #515 | #489 (8) | `services/due_runners.py`; `ALLOWED_LAZY` empty, its criterion claimed |
+| #516 | #489 (9) | `services/month_read.py`: every month figure; `insights.py` is a route |
+| #517 | #489 (10) | `services/goals.py`: goal progress and projection |
+| #518 | #489 (11) | `services/ask_tools.py`: **the security boundary**; `ask.py` is the route |
+| #519 | #489 (12) | `services/history.py` + `helpers.history_filters`; `ALLOWED_EDGES` empty, #489 closed |
+| this PR | **#520** | this record |
+
+- **The issue named about half the edges.** An AST scan found 34 blueprint→blueprint imports in 15
+  modules, against the issue's list of about a dozen. The test was written from the scan, not the
+  issue.
+- **The allowlist is checked in BOTH directions**: a new edge fails, and so does a listed edge
+  that has gone, so every PR had to delete the lines it made false and the list could only
+  shrink (28 → 0; lazy markers 7 → 0). Each PR's test run named exactly the edges it predicted
+  before the list was edited. ⚠️ **Its positive control had to move once**: it asserted `main →
+  budgets` existed, and part 3 deleted that edge. It now anchors on an import the finished state
+  keeps (`main.py` importing a service).
+- **The order was leaves first, not the issue's "outward from the `# lazy` imports".** Moving
+  what others import (`budgets`, `accounts`, `transactions`' pure helpers) before what imports
+  them meant every PR removed edges and added none. Moving Ask's tools first would have traded
+  one edge for three service→blueprint ones.
+- **The services rule is stronger than the criterion**: no service imports a blueprint either,
+  so the cycles could not simply move into `services/`.
+- **Sean chose the History split** (#519) from three previewed options: the balance walk in
+  `services/history.py` with explicit args, the request-filter parsing in `helpers.py`, and each
+  blueprint rendering its own `<tbody>` (`transfers._history_tbody()` is the twin). No service
+  reads the request or renders a template.
+- **Every moved guard was mutated at its new home.** Both `FOR UPDATE` locks (the schedules lock
+  fails both race scenarios; the transfers lock fails `test_concurrent_runs_post_exactly_one_pair`),
+  `validate_category_account` (8 isolation tests across all three callers), Ask's
+  `_resolve_category` (`test_dispatch_cannot_total_another_users_category`), the two Jinja globals
+  `accounts.py` now registers with `add_app_template_global` (4 failures each), and the finished
+  boundary rule itself.
+- **#513, found reading the due-runners**: `due = cursor.fetchall(); for (sid, …) in due` got past
+  #491's scan, which matched an unpack only directly on the call. Five sites, both due-runners
+  among them. The scan now flags an unpack through a name the SAME function bound from a fetch;
+  per-function scoping keeps `build_budget_report(spend_rows)` and `category_spending()`'s by-name
+  tuples quiet. Fixed before part 8, so the runners moved already reading by name.
+- **Two traps hit and caught by counting.** A blanket `_advance_past` rename turned two tests into
+  `testadvance_past_*`, which `python_functions = test_*` silently stopped collecting (1786 vs
+  1788 passed, nothing red); diffing collected IDs against `main` found it. And a `web` rebuild
+  started while `./test.sh` was running made pytest exit with `service "web" is not running`
+  after behave passed, which a background wrapper reported as success. **Never rebuild `web`
+  while the suite runs in it.**
+- **`transfers` had two unmarked lazy imports** ("to avoid a circular import", no `# lazy`), which
+  the lazy-marker test could not see. The edge test did, so they went with the last edge.
+- **Pointers moved with the code**, including the two agent prompts in `.claude/agents/` that
+  named `_load_history`'s `ORDER BY` pair, the `push.js`, `style.css` and template comments, and
+  `test_history_row_shape.py`'s source path (its precondition test would have failed loudly).
+- **Not seen in a browser:** push is not configured on dev, so part 6 proved Profile's device rows
+  are built (the route builds them unconditionally) but not rendered; `test_push_devices.py`
+  covers the render with push on.
+- The untracked `budget-buddy-container-hardening-handoff.md` was **deleted** on Sean's request;
+  its content lives in #497–#500.
+- **Milestones:** #489, #513 and #520 are on `0.13.1`.
 
 ### The 2026-10-23 session: three review issues merged, and a hardening review filed
 
@@ -33,8 +101,8 @@ criteria` check is **still not a required status check** (re-checked 2026-10-23)
 | this PR | **#504** | this record |
 
 - **An outside container-hardening review** (an untracked
-  `budget-buddy-container-hardening-handoff.md`, read at `b14ba7d`, still untracked and never
-  committed) became four issues: **#497** root-owned code, **#498** runtime lockdown, **#499**
+  `budget-buddy-container-hardening-handoff.md`, read at `b14ba7d`, never committed, deleted
+  2026-10-24) became four issues: **#497** root-owned code, **#498** runtime lockdown, **#499**
   scan/SBOM/signing, **#500** the Postgres window. Its diagnosis held. Corrected on filing:
   its "done when" wanted `/healthz` to report the version (a standing decision says never;
   `/settings` does), it named `test_hardening.py` for compose assertions (that file is HTTP
