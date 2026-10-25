@@ -27,9 +27,9 @@ literals and a tuple agree.
 import re
 from pathlib import Path
 
-from app.blueprints.transactions import HistoryRow
+from app.services.history import HistoryRow
 
-SOURCE = Path(__file__).resolve().parent.parent / "app" / "blueprints" / "transactions.py"
+SOURCE = Path(__file__).resolve().parent.parent / "app" / "services" / "history.py"
 
 # The select list of every query that feeds HistoryRow: everything between
 # `SELECT` and `FROM transactions t`.

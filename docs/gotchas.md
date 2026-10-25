@@ -49,7 +49,7 @@
   again) — otherwise the user is logged out by their own password change, which reads as
   a bug rather than as security
 - All data tables have `user_id` FK — every SELECT/INSERT/UPDATE/DELETE must be scoped to `current_user.id`
-- ⚠️ **The History pending-pin is sorted in PYTHON, never in SQL** (#86). `_load_history`
+- ⚠️ **The History pending-pin is sorted in PYTHON, never in SQL** (#86). `load_history` (`services/history.py` since #489, was `transactions._load_history`)
   seeds its balance walk from a SUM of every filtered row *older* than the page — and the
   seed query **defines "older" by repeating the page query's `ORDER BY`** with
   `OFFSET offset+per_page`. So those two `ORDER BY` clauses are ONE coupled unit: an

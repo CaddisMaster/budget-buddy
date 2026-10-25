@@ -33,7 +33,7 @@ from pathlib import Path
 
 import pytest
 
-from app.blueprints.transactions import HistoryRow, history_row
+from app.services.history import HistoryRow, history_row
 
 APP = Path(__file__).resolve().parent.parent / "app"
 

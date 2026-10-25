@@ -15,8 +15,8 @@ the ledger, not just the visible page:
 
 ⚠️ The export is the one that can drift silently: `export_transactions()`
 duplicated the filter-building code rather than sharing it, so a filter added to
-`_load_history` alone would produce a CSV that disagrees with the page it was
-downloaded from. `_history_where()` is now the single builder and both call it.
+`load_history` alone would produce a CSV that disagrees with the page it was
+downloaded from. `history_where()` (services/history.py since #489) is now the single builder and both call it.
 
 Ownership needs no guard here: every WHERE starts `t.user_id = %s`, so another
 user's `account_id` selects nothing rather than leaking. The isolation test
@@ -24,8 +24,8 @@ below states that as a property.
 """
 import pytest
 
-from app.blueprints.transactions import PER_PAGE, _load_history
 from app.db import get_db_connection
+from app.services.history import PER_PAGE, load_history
 from tests.helpers import create_account, create_transaction
 
 
@@ -69,7 +69,7 @@ def two_accounts(users):
 
 
 def test_only_the_selected_accounts_rows_are_returned(two_accounts):
-    rows, total, _pages = _load_history(
+    rows, total, _pages = load_history(
         two_accounts["uid"], None, "", 1, account_id=two_accounts["checking"])
     assert total == 2
     assert {float(r.amount) for r in rows} == {100.0, 200.0}
@@ -83,7 +83,7 @@ def test_the_running_balance_nets_only_the_selected_account(two_accounts):
     balance is wrong by the other accounts' total — the rows look right, so the
     defect presents as bad arithmetic.
     """
-    rows, _total, _pages = _load_history(
+    rows, _total, _pages = load_history(
         two_accounts["uid"], None, "", 1, account_id=two_accounts["checking"])
     # Newest first: +200 income (Feb 2), then -100 expense (Feb 1).
     assert float(rows[0].running_balance) == pytest.approx(100.0)
@@ -101,8 +101,8 @@ def test_the_balance_connects_across_pages_under_an_account_filter(users):
         create_transaction(uid, acct, 1, f"2026-04-{i + 1:02d}", "expense")
     create_transaction(uid, other, 5000, "2026-04-15", "expense")
 
-    page1, total, pages = _load_history(uid, None, "", 1, account_id=acct)
-    page2, _, _ = _load_history(uid, None, "", 2, account_id=acct)
+    page1, total, pages = load_history(uid, None, "", 1, account_id=acct)
+    page2, _, _ = load_history(uid, None, "", 2, account_id=acct)
     assert total == 30 and pages == 2
     assert len(page1) == PER_PAGE and len(page2) == 30 - PER_PAGE
     # Page 1's top row is the full net of the filtered account: -30.00.
@@ -121,7 +121,7 @@ def test_the_account_filter_composes_with_month_and_search(users):
     create_transaction(uid, acct, 12, "2026-06-01", "expense")     # wrong month
     create_transaction(uid, other, 13, "2026-05-02", "expense")    # wrong account
 
-    rows, total, _pages = _load_history(uid, "2026-05", "seed", 1, account_id=acct)
+    rows, total, _pages = load_history(uid, "2026-05", "seed", 1, account_id=acct)
     assert total == 1
     assert float(rows[0].amount) == pytest.approx(11.0)
 
@@ -134,7 +134,7 @@ def test_a_pending_row_on_another_account_is_not_pinned(users, client_a):
     create_transaction(uid, acct, 21, "2026-07-01", "expense")
     _mark_pending(create_transaction(uid, other, 22, "2026-07-02", "expense"))
 
-    rows, total, _pages = _load_history(uid, None, "", 1, account_id=acct)
+    rows, total, _pages = load_history(uid, None, "", 1, account_id=acct)
     assert total == 1
     assert [float(r.amount) for r in rows] == [21.0]
 

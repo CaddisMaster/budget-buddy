@@ -5,8 +5,17 @@ from flask import Blueprint, abort, current_app, flash, make_response, redirect,
 from flask_login import current_user, login_required
 
 from app.db import db_cursor
-from app.helpers import GENERIC_ERROR, hx_toast, is_htmx, parse_int_param, parse_positive_amount
+from app.helpers import (
+    GENERIC_ERROR,
+    history_filter_qs,
+    history_filters,
+    hx_toast,
+    is_htmx,
+    parse_int_param,
+    parse_positive_amount,
+)
 from app.services.due_runners import run_due_transfers
+from app.services.history import load_history
 from app.services.recurrence import (
     FREQUENCY_LABELS,
     VALID_FREQUENCIES,
@@ -84,6 +93,20 @@ def _validate(form, user_account_ids):
     return fields, errors
 
 
+
+def _history_tbody():
+    """Re-render the History <tbody> a transfer was edited or deleted from, so
+    the running balance is recomputed. The twin of transactions.py's
+    render_history_tbody(); it lived only there until #489, and this module
+    imported it from that blueprint to reach it."""
+    selected_month, search, account_id, page = history_filters()
+    rows, _total, _pages = load_history(current_user.id, selected_month, search, page,
+                                        account_id=account_id)
+    return render_template('partials/_transactions_tbody.html',
+                           transactions=rows,
+                           frequency_labels=FREQUENCY_LABELS,
+                           filter_qs=history_filter_qs(selected_month, search, account_id, page))
+
 @bp.route('/transfers', methods=['GET', 'POST'])
 @login_required
 def transfers():
@@ -137,8 +160,6 @@ def transfers():
 @bp.route('/transfers/<int:group_id>/edit', methods=['GET', 'POST'])
 @login_required
 def edit_transfer(group_id):
-    # Imported here to avoid a circular import at module load.
-    from app.blueprints.transactions import render_history_tbody
     with db_cursor() as cursor:
         cursor.execute(
             "SELECT 1 FROM transactions WHERE transfer_group_id = %s AND user_id = %s LIMIT 1",
@@ -197,7 +218,7 @@ def edit_transfer(group_id):
                                    transfer=transfer, accounts=all_accounts,
                                    filter_qs=request.query_string.decode(),
                                    errors=[GENERIC_ERROR])
-        return hx_toast(make_response(render_history_tbody()), 'Transfer updated')
+        return hx_toast(make_response(_history_tbody()), 'Transfer updated')
 
     # Pull the current pair to prefill the form.
     with db_cursor() as cursor:
@@ -223,7 +244,6 @@ def edit_transfer(group_id):
 @bp.route('/transfers/<int:group_id>', methods=['DELETE'])
 @login_required
 def delete_transfer(group_id):
-    from app.blueprints.transactions import render_history_tbody
     with db_cursor() as cursor:
         cursor.execute(
             "SELECT 1 FROM transactions WHERE transfer_group_id = %s AND user_id = %s LIMIT 1",
@@ -239,8 +259,8 @@ def delete_transfer(group_id):
             )
     except psycopg2.Error:
         current_app.logger.exception('delete transfer failed')
-        return hx_toast(make_response(render_history_tbody()), GENERIC_ERROR, 'error')
-    return hx_toast(make_response(render_history_tbody()), 'Transfer deleted')
+        return hx_toast(make_response(_history_tbody()), GENERIC_ERROR, 'error')
+    return hx_toast(make_response(_history_tbody()), 'Transfer deleted')
 
 
 # ---------------------------------------------------------------------------

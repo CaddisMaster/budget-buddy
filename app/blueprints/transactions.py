@@ -1,9 +1,7 @@
 import csv
 import io
-import math
 from collections import namedtuple
 from datetime import date, datetime, timedelta
-from urllib.parse import urlencode
 
 import psycopg2
 from flask import Blueprint, abort, current_app, flash, make_response, redirect, render_template, request, url_for
@@ -15,40 +13,21 @@ from app.db import db_cursor
 from app.helpers import (
     GENERIC_ERROR,
     ai_enabled,
+    history_filter_qs,
+    history_filters,
     hx_toast,
     parse_int_param,
-    parse_month_param,
-    parse_page_param,
     parse_positive_amount,
     recent_months,
 )
 from app.services.due_runners import run_due_schedules, run_due_transfers
+from app.services.history import history_where, load_history
 from app.services.ownership import validate_category_account
 from app.services.recurrence import FREQUENCY_LABELS
 
 bp = Blueprint('transactions', __name__)
 
 
-
-# The History row shape: the 13-column history SELECT plus the per-page
-# running balance appended in _load_history. Field names mirror the SELECT's
-# column names, and history_row() builds it from those NAMES (#491), so the
-# SELECT's column order does not matter. A column added to the SELECT but not
-# here raises TypeError at the first request rather than shifting fields.
-HistoryRow = namedtuple('HistoryRow', (
-    'id amount description category_name account_name transaction_date '
-    'transaction_type is_recurring frequency is_adjustment is_transfer '
-    'transfer_group_id is_pending running_balance'
-))
-
-
-def history_row(row, running_balance):
-    """One HistoryRow from a history SELECT row, matched by column name.
-
-    It used to be `HistoryRow(*row, running_balance)`: built by position, so a
-    column added to the SELECT shifted every field after it, and nothing raised.
-    """
-    return HistoryRow(**row._asdict(), running_balance=running_balance)
 
 # Hand-built rows for the edit error/re-render paths — field names mirror the
 # edit GET's SELECT so real rows and fakes render identically.
@@ -146,173 +125,17 @@ def new_transaction():
                            accounts=all_accounts, ai_enabled=ai_enabled())
 
 
-PER_PAGE = 25
-
-
-def _filter_qs(selected_month, search, account_id, page):
-    """Query string carrying the current History filters so inline actions can
-    re-render the same page/filter slice after a mutation.
-
-    ⚠️ Every History URL is built from THIS, never by concatenating `?a=`/`&b=`
-    in the template. That hand-built shape is what broke the Export CSV link
-    (#222): it emitted `?month=` first and `&search=` second, so a search with
-    no month produced `/transactions/export&search=…` — not a query string, and
-    Flask handed the view no arguments at all. The CSV then quietly ignored a
-    filter the page was visibly applying. urlencode() also escapes the search
-    text, which the old form did not.
-    """
-    params = {}
-    if selected_month:
-        params['month'] = selected_month
-    if search:
-        params['search'] = search
-    if account_id:
-        params['account'] = account_id
-    if page and page != 1:
-        params['page'] = page
-    return urlencode(params)
-
-
-def _current_filters():
-    """Read the History filters off the current request (query string)."""
-    return (
-        parse_month_param(request.args.get('month')),
-        request.args.get('search', '').strip(),
-        parse_int_param(request.args.get('account')),
-        parse_page_param(request.args.get('page', 1)),
-    )
-
-
-def _history_where(user_id, selected_month, search, account_id):
-    """Build the shared History WHERE clause: (clause, params).
-
-    ⚠️ ONE builder, FIVE queries. `_load_history` runs four of them (the COUNT
-    behind the pager, the paged SELECT, the seed SUM behind the running balance,
-    and the page-1 pending pin) and `export_transactions` runs the fifth. The
-    export used to duplicate this logic inline, which made "the CSV disagrees
-    with the page it came from" a one-line-omission away — add a filter here and
-    every reader gets it.
-
-    The clause always opens with `t.user_id = %s`, so an `account_id` belonging
-    to somebody else selects nothing rather than leaking; the filter needs no
-    ownership guard of its own.
-    """
-    filters = ["t.user_id = %s"]
-    params = [user_id]
-    if selected_month:
-        year, month = selected_month.split('-')
-        filters.append("EXTRACT(YEAR FROM t.transaction_date) = %s AND EXTRACT(MONTH FROM t.transaction_date) = %s")
-        params.extend([year, month])
-    if search:
-        filters.append("t.description ILIKE %s")
-        params.append(f'%{search}%')
-    if account_id:
-        filters.append("t.account_id = %s")
-        params.append(account_id)
-    return "WHERE " + " AND ".join(filters), params
-
-
-def _load_history(user_id, selected_month, search, page, account_id=None,
-                  per_page=PER_PAGE):
-    """Return (rows_with_running_balance, total, total_pages) for one page of a
-    user's transaction history under the given filters."""
-    offset = (page - 1) * per_page
-    where_clause, params = _history_where(user_id, selected_month, search, account_id)
-    with db_cursor() as cursor:
-        cursor.execute(f"SELECT COUNT(*) FROM transactions t {where_clause}", params)
-        total = cursor.fetchone()[0]
-        total_pages = math.ceil(total / per_page) if total > 0 else 1
-        cursor.execute(f"""
-            SELECT t.id, t.amount, t.description, c.name AS category_name, a.account_name,
-                t.transaction_date, t.transaction_type,
-                t.is_recurring, t.frequency, t.is_adjustment,
-                t.is_transfer, t.transfer_group_id, t.is_pending
-            FROM transactions t
-            LEFT JOIN categories c ON t.category_id = c.id
-            LEFT JOIN account a ON t.account_id = a.account_id
-            {where_clause}
-            ORDER BY t.transaction_date DESC, t.id DESC
-            LIMIT %s OFFSET %s
-        """, params + [per_page, offset])
-        rows = cursor.fetchall()
-        # Seed the page's balance walk with the signed net of every filtered row
-        # OLDER than this slice, so balances connect across pages instead of
-        # restarting at 0 (with filters active the column reads as the running
-        # net of the matching rows).
-        cursor.execute(f"""
-            SELECT COALESCE(SUM(CASE WHEN older.transaction_type = 'income'
-                                     THEN older.amount ELSE -older.amount END), 0) AS base
-            FROM (
-                SELECT t.transaction_type, t.amount
-                FROM transactions t
-                {where_clause}
-                ORDER BY t.transaction_date DESC, t.id DESC
-                OFFSET %s
-            ) older
-        """, params + [offset + per_page])
-        running_balance = cursor.fetchone().base
-    transactions_with_balance = []
-    for t in reversed(rows):
-        if t.transaction_type == 'income':
-            running_balance += t.amount
-        else:
-            running_balance -= t.amount
-        transactions_with_balance.append(history_row(t, running_balance))
-    transactions_with_balance.reverse()
-    # Pin pending rows to the top of PAGE 1 (#86, widened by #210).
-    #
-    # ⚠️ The pin happens HERE, in Python, and deliberately NOT as an
-    # `is_pending DESC` prefix on the ORDER BY above. Both queries above are
-    # ordered by date, and the seed query defines "older than this page" as
-    # "further down that same ordering" (it repeats the ORDER BY with OFFSET
-    # offset+per_page). Prefixing either one would not merely reorder the
-    # display — it would redefine which rows count as older, so the balance
-    # would be wrong for the pinned rows AND for every row beneath them.
-    #
-    # ⚠️ The same reasoning is why pending rows are NOT excluded from the paged
-    # query: they must stay in the walk, because a pending row counts normally
-    # in every figure (settled 2026-07-29). Everything below happens AFTER the
-    # walk, so no posted row's balance can move.
-    #
-    # #210: the pin used to be page-SCOPED — it sorted only the rows already
-    # fetched, so a pending charge 40 days back sat at the top of page 4 and was
-    # never seen from page 1. The premise that justified that ("a pending row is
-    # entered when the charge happens, so it is on page 1 in practice") does not
-    # hold once more than a page of newer rows exists. Page 1 now shows EVERY
-    # pending row, and later pages show none — so each appears exactly once.
-    pending_rows = []
-    if page == 1:
-        with db_cursor() as cursor:
-            cursor.execute(f"""
-                SELECT t.id, t.amount, t.description, c.name AS category_name, a.account_name,
-                    t.transaction_date, t.transaction_type,
-                    t.is_recurring, t.frequency, t.is_adjustment,
-                    t.is_transfer, t.transfer_group_id, t.is_pending
-                FROM transactions t
-                LEFT JOIN categories c ON t.category_id = c.id
-                LEFT JOIN account a ON t.account_id = a.account_id
-                {where_clause} AND t.is_pending
-                ORDER BY t.transaction_date DESC, t.id DESC
-            """, params)
-            # running_balance is None because the template renders an em dash for
-            # a pending row and never reads it — a pinned row is out of date
-            # order, so a balance in that cell would read as wrong.
-            pending_rows = [history_row(r, None) for r in cursor.fetchall()]
-    posted_rows = [t for t in transactions_with_balance if not t.is_pending]
-    return pending_rows + posted_rows, total, total_pages
-
-
 def render_history_tbody():
-    """Re-render the History <tbody> for the request's current filters — shared
-    by every inline mutation (and by the transfers blueprint) so the per-page
-    running balance is always recomputed."""
-    selected_month, search, account_id, page = _current_filters()
-    rows, _total, _pages = _load_history(current_user.id, selected_month, search, page,
+    """Re-render the History <tbody> for the request's current filters, after
+    every inline mutation, so the per-page running balance is recomputed.
+    transfers.py has its own twin (#489: blueprints import no blueprint)."""
+    selected_month, search, account_id, page = history_filters()
+    rows, _total, _pages = load_history(current_user.id, selected_month, search, page,
                                          account_id=account_id)
     return render_template('partials/_transactions_tbody.html',
                            transactions=rows,
                            frequency_labels=FREQUENCY_LABELS,
-                           filter_qs=_filter_qs(selected_month, search, account_id, page))
+                           filter_qs=history_filter_qs(selected_month, search, account_id, page))
 
 
 @bp.route('/transactions')
@@ -320,9 +143,9 @@ def render_history_tbody():
 def transactions():
     run_due_schedules(current_user.id)
     run_due_transfers(current_user.id)
-    selected_month, search, account_id, page = _current_filters()
+    selected_month, search, account_id, page = history_filters()
     months = recent_months()
-    rows, total, total_pages = _load_history(current_user.id, selected_month, search, page,
+    rows, total, total_pages = load_history(current_user.id, selected_month, search, page,
                                              account_id=account_id)
     cleanup_enabled = ai_enabled()
     uncategorized_count = count_uncategorized(current_user.id) if cleanup_enabled else 0
@@ -353,18 +176,18 @@ def transactions():
         total_pages=total_pages,
         total=total,
         frequency_labels=FREQUENCY_LABELS,
-        filter_qs=_filter_qs(selected_month, search, account_id, page),
+        filter_qs=history_filter_qs(selected_month, search, account_id, page),
         # Every History URL the template renders, built by urlencode rather than
-        # by string concatenation — see the warning on _filter_qs. `export_qs`
+        # by string concatenation — see the warning on history_filter_qs. `export_qs`
         # omits `page` because the export is the whole filtered set, and each
         # `clear_*` drops one filter and resets to page 1, since removing a
         # filter changes which rows exist.
-        export_qs=_filter_qs(selected_month, search, account_id, 1),
-        prev_qs=_filter_qs(selected_month, search, account_id, page - 1),
-        next_qs=_filter_qs(selected_month, search, account_id, page + 1),
-        clear_month_qs=_filter_qs(None, search, account_id, 1),
-        clear_search_qs=_filter_qs(selected_month, None, account_id, 1),
-        clear_account_qs=_filter_qs(selected_month, search, None, 1),
+        export_qs=history_filter_qs(selected_month, search, account_id, 1),
+        prev_qs=history_filter_qs(selected_month, search, account_id, page - 1),
+        next_qs=history_filter_qs(selected_month, search, account_id, page + 1),
+        clear_month_qs=history_filter_qs(None, search, account_id, 1),
+        clear_search_qs=history_filter_qs(selected_month, None, account_id, 1),
+        clear_account_qs=history_filter_qs(selected_month, search, None, 1),
         cleanup_enabled=cleanup_enabled,
         uncategorized_count=uncategorized_count,
     )
@@ -569,8 +392,8 @@ def export_transactions():
     # Same filters as the page, read the same way and built by the same builder,
     # so the CSV can never disagree with the History view it was downloaded
     # from. `page` is deliberately ignored: the export is the whole filtered set.
-    selected_month, search, account_id, _page = _current_filters()
-    where_clause, params = _history_where(current_user.id, selected_month, search, account_id)
+    selected_month, search, account_id, _page = history_filters()
+    where_clause, params = history_where(current_user.id, selected_month, search, account_id)
     with db_cursor() as cursor:
         cursor.execute(f"""
             SELECT t.transaction_date, t.transaction_type, t.amount,
