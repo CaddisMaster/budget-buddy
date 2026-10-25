@@ -314,9 +314,10 @@ server itself — **read it before touching anything on the Droplet.**
 
 ▶️ **On `main`, not yet deployed (`0.13.1`'s content): #483** (the digest sent twice, #494),
 **#491** (rows read by name), **#490** (the app factory: gunicorn runs `app.wsgi:app`, and the
-compose file changes with it) and **#492** (CI compares `schema.sql` with what the migrations
-build). Cutting it is Sean's call, with no deadline. **NEXT UP:** **#489**, then **#493**, then
-the container-hardening issues **#497–#500**, in the order `docs/status.md` gives. ✅ **Prod runs `0.13.0`, shipped 2026-10-12** (27 PRs; three additive migrations
+compose file changes with it), **#492** (CI compares `schema.sql` with what the migrations build),
+**#489** (the `app/services/` layer, #506–#519: no blueprint imports another) and **#513** (five
+more positional row reads). Cutting it is Sean's call, with no deadline. **NEXT UP:** **#493**,
+then the container-hardening issues **#497–#500**, in the order `docs/status.md` gives. ✅ **Prod runs `0.13.0`, shipped 2026-10-12** (27 PRs; three additive migrations
 `sql/39`–`41`; `pypdf`; statement import #445–#474; the device list #437). The deploy log is in
 `docs/status.md`: **#433's compose copy passed on its first real run** and left `db` untouched,
 and RUNBOOK §3's Nginx upload block was added first and proven from outside (a 2 MB POST went
