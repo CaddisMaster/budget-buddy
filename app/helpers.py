@@ -3,6 +3,7 @@ import json
 import math
 import os
 from datetime import datetime, timedelta
+from urllib.parse import urlencode
 
 from flask import request
 
@@ -204,3 +205,42 @@ def recent_months(count=12, today=None):
         absolute = today.year * 12 + (today.month - 1) - i
         months.append(f'{absolute // 12}-{absolute % 12 + 1:02d}')
     return months
+
+
+# --- History filters (#489, from blueprints/transactions.py) -----------------
+# Shared by every blueprint that re-renders the History <tbody>, so the filter
+# slice a mutation re-renders is parsed and re-encoded one way.
+
+def history_filters():
+    """Read the History filters off the current request (query string):
+    (month, search, account_id, page)."""
+    return (
+        parse_month_param(request.args.get('month')),
+        request.args.get('search', '').strip(),
+        parse_int_param(request.args.get('account')),
+        parse_page_param(request.args.get('page', 1)),
+    )
+
+
+def history_filter_qs(selected_month, search, account_id, page):
+    """Query string carrying the current History filters so inline actions can
+    re-render the same page/filter slice after a mutation.
+
+    ⚠️ Every History URL is built from THIS, never by concatenating `?a=`/`&b=`
+    in the template. That hand-built shape is what broke the Export CSV link
+    (#222): it emitted `?month=` first and `&search=` second, so a search with
+    no month produced `/transactions/export&search=…` — not a query string, and
+    Flask handed the view no arguments at all. The CSV then quietly ignored a
+    filter the page was visibly applying. urlencode() also escapes the search
+    text, which the old form did not.
+    """
+    params = {}
+    if selected_month:
+        params['month'] = selected_month
+    if search:
+        params['search'] = search
+    if account_id:
+        params['account'] = account_id
+    if page and page != 1:
+        params['page'] = page
+    return urlencode(params)

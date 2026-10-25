@@ -174,7 +174,7 @@ def _t_search_transactions(user_id, args):
     limit = _clamp_limit(args)
     text = str(args.get('text', '')).strip()
     with db_cursor() as cursor:
-        # Mirror the History page (_load_history): a description search over ALL
+        # Mirror the History page (services/history.load_history): a description search over ALL
         # the user's rows — including transfer legs and adjustments, which the
         # user can see there. Excluding them here made the model answer "no, I
         # don't see that transfer" about rows plainly visible in History.

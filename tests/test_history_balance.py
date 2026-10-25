@@ -1,6 +1,6 @@
 """v10.12 tests — History running balance connects across pages.
 
-The v2-era defect: _load_history seeded running_balance = 0 and walked only the
+The v2-era defect: load_history seeded running_balance = 0 and walked only the
 LIMIT/OFFSET slice, so every page's balances were disconnected from the ledger
 (page 1 included, whenever more than one page existed). The fix seeds the walk
 with the signed SUM of every filtered row OLDER than the page slice. With a
@@ -13,7 +13,7 @@ outside its month by construction.
 """
 import pytest
 
-from app.blueprints.transactions import PER_PAGE, _load_history
+from app.services.history import PER_PAGE, load_history
 from tests.helpers import create_transaction
 
 
@@ -45,8 +45,8 @@ def _seed_january(users):
 def test_unfiltered_pages_connect(users):
     ledger = _seed_january(users)  # 31 rows -> pages of 25 + 6
     uid = users["a"]["id"]
-    page1, total, pages = _load_history(uid, None, "", 1)
-    page2, _, _ = _load_history(uid, None, "", 2)
+    page1, total, pages = load_history(uid, None, "", 1)
+    page2, _, _ = load_history(uid, None, "", 2)
     assert total == len(ledger) and pages == 2
     assert len(page1) == PER_PAGE and len(page2) == len(ledger) - PER_PAGE
 
@@ -76,8 +76,8 @@ def test_month_filter_carries_within_the_filter(users):
     for day in ("2026-02-05", "2026-02-15", "2026-04-02"):
         create_transaction(uid, acct, 99999, day, "income")
 
-    page1, total, pages = _load_history(uid, "2026-03", "", 1)
-    page2, _, _ = _load_history(uid, "2026-03", "", 2)
+    page1, total, pages = load_history(uid, "2026-03", "", 1)
+    page2, _, _ = load_history(uid, "2026-03", "", 2)
     assert total == 28 and pages == 2
 
     # The filtered net starts from 0 at the oldest MATCHING row...

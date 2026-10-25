@@ -14,11 +14,10 @@ checked in BOTH directions:
   to delete its line, and the list can only shrink. Without this half the list
   would stay long after the code got better, and stop meaning anything.
 
-⚠️ Each acceptance criterion is claimed only once its allowlist is EMPTY, because
-until then the test does not prove it. `ALLOWED_LAZY` emptied in part 8, so the
-lazy-import scenario is claimed. While `ALLOWED_EDGES` holds anything, "no
-blueprint imports another" is not proven, and the PR that empties it adds that
-claim.
+Each acceptance criterion was claimed only once its allowlist was EMPTY,
+because until then the test did not prove it: `ALLOWED_LAZY` emptied in part 8
+and `ALLOWED_EDGES` in part 12. Both are empty now, so these tests ARE the
+criteria, and the two-direction check keeps them honest if either ever grows.
 
 Each detector is proven to fire on a doctored snippet first, because a scan
 that matches nothing passes against any tree.
@@ -33,11 +32,10 @@ import pytest
 APP = Path(__file__).resolve().parent.parent / "app"
 LAYERS = ("blueprints", "services")
 
-# "<importer> -> <imported>", both as "<layer>.<module>". Measured on
-# 2026-10-24. Each PR in the series deletes the lines it makes false.
-ALLOWED_EDGES = {
-    "blueprints.transfers -> blueprints.transactions",
-}
+# "<importer> -> <imported>", both as "<layer>.<module>". Started at 28 edges
+# on 2026-10-24; part 12 of #489 removed the last. Keep it empty: a new edge
+# means moving the shared code into services/, not adding a line here.
+ALLOWED_EDGES = set()
 
 # Files under app/ and how many "# lazy" markers each holds. Empty since
 # #489 part 8, which moved the due-runners: keep it that way.
@@ -159,7 +157,11 @@ def test_the_scan_reads_the_real_tree():
     assert "app.services.forecasts" in imported_modules(source, "app.blueprints")
 
 
+@pytest.mark.criterion(489, "No blueprint imports another blueprint")
 def test_no_new_import_crosses_a_boundary():
+    # With ALLOWED_EDGES empty this is the scenario itself, and it also holds
+    # the stronger rule that no service imports a blueprint.
+    assert ALLOWED_EDGES == set()
     new = actual_edges() - ALLOWED_EDGES
     assert not new, (
         "These imports cross a module boundary (#489). Import from app/services/ "

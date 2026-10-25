@@ -99,6 +99,13 @@ this project uses the `0.x` versioning scheme described in
   boundary that keeps the model to read-only queries on your own data, and
   the weekly money check drives the same tools, so it imported them from the
   Ask box's page module. No visible change. (#489)
+- **The History table's rows and running balance moved to
+  `app/services/history.py`, and no page module imports another any more.**
+  The transfers page re-renders the History table after a transfer is edited
+  or deleted, and imported that from the transactions page's module; it now
+  renders the table itself from the shared service. That was the last import
+  between page modules, and a test keeps it that way. No visible change.
+  (#489)
 
 ## [0.13.0] - 2026-10-12
 

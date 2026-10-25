@@ -44,7 +44,7 @@ something the project says must not break?**
 Not exhaustive — `docs/gotchas.md` is authoritative — but these are the ones
 where a natural-looking change ships a silent bug:
 
-- **`_load_history`'s two `ORDER BY` clauses are one coupled unit.** The page
+- **`load_history`'s (`app/services/history.py`) two `ORDER BY` clauses are one coupled unit.** The page
   query and the balance-seed query must stay byte-identical. An `is_pending
   DESC` prefix on either redefines which rows count as "older" and breaks the
   running balance. The pin is sorted in Python, never in SQL.
