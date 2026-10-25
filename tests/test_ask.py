@@ -13,6 +13,7 @@ from types import SimpleNamespace
 
 import app.ai as ai
 import app.blueprints.ask as ask
+import app.services.ask_tools as ask_tools
 from app.ai import ParseError, answer_question
 from tests.helpers import create_account, create_category, create_schedule, create_transaction
 
@@ -36,26 +37,26 @@ def _resp(blocks, stop_reason):
 # --- pure dispatch + argument validation ------------------------------------
 
 def test_dispatch_unknown_tool_is_error():
-    content, is_error = ask.dispatch(1, "no_such_tool", {})
+    content, is_error = ask_tools.dispatch(1, "no_such_tool", {})
     assert is_error is True
     assert "Unknown tool" in json.loads(content)["error"]
 
 
 def test_dispatch_bad_month_is_error(users):
-    content, is_error = ask.dispatch(
+    content, is_error = ask_tools.dispatch(
         users["a"]["id"], "spending_by_category", {"month": "May"})
     assert is_error is True
     assert "month" in json.loads(content)["error"]
 
 
 def test_dispatch_list_categories_returns_own(users):
-    content, is_error = ask.dispatch(users["a"]["id"], "list_categories", {})
+    content, is_error = ask_tools.dispatch(users["a"]["id"], "list_categories", {})
     assert is_error is False
     assert json.loads(content)["categories"] == [{"name": "cat-A", "kind": "expense"}]
 
 
 def test_dispatch_unknown_category_lists_valid(users):
-    content, is_error = ask.dispatch(users["a"]["id"], "total_for_category", {
+    content, is_error = ask_tools.dispatch(users["a"]["id"], "total_for_category", {
         "category": "Nope", "start_date": "2026-01-01", "end_date": "2026-12-31"})
     assert is_error is True
     err = json.loads(content)["error"]
@@ -64,7 +65,7 @@ def test_dispatch_unknown_category_lists_valid(users):
 
 def test_dispatch_search_limit_is_clamped(users):
     # An absurd limit must not error — it's clamped to MAX_LIMIT.
-    content, is_error = ask.dispatch(users["a"]["id"], "search_transactions", {
+    content, is_error = ask_tools.dispatch(users["a"]["id"], "search_transactions", {
         "text": "txn", "start_date": "2000-01-01", "end_date": "2100-01-01",
         "limit": 9999})
     assert is_error is False
@@ -80,7 +81,7 @@ def test_dispatch_total_for_income_kind_sums_income(users):
                        transaction_type="income", category_id=inc)
     create_transaction(a["id"], a["account_id"], 25, date.today(),
                        category_id=inc)  # stray expense-typed row: not summed
-    content, is_error = ask.dispatch(users["a"]["id"], "total_for_category", {
+    content, is_error = ask_tools.dispatch(users["a"]["id"], "total_for_category", {
         "category": "Freelance", "start_date": "2000-01-01", "end_date": "2100-01-01"})
     assert is_error is False
     data = json.loads(content)
@@ -91,7 +92,7 @@ def test_dispatch_total_for_income_kind_sums_income(users):
 
 def test_dispatch_total_for_expense_kind_unchanged(users):
     a = users["a"]
-    content, is_error = ask.dispatch(a["id"], "total_for_category", {
+    content, is_error = ask_tools.dispatch(a["id"], "total_for_category", {
         "category": "cat-A", "start_date": "2000-01-01", "end_date": "2100-01-01"})
     assert is_error is False
     data = json.loads(content)
@@ -102,7 +103,7 @@ def test_dispatch_total_for_expense_kind_unchanged(users):
 # --- per-user scoping (the security boundary) -------------------------------
 
 def test_dispatch_search_only_sees_own_rows(users):
-    a_content, _ = ask.dispatch(users["a"]["id"], "search_transactions", {
+    a_content, _ = ask_tools.dispatch(users["a"]["id"], "search_transactions", {
         "text": "txn", "start_date": "2000-01-01", "end_date": "2100-01-01"})
     matches = json.loads(a_content)["matches"]
     descs = [m["description"] for m in matches]
@@ -112,7 +113,7 @@ def test_dispatch_search_only_sees_own_rows(users):
 
 def test_dispatch_cannot_total_another_users_category(users):
     # A names B's category — resolution must reject it (A doesn't own it).
-    content, is_error = ask.dispatch(users["a"]["id"], "total_for_category", {
+    content, is_error = ask_tools.dispatch(users["a"]["id"], "total_for_category", {
         "category": "cat-B", "start_date": "2000-01-01", "end_date": "2100-01-01"})
     assert is_error is True
     assert "No category named 'cat-B'" in json.loads(content)["error"]
@@ -249,7 +250,7 @@ def test_upcoming_scheduled_excludes_a_finished_schedule(users):
     create_schedule(a, acct, 1234, "monthly", today + timedelta(days=3),
                     transaction_type="expense")
 
-    content, _ = ask.dispatch(a, "upcoming_scheduled", {})
+    content, _ = ask_tools.dispatch(a, "upcoming_scheduled", {})
     amounts = [s["amount"] for s in json.loads(content)["scheduled"]]
     assert 1234.0 in amounts      # the live schedule is still reported
     assert 4321.0 not in amounts  # the finished one is not
@@ -269,7 +270,7 @@ def test_month_summary_tool_reports_the_month_and_its_comparison(users):
     create_transaction(a, acct, 200, "2026-05-06", "expense", category_id=cat)
     create_transaction(a, acct, 100, "2026-04-06", "expense", category_id=cat)
 
-    content, is_error = ask.dispatch(a, "month_summary", {"month": "2026-05"})
+    content, is_error = ask_tools.dispatch(a, "month_summary", {"month": "2026-05"})
     assert is_error is False
     data = json.loads(content)
     assert data["month"] == "2026-05"
@@ -300,7 +301,7 @@ def test_month_projection_tool_reports_what_is_still_to_land(users, forecast_tod
                     transaction_type="expense", category_id=cat,
                     description="tool-proj-bill")
 
-    content, is_error = ask.dispatch(
+    content, is_error = ask_tools.dispatch(
         a, "month_projection", {"month": f"{today.year}-{today.month:02d}"})
     assert is_error is False
     data = json.loads(content)
@@ -320,7 +321,7 @@ def test_the_new_tools_reject_a_bad_month(users):
     looser assertion passes before either tool exists, which is exactly what it
     did while these were being written."""
     for name in ("month_summary", "month_projection"):
-        content, is_error = ask.dispatch(users["a"]["id"], name, {"month": "nope"})
+        content, is_error = ask_tools.dispatch(users["a"]["id"], name, {"month": "nope"})
         assert is_error is True
         error = json.loads(content)["error"]
         assert "Unknown tool" not in error
@@ -332,15 +333,15 @@ def test_the_new_tools_only_see_their_own_users_rows(users):
     acct_b = create_account(b, "tool-iso-b")
     create_transaction(b, acct_b, 7777, "2026-06-03", "income")
 
-    content, _ = ask.dispatch(a, "month_summary", {"month": "2026-06"})
+    content, _ = ask_tools.dispatch(a, "month_summary", {"month": "2026-06"})
     assert json.loads(content)["income"] != 7777.0
 
 
 def test_every_tool_spec_has_a_handler():
     """The registry is built by zipping specs to handlers — a spec added without
     one would be advertised to the model and then fail every call."""
-    assert set(ask._HANDLERS) == {spec["name"] for spec in ask.TOOL_SPECS}
-    assert {"month_summary", "month_projection"} <= set(ask._HANDLERS)
+    assert set(ask_tools._HANDLERS) == {spec["name"] for spec in ask_tools.TOOL_SPECS}
+    assert {"month_summary", "month_projection"} <= set(ask_tools._HANDLERS)
 
 
 # --- the question is bounded before the billed call (#316) -------------------

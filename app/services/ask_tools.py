@@ -1,0 +1,509 @@
+"""Ask's tools: the security boundary between the model and the ledger (#489,
+moved here from blueprints/ask.py, which keeps the /ask route).
+
+A small set of read-only, per-user-scoped, fixed-parameterized query tools and
+a `dispatch` that validates every argument before running one. `app/ai.py`
+drives the multi-turn loop but never touches the DB and is never handed a user
+id, so the model can't reach another user's rows or mutate anything, because
+the tools simply don't allow it.
+
+Each tool handler runs ONE fixed query scoped `WHERE user_id = %s` (forced to
+the caller's id), reusing the same deterministic helpers the rest of the app
+uses. Args are sanitized in `dispatch` before the query: months/dates are
+parsed with strptime, limits are clamped, and a category name is resolved ONLY
+against the user's own rows. Nothing is ever interpolated into SQL.
+
+Two callers bind a user id into `dispatch`: the /ask route (current_user) and
+the weekly money agent (services/agent.py, the recipient's id, with no request).
+"""
+import json
+import logging
+from datetime import date, datetime
+
+from app.db import db_cursor
+from app.services.accounts import (
+    ACCOUNT_ROW_SQL,
+    credit_utilization,
+    monthly_interest,
+)
+from app.services.budgets import compute_budget_vs_actual
+from app.services.forecasts import compute_forecast
+from app.services.month_read import category_spending, compute_month_facts
+
+log = logging.getLogger(__name__)
+
+# Bound the rows any single tool can hand back to the model (keeps token cost and
+# answer scope sane; the model never sees more than this).
+MAX_LIMIT = 25
+
+
+
+class _ToolError(Exception):
+    """A bad argument or unresolved name. dispatch turns it into an is_error
+    tool_result so the model can correct itself or decline honestly — never a
+    500."""
+
+
+# --- pure argument validators (the trust boundary) --------------------------
+
+def _money(x):
+    """Coerce a DB numeric to a 2-dp float for the JSON the model sees — the one
+    place money rounding is defined for every tool."""
+    return round(float(x), 2)
+
+
+def _parse_month(args):
+    """Pull and validate a 'YYYY-MM' arg → (year, month). Raises _ToolError."""
+    raw = str(args.get('month', '')).strip()
+    try:
+        d = datetime.strptime(raw, '%Y-%m').date()
+    except (TypeError, ValueError):
+        # `from None` — a malformed argument is an expected outcome here, not a
+        # bug in the handler, so the strptime traceback would be noise.
+        raise _ToolError(f"month must be 'YYYY-MM', got {raw!r}") from None
+    return d.year, d.month
+
+
+def _parse_date(args, key):
+    """Pull and validate a 'YYYY-MM-DD' arg → date. Raises _ToolError."""
+    raw = str(args.get(key, '')).strip()
+    try:
+        return datetime.strptime(raw, '%Y-%m-%d').date()
+    except (TypeError, ValueError):
+        raise _ToolError(f"{key} must be 'YYYY-MM-DD', got {raw!r}") from None
+
+
+def _clamp_limit(args, default=10):
+    """Coerce a 'limit' arg to int and clamp to 1..MAX_LIMIT."""
+    try:
+        n = int(args.get('limit', default))
+    except (TypeError, ValueError):
+        n = default
+    return max(1, min(n, MAX_LIMIT))
+
+
+def _resolve_category(cursor, user_id, name):
+    """Match `name` (case-insensitive) against the user's OWN categories →
+    (id, name, kind).
+
+    Raises _ToolError listing the valid names so the model can retry — this is
+    the per-user guard that the model can only name a category the user owns.
+
+    ⚠️ First match wins, and names are not unique (#315). Same reasoning as
+    ai._match_id: ambiguous, never unsafe, and the real fix is a constraint.
+    """
+    cursor.execute("SELECT id, name, kind FROM categories WHERE user_id = %s", (user_id,))
+    rows = cursor.fetchall()
+    target = str(name or '').strip().lower()
+    for r in rows:
+        if r.name.strip().lower() == target:
+            return r.id, r.name, r.kind
+    valid = ', '.join(sorted(r.name for r in rows)) or '(none)'
+    raise _ToolError(f"No category named {name!r}. Your categories are: {valid}")
+
+
+# --- tool handlers (each: ONE fixed, user-scoped query) ---------------------
+
+def _t_list_categories(user_id, args):
+    with db_cursor() as cursor:
+        cursor.execute("SELECT name, kind FROM categories WHERE user_id = %s ORDER BY name",
+                       (user_id,))
+        cats = [{"name": r.name, "kind": r.kind} for r in cursor.fetchall()]
+    return {"categories": cats}
+
+
+def _t_spending_by_category(user_id, args):
+    year, month = _parse_month(args)
+    with db_cursor() as cursor:
+        rows = category_spending(cursor, user_id, year, month)
+    by_cat = [{"category": name, "total": _money(total)} for name, total in rows]
+    return {"month": f"{year}-{month:02d}", "spending_by_category": by_cat}
+
+
+def _t_income_expense_summary(user_id, args):
+    year, month = _parse_month(args)
+    facts = compute_month_facts(user_id, year, month)
+    return {
+        "month": f"{year}-{month:02d}",
+        "income": facts["income"],
+        "expenses": facts["expenses"],
+        "net": facts["net"],
+        "savings_rate_pct": facts["savings_rate"],
+        "top_categories": facts["top_categories"],
+    }
+
+
+def _t_budget_status(user_id, args):
+    year, month = _parse_month(args)
+    rows = compute_budget_vs_actual(user_id, year, month)
+    # By attribute, not by positional unpack (#315 added a category_id).
+    budgets = [{
+        "category": r.category,
+        "budget": _money(r.budget),
+        "actual": _money(r.actual),
+        "remaining": _money(r.remaining),
+        "over_budget": float(r.remaining) < 0,
+    } for r in rows]
+    return {"month": f"{year}-{month:02d}", "budgets": budgets}
+
+
+def _t_total_for_category(user_id, args):
+    start = _parse_date(args, 'start_date')
+    end = _parse_date(args, 'end_date')
+    with db_cursor() as cursor:
+        cid, cname, ckind = _resolve_category(cursor, user_id, args.get('category'))
+        # Kind-aware (v10.12): an income-kind category sums what came IN, so
+        # "how much from Freelance" doesn't answer $0.
+        ttype = 'income' if ckind == 'income' else 'expense'
+        cursor.execute("""
+            SELECT COALESCE(SUM(amount), 0) FROM transactions
+            WHERE user_id = %s AND category_id = %s AND transaction_type = %s
+            AND is_adjustment = false AND is_transfer = false
+            AND transaction_date >= %s AND transaction_date <= %s
+        """, (user_id, cid, ttype, start, end))
+        total = float(cursor.fetchone()[0])
+    result = {"category": cname, "kind": ckind, "start_date": start.isoformat(),
+              "end_date": end.isoformat()}
+    result["total_received" if ckind == 'income' else "total_spent"] = _money(total)
+    return result
+
+
+def _t_search_transactions(user_id, args):
+    start = _parse_date(args, 'start_date')
+    end = _parse_date(args, 'end_date')
+    limit = _clamp_limit(args)
+    text = str(args.get('text', '')).strip()
+    with db_cursor() as cursor:
+        # Mirror the History page (_load_history): a description search over ALL
+        # the user's rows — including transfer legs and adjustments, which the
+        # user can see there. Excluding them here made the model answer "no, I
+        # don't see that transfer" about rows plainly visible in History.
+        cursor.execute("""
+            SELECT t.transaction_date, t.description, t.amount, t.transaction_type,
+                   c.name AS category_name
+            FROM transactions t
+            LEFT JOIN categories c ON t.category_id = c.id
+            WHERE t.user_id = %s
+            AND t.description ILIKE %s
+            AND t.transaction_date >= %s AND t.transaction_date <= %s
+            ORDER BY t.transaction_date DESC
+            LIMIT %s
+        """, (user_id, f'%{text}%', start, end, limit))
+        txns = [{
+            "date": r.transaction_date.isoformat() if r.transaction_date else None,
+            "description": r.description,
+            "amount": _money(r.amount),
+            "type": r.transaction_type,
+            "category": r.category_name,
+        } for r in cursor.fetchall()]
+    return {"matches": txns, "count": len(txns)}
+
+
+def _t_recent_transactions(user_id, args):
+    # The no-text-filter sibling of search_transactions (v10.10, added for the
+    # money agent's free hunt — "show me the week's activity" has no search
+    # term). Same fixed query shape; carries the transfer/adjustment flags so
+    # the model can recognize and dismiss transfer legs and balance check-ins
+    # instead of flagging them as odd charges.
+    start = _parse_date(args, 'start_date')
+    end = _parse_date(args, 'end_date')
+    limit = _clamp_limit(args)
+    with db_cursor() as cursor:
+        cursor.execute("""
+            SELECT t.transaction_date, t.description, t.amount, t.transaction_type,
+                   c.name AS category_name, t.is_transfer, t.is_adjustment
+            FROM transactions t
+            LEFT JOIN categories c ON t.category_id = c.id
+            WHERE t.user_id = %s
+            AND t.transaction_date >= %s AND t.transaction_date <= %s
+            ORDER BY t.transaction_date DESC, t.id DESC
+            LIMIT %s
+        """, (user_id, start, end, limit))
+        txns = [{
+            "date": r.transaction_date.isoformat() if r.transaction_date else None,
+            "description": r.description,
+            "amount": _money(r.amount),
+            "type": r.transaction_type,
+            "category": r.category_name,
+            "is_transfer": r.is_transfer,
+            "is_adjustment": r.is_adjustment,
+        } for r in cursor.fetchall()]
+    return {"transactions": txns, "count": len(txns)}
+
+
+def _t_upcoming_scheduled(user_id, args):
+    # Only genuinely upcoming items (due today or later). run_due_schedules()
+    # doesn't fire on /ask itself, so an active schedule can still carry a
+    # past next_due here — without this filter the model would report an already-
+    # overdue date as "upcoming".
+    #
+    # #32: a finished schedule (next_due past its end_date) is not upcoming
+    # either — reporting it would have the model tell the user about a bill that
+    # can never be charged again.
+    today = date.today()
+    with db_cursor() as cursor:
+        cursor.execute("""
+            SELECT description, amount, transaction_type, frequency, next_due
+            FROM schedules
+            WHERE user_id = %s AND is_active = true AND next_due >= %s
+              AND (end_date IS NULL OR next_due <= end_date)
+            ORDER BY next_due
+        """, (user_id, today))
+        items = [{
+            "description": r.description,
+            "amount": _money(r.amount),
+            "type": r.transaction_type,
+            "frequency": r.frequency,
+            "next_due": r.next_due.isoformat() if r.next_due else None,
+        } for r in cursor.fetchall()]
+    return {"scheduled": items}
+
+
+def _t_account_balances(user_id, args):
+    # Reuse the Accounts page's balance query (the single source of the balance
+    # formula). Credit cards with a limit set also report limit / available /
+    # utilization (v10.10 — same shared math as the /accounts bar); cards with
+    # an apr set that carry a balance also report apr / ~monthly interest
+    # (v10.15). Present highest balance first.
+    with db_cursor() as cursor:
+        cursor.execute(ACCOUNT_ROW_SQL.format(extra=""), (user_id,))
+        rows = cursor.fetchall()
+    accts = []
+    for r in rows:
+        entry = {"account": r.account_name, "balance": _money(r.balance)}
+        if r.type == 'Credit Card':
+            cu = credit_utilization(r.balance, r.credit_limit)
+            if cu:
+                entry.update({"credit_limit": cu['limit'],
+                              "available_credit": cu['available'],
+                              "utilization_pct": cu['pct']})
+            # Independent of the limit — a card can have an apr without one.
+            mi = monthly_interest(r.balance, r.apr)
+            if mi:
+                entry.update({"apr": mi['apr'],
+                              "est_monthly_interest": mi['monthly']})
+        accts.append(entry)
+    accts.sort(key=lambda a: a["balance"], reverse=True)
+    return {"accounts": accts}
+
+
+# --- tool definitions (the schemas the model sees) --------------------------
+# strict + additionalProperties:false + required → args validate exactly.
+
+def _t_month_summary(user_id, args):
+    """#232 — everything the retired Insight card showed, as one tool.
+
+    income_expense_summary answers "how did I do"; this answers "how does that
+    COMPARE" — last month beside this one, which budgets are blown, and the card
+    snapshot. Same builder the month read narrates, so the panel's paragraph and
+    the box's answer can never quote different figures."""
+    year, month = _parse_month(args)
+    facts = compute_month_facts(user_id, year, month)
+    return {
+        "month": f"{year}-{month:02d}",
+        "income": facts["income"],
+        "expenses": facts["expenses"],
+        "net": facts["net"],
+        "savings_rate_pct": facts["savings_rate"],
+        "previous_month": facts["prev"],
+        "top_categories": facts["top_categories"],
+        "overruns": facts["overruns"],
+        "credit_cards": facts["credit_cards"],
+    }
+
+
+def _t_month_projection(user_id, args):
+    """#232 — everything the retired Forecast card showed, as one tool.
+
+    The only tool that looks FORWARD: where the month is heading on the current
+    run-rate, and which scheduled items have not landed yet. `method` names how
+    the projection was reached so the model can hedge honestly on thin data."""
+    year, month = _parse_month(args)
+    f = compute_forecast(user_id, year, month)
+    return {
+        "month": f"{year}-{month:02d}",
+        "day_of_month": f["day_of_month"],
+        "days_in_month": f["days_in_month"],
+        "income_to_date": f["income_to_date"],
+        "expenses_to_date": f["expenses_to_date"],
+        "net_to_date": f["net_to_date"],
+        "projected_income": f["projected_income"],
+        "projected_expenses": f["projected_expenses"],
+        "projected_net": f["projected_net"],
+        "projection_method": f["method"],
+        "remaining_scheduled_income": f["remaining_scheduled_income"],
+        "remaining_scheduled_expense": f["remaining_scheduled_expense"],
+        "remaining_items": f["remaining_items"],
+        "total_budget": f["total_budget"],
+        "projected_over_budget": f["projected_over_budget"],
+    }
+
+
+def _no_args():
+    return {"type": "object", "properties": {}, "required": [],
+            "additionalProperties": False}
+
+
+def _month_arg():
+    return {
+        "type": "object",
+        "properties": {"month": {"type": "string",
+                                 "description": "Month as YYYY-MM, e.g. 2026-05"}},
+        "required": ["month"],
+        "additionalProperties": False,
+    }
+
+
+def _date_arg():
+    """The shared YYYY-MM-DD date property used by the date-range tools."""
+    return {"type": "string", "description": "YYYY-MM-DD"}
+
+
+# (json schema spec, handler). The spec name must match the registry key.
+ASK_TOOLS = [
+    ({"name": "list_categories",
+      "description": "List the user's own categories with their kind ('expense' "
+                     "or 'income'). Call this first when you need the exact "
+                     "category name to pass to another tool.",
+      "strict": True, "input_schema": _no_args()},
+     _t_list_categories),
+
+    ({"name": "spending_by_category",
+      "description": "Total expense spending broken down by category for one "
+                     "month. Use for 'what did I spend on X' or 'where did my "
+                     "money go' questions.",
+      "strict": True, "input_schema": _month_arg()},
+     _t_spending_by_category),
+
+    ({"name": "income_expense_summary",
+      "description": "Income, expenses, net, savings rate, and top categories for "
+                     "one month. Use for 'how did I do' / 'am I in the black' "
+                     "questions.",
+      "strict": True, "input_schema": _month_arg()},
+     _t_income_expense_summary),
+
+    ({"name": "budget_status",
+      "description": "Budget vs actual spending per category for one month, "
+                     "including which categories are over budget. Use for 'am I "
+                     "on track / over budget' questions.",
+      "strict": True, "input_schema": _month_arg()},
+     _t_budget_status),
+
+    ({"name": "total_for_category",
+      "description": "Total for one category over a date range — expense spending "
+                     "for an expense-kind category, income received for an "
+                     "income-kind one. Pass an exact category name (call "
+                     "list_categories if unsure).",
+      "strict": True, "input_schema": {
+          "type": "object",
+          "properties": {
+              "category": {"type": "string", "description": "Exact category name"},
+              "start_date": _date_arg(),
+              "end_date": _date_arg(),
+          },
+          "required": ["category", "start_date", "end_date"],
+          "additionalProperties": False,
+      }},
+     _t_total_for_category),
+
+    ({"name": "search_transactions",
+      "description": "Search the user's transactions whose description matches "
+                     "some text, within a date range (newest first, capped). Use "
+                     "for 'did I pay X' / 'find my Y purchases' questions.",
+      "strict": True, "input_schema": {
+          "type": "object",
+          "properties": {
+              "text": {"type": "string", "description": "Text to match in the "
+                                                        "description"},
+              "start_date": _date_arg(),
+              "end_date": _date_arg(),
+              "limit": {"type": "integer",
+                        "description": f"Max rows (1-{MAX_LIMIT})"},
+          },
+          "required": ["text", "start_date", "end_date"],
+          "additionalProperties": False,
+      }},
+     _t_search_transactions),
+
+    ({"name": "recent_transactions",
+      "description": "List ALL the user's transactions in a date range, newest "
+                     "first (capped), with no text filter — including transfer "
+                     "legs and balance-adjustment rows, which are flagged. Use "
+                     "for 'what happened this week' / recent-activity questions.",
+      "strict": True, "input_schema": {
+          "type": "object",
+          "properties": {
+              "start_date": _date_arg(),
+              "end_date": _date_arg(),
+              "limit": {"type": "integer",
+                        "description": f"Max rows (1-{MAX_LIMIT})"},
+          },
+          "required": ["start_date", "end_date"],
+          "additionalProperties": False,
+      }},
+     _t_recent_transactions),
+
+    ({"name": "upcoming_scheduled",
+      "description": "List the user's active recurring schedules (income & bills) "
+                     "with their amounts and next due dates. Use for 'what bills "
+                     "are coming up' / 'biggest recurring bill' questions.",
+      "strict": True, "input_schema": _no_args()},
+     _t_upcoming_scheduled),
+
+    ({"name": "account_balances",
+      "description": "Current balance of each of the user's accounts. For "
+                     "credit cards with a limit set, also returns the credit "
+                     "limit, available credit, and utilization percent. For "
+                     "cards with an APR set that carry a balance, also returns "
+                     "the APR and the approximate monthly interest cost. Use for "
+                     "'how much do I have' / 'account balance' / 'how much room "
+                     "is left on my card' / 'what is my card costing me' "
+                     "questions.",
+      "strict": True, "input_schema": _no_args()},
+     _t_account_balances),
+
+    # --- #232: the two tools that replace the Insight and Forecast cards -----
+    ({"name": "month_summary",
+      "description": "One month's figures WITH context the plain summary lacks: "
+                     "the previous month beside it, which categories are over "
+                     "budget and by how much, and the current credit-card "
+                     "snapshot. Use for 'how is this month going' / 'how does "
+                     "that compare with last month' / 'am I doing better' "
+                     "questions.",
+      "strict": True, "input_schema": _month_arg()},
+     _t_month_summary),
+
+    ({"name": "month_projection",
+      "description": "Where one month is HEADING: month-to-date actuals, the "
+                     "projected end-of-month income, expenses and net, and the "
+                     "scheduled income and bills that have not landed yet. The "
+                     "only forward-looking tool — use it for 'will I make it to "
+                     "the end of the month' / 'what is still to come out' / 'am "
+                     "I on pace' questions. Figures under it are projections, "
+                     "not facts; say so when you report them.",
+      "strict": True, "input_schema": _month_arg()},
+     _t_month_projection),
+]
+
+_HANDLERS = {spec["name"]: handler for spec, handler in ASK_TOOLS}
+TOOL_SPECS = [spec for spec, _ in ASK_TOOLS]
+
+
+def dispatch(user_id, name, raw_input):
+    """Run one tool for `user_id`, validating args first. Returns
+    (content_str, is_error). user_id is forced by the caller — the model never
+    supplies it. Unknown tool or bad args → an is_error result the model can
+    recover from, never a crash."""
+    handler = _HANDLERS.get(name)
+    if handler is None:
+        return json.dumps({"error": f"Unknown tool: {name}"}), True
+    try:
+        result = handler(user_id, raw_input or {})
+        return json.dumps(result, default=str), False
+    except _ToolError as e:
+        return json.dumps({"error": str(e)}), True
+    except Exception:
+        # A real bug in a handler (not a recoverable bad arg) — log the traceback
+        # so it's diagnosable, but still hand the model a clean is_error result.
+        log.exception("Ask tool %r failed for user %s", name, user_id)
+        return json.dumps({"error": "That query couldn't be run."}), True

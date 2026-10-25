@@ -11,7 +11,7 @@ import json
 from datetime import date
 from decimal import Decimal
 
-import app.blueprints.ask as ask
+import app.services.ask_tools as ask
 from app.blueprints.accounts import _parse_apr
 from app.db import get_db_connection
 from app.services.accounts import credit_card_utilization_facts, monthly_interest

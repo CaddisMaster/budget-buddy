@@ -23,8 +23,8 @@ from types import SimpleNamespace
 import pytest
 
 import app.ai as ai
-import app.blueprints.ask as ask
 import app.mailer as mailer
+import app.services.ask_tools as ask
 from app.ai import (
     AGENT_MAX_FINDINGS,
     AGENT_TITLE_MAX,

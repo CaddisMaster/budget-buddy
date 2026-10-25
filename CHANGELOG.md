@@ -95,6 +95,10 @@ this project uses the `0.x` versioning scheme described in
 - **A goal's progress and projection moved to `app/services/goals.py`.** The
   Goals page and Home's goals widget both show them, and Home imported them
   from the Goals page's module. No visible change. (#489)
+- **The Ask box's tools moved to `app/services/ask_tools.py`.** They are the
+  boundary that keeps the model to read-only queries on your own data, and
+  the weekly money check drives the same tools, so it imported them from the
+  Ask box's page module. No visible change. (#489)
 
 ## [0.13.0] - 2026-10-12
 

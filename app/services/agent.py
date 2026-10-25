@@ -1,7 +1,7 @@
 """The money agent: an autonomous weekly investigation of the user's finances.
 
 The model free-hunts the last week through the SAME read-only, user-scoped
-ask-tools the "Ask your finances" box uses (blueprints/ask.py is still the one
+ask-tools the "Ask your finances" box uses (services/ask_tools.py is still the one
 security boundary — dispatch validates every arg and forces user_id), dismisses
 what is explicable, and submits at most 3 evidence-cited findings. "Nothing
 notable this week" is the expected outcome most weeks.
@@ -21,9 +21,9 @@ import json
 from datetime import date
 
 from app.ai import AGENT_MODEL, investigate_finances
-from app.blueprints.ask import TOOL_SPECS, dispatch
 from app.db import db_cursor
 from app.helpers import most_recent_sunday
+from app.services.ask_tools import TOOL_SPECS, dispatch
 
 
 def run_money_agent(user_id, *, today=None):

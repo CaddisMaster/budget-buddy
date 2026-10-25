@@ -20,7 +20,7 @@ def test_the_app_logger_is_at_info_and_the_root_is_not_lowered(app):
     """The pair that makes INFO reach the log without flooding it with library
     INFO: the app's own loggers at INFO, the root left at Python's WARNING."""
     assert app.logger.level == logging.INFO
-    assert logging.getLogger("app.blueprints.ask").getEffectiveLevel() == logging.INFO
+    assert logging.getLogger("app.services.ask_tools").getEffectiveLevel() == logging.INFO
     assert logs.handler in logging.getLogger().handlers
 
 

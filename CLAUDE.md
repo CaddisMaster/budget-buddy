@@ -69,8 +69,8 @@ docs/              # the reference detail this file points at
 **Blueprints** (`app/blueprints/`, all registered with no `url_prefix`): `auth`, `main` (`/` IS the
 dashboard), `transactions`, `categories`, `accounts`, `budgets`, `analytics` (redirect stub),
 `admin`, `transfers`, `goals`, `push`, `feedback`, `announce`, `reminders` (the daily job),
-`schedules`, `insights` (the month read behind Home's one AI panel), `ask` (the tool-use
-security boundary), `digests`, `imports` (statement import, #445).
+`schedules`, `insights` (the month read behind Home's one AI panel), `ask` (the /ask route; its
+tool-use security boundary is `services/ask_tools.py`), `digests`, `imports` (statement import, #445).
 
 **Services** (`app/services/`, #489): domain logic with no routes — `forecasts` (the month
 projection's arithmetic), `agent` (the money agent, run inside the weekly digest),
@@ -78,8 +78,8 @@ projection's arithmetic), `agent` (the money agent, run inside the weekly digest
 the budget-change log) `accounts` (the balance query, credit utilization and interest) and `ownership`
 (`validate_category_account`, the write-side FK guard) `devices` (a push device's label) and `chart_palette` (which hue each
 category gets) `due_runners` (schedules → ledger rows; its `FOR UPDATE` is load-bearing) and
-`month_read` (every figure behind the month read, Ask's month tools and the digest) and
-`goals` (a goal's progress and projection). ⚠️ **A
+`month_read` (every figure behind the month read, Ask's month tools and the digest),
+`goals` (a goal's progress and projection) and `ask_tools` (⚠️ Ask's tools: the security boundary). ⚠️ **A
 blueprint imports from a service, never from another blueprint, and a service imports no
 blueprint.** The move is in progress: `tests/test_module_boundaries.py` allowlists the edges
 that predate the rule, and fails on a new one **and** on a listed one that has gone.
@@ -175,8 +175,8 @@ These apply to nearly every change, which is why they are here rather than in `d
   claude-triage.yml -f issue=<n>` gets one after the fact
 - A **schema migration always stands alone in its own PR**. Deploy ordering: additive migrations go
   **before** the image pull, DROPs **after**
-- `ai.py` never touches the DB and never sees a user id — tool dispatch is a callback the blueprint
-  supplies
+- `ai.py` never touches the DB and never sees a user id — tool dispatch is a callback the caller
+  supplies, bound around `services/ask_tools.dispatch`
 
 ## Testing
 
