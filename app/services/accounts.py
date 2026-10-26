@@ -30,7 +30,7 @@ ACCOUNT_ROW_SQL = """
     ORDER BY a.account_name
 """.replace('{stale_days}', str(CHECKIN_STALE_DAYS))
 
-# Utilization tinting thresholds (v10.10 Credit limits): amber from 30% (the
+# Utilization tinting thresholds: amber from 30% (the
 # classic keep-utilization-under-30% guidance), red from 80% (nearly maxed).
 CREDIT_WARN_PCT = 30
 CREDIT_DANGER_PCT = 80
@@ -104,7 +104,7 @@ def monthly_interest(balance, apr):
 def credit_card_utilization_facts(user_id):
     """Per-card facts for the user's Credit Card accounts, name order; [] when
     none qualify. Deterministic — the only source of card figures the AI
-    narrates. A card qualifies with a usable limit OR usable interest (v10.15),
+    narrates. A card qualifies with a usable limit OR usable interest,
     and the keys are per-feature: {name} always, plus
     {limit, debt, available, utilization_pct} when a limit is set, plus
     {debt, apr, est_monthly_interest} when an apr is set and the card carries

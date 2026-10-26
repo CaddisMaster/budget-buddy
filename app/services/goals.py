@@ -41,13 +41,13 @@ def compute_goal_projection(target_amount, saved, target_date,
       - projected_date / on_track: from the recent inflow pace, when the goal is
         projected to complete and whether that beats the target_date.
 
-    `apr` (v10.15, payoff goals only — the linked card's rate) makes all three
+    `apr` (payoff goals only — the linked card's rate) makes all three
     interest-aware: est_monthly_interest = remaining × apr/100/12 (the same
     approximation as accounts.monthly_interest, hence the '~' wording),
     required_per_month becomes the amortized payment, and the pace projection
     simulates interest accruing month by month — a pace that can't outrun the
     interest projects no finish date (on_track False when there's a target).
-    With apr=None every figure is unchanged from the pre-v10.15 math.
+    With apr=None every figure is the plain, interest-free math.
     """
     today = today or date.today()
     target_amount = float(target_amount)
@@ -162,7 +162,7 @@ def _goal_view(cursor, user_id, row):
     projections. For a payoff goal the same math reads as: saved = paid off
     since creation, remaining = the current actual debt (self-correcting if
     more gets charged), complete = balance back at $0. Payoff goals feed the
-    linked account's apr into the projection (v10.15) — interest only makes
+    linked account's apr into the projection — interest only makes
     sense against a debt, so save goals pass None."""
     balance = account_balance(cursor, user_id, row.account_id)
     saved = balance - float(row.baseline_amount)

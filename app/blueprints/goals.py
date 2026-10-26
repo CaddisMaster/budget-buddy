@@ -11,7 +11,7 @@ from app.services.goals import account_balance, build_goals_view, build_single_g
 
 bp = Blueprint('goals', __name__)
 
-# 'save' works toward a positive target; 'payoff' (v10.9) works a negative
+# 'save' works toward a positive target; 'payoff' works a negative
 # balance back to $0. A payoff goal snapshots at creation: baseline_amount =
 # the account's balance and target_amount = the starting debt (−balance), so
 # compute_goal_projection() is shared — the type only drives wording/forms.

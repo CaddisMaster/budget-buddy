@@ -59,9 +59,7 @@ def _match_id(name, rows):
 # ---------------------------------------------------------------------------
 # #232 — the month read: the ONE narrated line on Home.
 #
-# Supersedes v10.1 "Insight" and v10.2 "Forecast", which were two cards narrating
-# two halves of one month (and, with the v10.10 money agent, three AI surfaces
-# stacked in one panel). The app still computes every figure deterministically —
+# One read of the whole month, in one panel. The app computes every figure deterministically —
 # month_read.build_read_facts() merges compute_month_facts() with
 # compute_forecast() — and the model only writes prose over them. It must NOT
 # recompute or invent numbers, so nothing it returns is ever used as a figure.
@@ -152,7 +150,7 @@ def _call_month_read_model(facts, today, api_key):
 
 
 # ---------------------------------------------------------------------------
-# v10.3 — "Ask your finances" (tool-use).
+# "Ask your finances" (tool-use).
 #
 # The capstone LLM technique and the only one not built before: multi-turn tool
 # use. The user asks a plain-English question; the model answers ONLY by calling
@@ -287,7 +285,7 @@ def _call_ask_model(messages, tool_specs, today, api_key):
 
 
 # ---------------------------------------------------------------------------
-# v10.5 — "Auto-Categorize & Cleanup" (batch classification).
+# "Auto-Categorize & Cleanup" (batch classification).
 #
 # Budget Buddy's fifth AI feature and its batch-classification beat. The app
 # picks the candidate rows (uncategorized, plus recent rows that may be
@@ -439,7 +437,7 @@ def _call_categorize_model(rows, category_names, today, api_key):
 
 
 # ---------------------------------------------------------------------------
-# v10.7 — "AI Budget Review" (right-sizing).
+# "AI Budget Review" (right-sizing).
 #
 # The sixth AI feature: one batched review of the user's monthly budgets. The
 # app computes every figure deterministically (compute_budget_review_facts —
@@ -602,7 +600,7 @@ def _call_budget_model(facts, category_names, today, api_key):
 
 
 # ---------------------------------------------------------------------------
-# v10.8 — "Weekly Email Digest".
+# "Weekly Email Digest".
 #
 # Budget Buddy's first PUSH feature. The app computes every figure
 # deterministically (compute_digest_facts — month-to-date spend/net/budget plus
@@ -690,11 +688,11 @@ def _call_digest_model(facts, today, api_key):
 
 
 # ---------------------------------------------------------------------------
-# v10.10 — the "Money agent" (autonomous weekly investigation).
+# the "Money agent" (autonomous weekly investigation).
 #
-# Budget Buddy's ninth AI feature and its first AUTONOMOUS tool-use: nobody
+# Budget Buddy's only AUTONOMOUS tool-use: nobody
 # types a question — once a week (or on demand) the model free-hunts the user's
-# recent activity through the same read-only, user-scoped ask-tools the v10.3
+# recent activity through the same read-only, user-scoped ask-tools the Ask
 # loop uses, dismisses what's explicable, and submits at most 3 findings, each
 # citing the tool-returned figures as evidence. Still assist-not-autopilot: the
 # tools are read-only, dispatch forces user_id, and everything the model writes

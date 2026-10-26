@@ -347,7 +347,7 @@
 {% endif %}
 
 {% if has_transactions %}
-{# Collapsible on purpose (v10.13 de-scroll): open on desktop, collapsed on
+{# Collapsible on purpose, to cut scrolling: open on desktop, collapsed on
    mobile. Charts are lazily initialized on first open — a chart library
    measures its container, and inside a closed <details> that is 0-height. #}
 <details id="charts-details" class="charts-details" open>

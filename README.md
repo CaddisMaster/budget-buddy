@@ -27,6 +27,7 @@ finances. Everything here exists because I hit a real need for it.
 - **Account transfers** — move money between accounts as one linked pair of entries, kept out of the income and expense charts
 - **Scheduled income and bills** — six frequencies including semi-monthly with two pay days; each posts a real transaction on its due date, going forward only, never back-dating on setup
 - **Recurring transfers** — the same idea for money moving between your own accounts
+- **Statement import** — upload a bank export (OFX, CSV, PDF) or a screenshot; lines already in the ledger are recognised and skipped, and nothing is saved until you confirm the review list
 - **CSV export** — filtered transactions out to a file, with formula-injection sanitising
 
 ### Making sense of it
@@ -39,25 +40,23 @@ finances. Everything here exists because I hit a real need for it.
 
 ### AI assistance
 
-Nine AI features, all built on the same principle: **the application computes
+AI features, all built on the same principle: **the application computes
 every number, and the model only ever narrates.** Figures are never persisted
 from a model response, and the model has no database access — it reaches data
 only through a fixed set of read-only, user-scoped, parameter-validated tools.
 
-- **Quick add** — type "spent 42 on groceries at Safeway yesterday" and have it parsed into a pre-filled form you confirm
-- **Monthly insight** — a plain-English recap of the month's figures with a coaching tip
-- **Forecast** — a month-ahead projection from run-rate plus remaining scheduled items
-- **Ask your finances** — a multi-turn question box backed by nine query tools
+- **Month read** — one plain-English read of the month: where it stands, where it is heading, and what to watch
+- **Ask your finances** — a multi-turn question box backed by a set of read-only query tools
 - **Auto-categorise** — batch-classify uncategorised expenses, presented as a review list you confirm
 - **Budget review** — proposed budget amounts, snapped into a range derived from your actual history
-- **Goal coach** — narration of whether your goal pace is realistic
 - **Weekly email digest** — a Sunday summary of the week behind and the bills ahead
 - **Money agent** — an autonomous investigation loop that decides which tools to call, and must cite evidence for every finding it reports
+- **Statement reading** — maps an unfamiliar CSV's columns and reads transactions off a screenshot; the parsed lines still go through the same review list
 
 ### Everything else
 
 - **Multi-user** with session authentication, admin-only user creation, and strict per-user data isolation
-- **Installable PWA** with an offline-capable service worker, tested on iOS
+- **Installable PWA** with a deliberately minimal service worker (static assets only — no offline mode), tested on iOS
 - **Dark mode**, automatic from system preference
 - **Mobile layout** with card-based history and a collapsible sidebar
 - **Admin tools** — user management and a database backup download
@@ -101,7 +100,7 @@ before you change anything are all in **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 ./test.sh
 ```
 
-565 tests, running in a throwaway container on the same Python as production.
+The suite runs in a throwaway container on the same Python as production.
 They cover date arithmetic, routes and authentication, per-user isolation, the
 HTMX endpoints, and every AI feature with its network seam stubbed — so the
 suite never makes a real API call and needs no key. The same suite runs in
@@ -119,7 +118,9 @@ GitHub Actions ──build──▶ container registry
                     DigitalOcean Droplet
                         Nginx  (TLS termination, reverse proxy)
                           └─▶ Gunicorn → Flask
-                          └─▶ PostgreSQL (Docker volume)
+                        worker (scheduled jobs: digest, reminders, schedules)
+                        Redis (rate-limit counters)
+                        PostgreSQL (Docker volume)
 ```
 
 Flask is never directly exposed; Nginx terminates TLS and proxies to a

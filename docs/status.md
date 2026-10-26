@@ -126,1300 +126,163 @@ check** (re-checked 2026-10-23).
 - **Milestones:** #490, #491 and #492 were filed without one (as were #489 and #493) and were
   put on `0.13.1` once merged, so the milestone records what that release carries.
 
-### The 2026-10-21 session: an outside review, and #483 fixed
-
-| PR | Issue | |
-|---|---|---|
-| #494 | **#483** | The worker runs one scheduler; the digest claims each user's week before sending |
-| this PR | **#495** | this record |
-
-- **An outside architecture review** (an untracked `budget-buddy-review.md`, read at `79a1595`)
-  became five issues: **#489** services layer, **#490** app factory, **#491** named rows,
-  **#492** a CI check that `schema.sql` matches its migration, **#493** a docs sweep. Every
-  factual claim checked out. Three prescriptions were narrowed rather than adopted, and each
-  issue says so in an "Explicitly not proposed" line: no SQLAlchemy and no `psycopg_pool`
-  (psycopg 3 only), no Alembic, and comments that explain a live trap stay. The review's
-  "process outgrowing the product" point was left out (a learning project), and so was
-  cross-repo tooling (an orbit-ops question as much as this repo's).
-- **#483's cause was the #402 matrix's blind spot:** it asked what the import does in `web`, never
-  in `worker`, which is also a process that imports the app. Fixed in two layers that each
-  stand alone: the compose switch on the worker, and `run_scheduler_command()` stopping an
-  in-process scheduler it finds, so the new image is safe on the Droplet's current compose file.
-  The digest's check-then-act became a conditional `UPDATE … RETURNING` claim, released on a
-  failed send.
-- ✅ **Mutated separately, each caught by its own test.** The race scenario
-  (`weekly_digest.feature`) caught a condition-less claim **20/20**, and passed the fix **20/20**.
-  In real containers, the worker reported one OS thread both with the fixed compose environment
-  and with `SCHEDULER_IN_PROCESS=1` (the old file's state).
-- ~~**After the `0.13.1` deploy:** no `Stopped the in-process scheduler` line.~~ ⚠️
-  **Superseded 2026-10-23 by #490**, which deleted the code that printed it. The check is now
-  `Scheduler running` in the worker log; see Current Status.
-- The local dev `worker` had been crash-looping on an image built before `pypdf`.
-  `docker compose up -d --build web worker` fixed it. Rebuild both, not just `web`.
-
-### The 2026-10-12 session: `0.13.0` shipped
-
-| PR | Issue | |
-|---|---|---|
-| #481 | — | Dependabot: `anthropic` 1.12.1, `pydantic` 2.14.0, MarkupSafe, `resend`. Tested on a **rebuilt** container: 99 scenarios, 1742 passed |
-| #480 | — | Dependabot: `claude-code-action` 1.0.248 |
-| #484 | **#482** | Cut `0.13.0`: two What's-new blocks (statement import; notification devices), Sean's call |
-| this PR | **#485** | this record |
-
-- **Sean chose to cut before trying the real Discover export**, so a bug it finds becomes a
-  `0.13.1`. The export check moved from localhost to production.
-- ✅ **The Nginx step was proven from outside, before and after, with no Droplet access.** A 2 MB
-  `POST /transactions/import` from the VM got **Nginx's own 413 page** before the edit, still 413
-  after the file was saved but not yet reloaded, then the **app's 404** after `nginx -t && systemctl
-  reload nginx` (0.12.0 had no such route), and the app's **400** (no CSRF token) once 0.13.0
-  was up. A response that names Nginx versus one from the app discriminates; a bare "not 413" would
-  not. Sean edited in `nano`, and pasting the file back for a read before reloading was cheap. The
-  site file is `/etc/nginx/sites-available/budget-buddy`, backed up first to
-  `/root/budget-buddy.nginx.bak-2026-10-12`. Orbit Ops (learn.seandesmet.com) answered after the
-  reload.
-- ✅ **#433's first real run passed.** The deploy log read: `shipping docker-compose.yml 60a8265f…
-  from 5c70955` → `received … (matches 0.13.0)` → `installed …`, and `up -d --remove-orphans`
-  recreated only `web` and `worker`; `db` stayed `Up 2 months`. Then `backup ok` (43,595 bytes) →
-  `applying 39…, 40…, 41… ok` → `running version 0.13.0` → `worker version 0.13.0` → `Nothing to
-  apply for phase after-pull` → `Announced 0.13.0 to 3 device(s).` Live `/healthz` 200.
-- ⚠️ **`gh release create --target` needs the FULL sha.** A short one fails with
-  `Release.target_commitish is invalid`, and nothing is created. The Release was published with
-  `--target $(git rev-parse origin/main)` after confirming `main` was still the prep commit.
-- **Dependabot bumps never get a changelog entry** (checked against #428 for 0.12.0); they are
-  named in the Release notes instead. The suite's **586 warnings** are the same count on `main`
-  and on #481, so a bump that adds a deprecation would show as a changed number.
-- **#483 was filed by a second, concurrent session** and moved to a new `0.13.1` milestone, so
-  two milestones were open for the hour before ship. ✅ **`0.13.0` was closed on ship day**
-  (42/42).
-
-### The 2026-10-07 session: statement import finished
-
-✅ **Shipped in `0.13.0` (2026-10-12).**
-
-| PR | Issue | |
-|---|---|---|
-| #466 | **#457** | ledger entries the statement doesn't list, and "still pending"; left out for screenshots (Sean) |
-| #467 | **#458** | summary first, "Needs you", everything else folded in `<details>`; one Apply |
-| #468 | **#455** | clean names: the user's own name for a merchant, else a cleaned one; plain code, no raw-text column (Sean) |
-| #469 | **#459** | a balance for CSV (running column) and screenshots (dated only); cards read in the nearer sign (Sean); a gap one item explains is named |
-| #470 | **#460** | PDF statements through the screenshot seam (Sonnet 5) + `pypdf` for pages and locks (Sean) |
-| #472 | **#471** | `sql/41`: `account.number_last4`, CHECK four digits, partial UNIQUE per user. Additive, before-pull |
-| #473 | **#461** | the account is detected from the statement's last four; learned on apply, the last apply wins (Sean) |
-| #475 | **#474** | a typed closing balance on the upload form, used over the file's own; the review names the source |
-| this PR | **#476** | this record |
-
-- **Every open question was settled before code**, and most turned out to be lookups. #455's
-  "first model output in a stored column" premise was false (screenshots already store one). #459's
-  "check a real Discover export" became unnecessary once a rule was right under both sign
-  conventions. #461's "editable or learned" hid a real failure: a wrong first apply would have
-  stuck forever. "The last apply wins" makes it self-correcting, and sql/41's per-user unique index
-  makes it a guarantee.
-- ⚠️ **Mutation passes found three kinds of survivor, again.** Real untested rules got a test (for
-  example, #459's apply-side filters: a ticked, pending or later line must never be named). Duplicate
-  guards were deleted: the apply-side `NOT is_adjustment`, an explicit PDF lock check pypdf already
-  makes, and a backwards-period check the containment check already makes. A `user_id` scope that
-  another filter also enforces was kept, per the non-negotiable.
-- ⚠️ **Real model calls caught one prompt gap the mocks never could.** Shown a screenshot with an
-  "Available balance" and running balances beside each line, Sonnet 5 returned the available one,
-  correctly labelled and so safely ignored, but leaving no check. A "prefer a statement balance,
-  then the running balance beside the most recent line" sentence fixed it. Each new schema field was
-  confirmed against the real API once (cents): CSV `balance_col`, the screenshot balance, the PDF
-  `document` block (one page, 5.9 s) and `account_last4`.
-- **#474 came from Sean's question** "what can we tell the AI about the balance?" The answer was
-  "nothing": the AI never matches, and a Discover CSV carries no balance. The typed balance closes
-  that. It is never stored; the Accounts page check-in still records a balance.
-- ⚠️ **Not yet seen against a real file:** a Discover OFX's sign, a multi-page bank PDF, real phone
-  screenshots. All were checked only with generated files.
-
-### The 2026-10-06 session: making the import work like a reconcile in a session
-
-✅ **Shipped in `0.13.0` (2026-10-12).**
-
-| PR | Issue | |
-|---|---|---|
-| #462 | **#454** | categories from the user's own history before the model (`merchant_key`, `history_categories`); known merchants make no call |
-| #463 | **#456** | a possible match can **update** the entry (amount, date, `import_ref`, posted) instead of adding a duplicate; `is_possible()` is now the one rule |
-| this PR | **#464** | this record |
-
-- **Sean asked for the import to be "as seamless as when I ask you to update my transactions".**
-  Comparing the two produced eight issues, **#454–#461**, all on `0.13.0`. The rule underneath
-  stays *the model reads, the app decides, the person confirms*: in a session the person checks
-  the agent, and an end user has nobody checking the model. Proposed **writes** from Ask-style
-  follow-ups were deliberately left unfiled, because Ask is read-only by design.
-- ⚠️ **Open questions to settle before building:** **#457** (leave the section out for
-  screenshot uploads? recommended yes); **#455** (once descriptions are cleaned, history loses
-  the bank's raw text: a raw-text column, which is a migration in its own PR, or key on the
-  clean name?); **#459** (a card OFX's `BALAMT` sign, to check against a real Discover export).
-  **#461 needs a migration issue of its own first**, as #444 preceded #445.
-- **#454 widened its own spec**, recorded in the issue: history is every categorised row (not
-  adjustments), not only imported ones, since a hand-typed "Kroger" is the same evidence.
-  Matching is exact on the cleaned name, so a trailing city/state still splits a merchant; that
-  cleanup belongs to #455. **#456 settled its open question:** a transfer leg is never offered
-  *Update*.
-- ⚠️ **Two mutation passes (13 and 14 mutants).** Each found a `user_id` scope that no outcome
-  could see, because a second filter (the category list, or the already-owned account) discards
-  the row anyway. #454's test now spies on the query's rows; #456's is kept per the scoping
-  rule. And **two #454 mutants looked caught only because ruff flagged the name they left
-  unused**. Re-run with `SKIP_LINT=1`, scenarios caught both, so a mutation run must skip lint.
-- ⚠️ **Hand-filed issues still start a `claude-triage` run.** It fires on `opened`, reads the
-  labels, and skips both Claude steps when `triage` is absent. Nothing is billed or posted, but
-  the Actions list shows a "success" per issue, which looks like a review happened.
-
-### The 2026-10-05 evening: the compose file ships itself, and statement import
-
-✅ **Shipped in `0.13.0` (2026-10-12).**
-
-| PR | Issue | |
-|---|---|---|
-| #443 | **#433** | release/rollback copy `docker-compose.yml` themselves (`scripts/install_compose.sh`), hash-checked, refusing a release that would recreate `db`; `--remove-orphans` |
-| #448 | **#444** | `sql/40`: `transactions.import_ref` + partial unique `(account_id, import_ref)`. Additive, before-pull |
-| #449 | **#445** | statement import: OFX/QFX/CSV → review → apply. Reverses the standing "CSV import" rejection |
-| #450 | **#446** | statement transfer lines → transfer pairs, converting an existing plain row into the second leg |
-| #451 | **#447** | statement import from screenshots (Sonnet 5, Sean's call) |
-| this PR | **#452** | this record |
-
-- 🛑 **#433 found two compose behaviours the issue hadn't considered**, both checked in a scratch
-  project. `up -d web` **recreates a changed dependency**, so an automated copy could recreate
-  `db` as a side effect. The guard compares `config --hash db` with the running container's
-  `com.docker.compose.config-hash` label, which is exactly what `up -d` compares. And **a service
-  removed from the file keeps running**: on a rollback past #402 the new `worker` would have
-  scheduled beside the old image. Hence `--remove-orphans`. Sean chose fail-the-release for `db`.
-- **Statement import was Sean's idea**, from how he catches up: pasting statements into a session.
-  The design rule is *the model reads, the app decides, the person confirms*. `statements.py` is
-  pure and holds every decision. Lines go through `match_lines`, and the second leg of a transfer
-  through `find_counterpart`, the one rule called by both the review and apply. ⚠️ **"CSV import"
-  was on the do-not-build list** with no recorded reason; Sean reversed it explicitly (Standing
-  decisions, below).
-- ⚠️ **About 65 mutants across #444–#447, each run against both runners.** Four survivors were
-  **duplicate guards**, and they were deleted, not tested, `user_id` in #444's index among them.
-  One "closest wins" fixture was vacuous twice. The real gaps got tests. Writing a Feb 29 test
-  found a real bug: a yearless "Feb 29" seen on Jan 1 2029 was dropped.
-- ⚠️ **The dev container carries a real `ANTHROPIC_API_KEY`.** Adding a third seam left one
-  scenario unstubbed, and it attempted a real call. Every import stub now covers all three seams.
-- **Real-model checks** (cents): Haiku mapped a Discover-style CSV with a preamble and positive
-  purchases correctly. Sonnet 5 read a mock banking-app screenshot exactly in 6.4 s, `+$2,150.00`
-  included, and the line already in the ledger matched.
-- 🛑 **Nginx's 1 MB default** (no `client_max_body_size` in prod) refuses phone screenshots before
-  the app sees them. RUNBOOK §3's scoped block was added on 2026-10-12, before the 0.13.0 deploy.
-
-### The 2026-10-05 afternoon: a release nobody's phone heard, and what it took to see why
-
-✅ **Shipped in `0.13.0` (2026-10-12).**
-
-| PR | Issue | |
-|---|---|---|
-| #439 | **#438** | `sql/39`: `push_subscriptions.device_label` + `last_seen_at`. Additive, before-pull |
-| #440 | **#437** | Profile lists every device; Home prompts a device that fell off push; `/push/seen` |
-| this PR | **#441** | this record |
-
-- 🛑 **"Announced 0.12.0 to 3 device(s)" was true and nobody's phone rang.** All three rows
-  were accepted by Apple (`201`). Sean's phone had lost its subscription on the device side
-  while its old endpoint stayed alive at Apple, so nothing ever pruned it. **A `201` from a
-  push service is not delivery**; there is no delivery receipt to check. Sean re-subscribed
-  (row 4), and the dead row (1) was deleted by hand on the Droplet.
-- **Telling his two rows apart took a tagged test push plus an Nginx access-log grep**
-  (`/?pushtest=2` from Safari on macOS). The table held nothing that names a device. That cost
-  is why #438 adds a label and a last-seen time, rather than a guess at a cleanup rule.
-- ⚠️ **The issue's own first fix was wrong.** #437 proposed re-POSTing the subscription to
-  `/push/subscribe` on every load. That would silently re-add a device the user had just
-  removed. The shipped `/push/seen` only touches, and creates nothing. Separately, "permission
-  granted, no subscription → re-subscribe" would undo an opt-out, because "Turn off" leaves
-  permission at `granted`. So nothing subscribes without a tap, and a `localStorage` flag marks
-  a deliberate no. The issue was rewritten before the code, and its criteria with it.
-- ⚠️ **Real-browser push needs full Chromium AND a persistent profile.** The headless shell
-  reports notifications `denied` whatever is granted, which by itself made the prompt correctly
-  stay hidden and looked like a bug. A normal Playwright context is incognito, where Chrome
-  disables the Push API. With both fixed, a real push-service subscription succeeds; the
-  harness is `~/.tools/bb-shots/push437.mjs`.
-- **A seed row inserted after `sql/39` gets `last_seen_at = now()`.** The check's own fake
-  "old phone" first read "Last seen today", and that was correct, not a bug. A pre-39 row has
-  to be seeded with `NULL` explicitly.
-
-### The 2026-10-05 session: one ruff pin, and `0.12.0` shipped on the second attempt
-
-| PR | Issue | |
-|---|---|---|
-| #429 | **#426** | `requirements-dev.txt` is the only ruff pin. CI reads it with `version-file:`, then fails unless the ruff it ran is the pin. The pre-commit ruff hook is dropped (Sean's call) |
-| #428, #427 | — | Dependabot: ruff 0.16.10, `anthropic` 1.11.0, `resend`, Werkzeug, `python-dotenv`; `claude-code-action` 1.0.240 |
-| #431 | **#430** | Cut `0.12.0`: one What's-new block (the CSP) |
-| #434 | **#432** | RUNBOOK §5's compose copy without a Mac clone |
-| this PR | **#435** | this record |
-
-- ✅ **#426 proven on a real Dependabot PR.** #428 was red on the three-pin test (the
-  **seventh** group). After `@dependabot rebase` onto #429 it went green with no further commit,
-  and CI logged `Found version for ruff in requirements-dev.txt: 0.16.10` → `ruff 0.16.10, as
-  pinned`. ⚠️ **`version-file` fails open** (a parse failure warns and installs `latest`), so the
-  Lint job's second step compares the action's `ruff-version` output with the pin. The test
-  **executes** that step's script (pin / newer / empty) rather than reading it. Pre-commit was
-  not even installed in the VM clone: the hook had been running nowhere since 2026-08-14.
-  Side finding, not acted on: `~/.local/bin/ruff` in the VM is 0.16.4, unpinned.
-- **`anthropic` 1.8.0 → 1.11.0, read rather than stamped.** The changelog's two relevant items
-  don't touch us. `parse()` stopped sending a beta header in 1.9.0, but 1.8.0 already sent none
-  on our calls. Sonnet 4.5 is deprecated, and we're on Haiku 4.5 and Sonnet 5. Both versions
-  were installed side by side and every seam was driven through an `httpx2.MockTransport`: 8
-  requests, byte-identical apart from `user-agent` and `x-stainless-package-version`. Still no
-  live call.
-- 🛑 **The first 0.12.0 deploy failed, and the cause was my instructions.** I told Sean to scp
-  `docker-compose.yml` "from your clone on the Mac" and verify with RUNBOOK §5's `diff`. **There
-  is no clone on the Mac.** The scp sent whatever file was in his shell's directory, and the diff
-  compared the Droplet with that same file: `identical`. The Droplet still held v0.11.0's file
-  (`df162302…`, no `worker:`). Step 3c caught it as designed (`service "worker" is not
-  running`), and production stayed up on 0.12.0 with the old single-worker path. Fixed by a
-  download pinned to the tag, `shasum` against a hash taken in the VM, scp, then `sha256sum` on
-  the Droplet (`60a8265f…`). After that, `gh run rerun --failed` went green. **A check that
-  compares against a local file of unknown origin proves nothing**: take the expected value from
-  the source of truth. #432 fixed the runbook, and #433 removes the step.
-- ⚠️ **Long commands broke in Sean's paste**: a wrapped `curl … -o <file>` lost its argument.
-  One short command per copy box worked first time.
-- ✅ **`0.12.0` milestone closed on ship day** (24/24), and `0.13.0` created first.
-
-### ✅ SHIPPED in `0.12.0` (2026-10-05) — was "on `main`, not yet deployed" (2026-09-25, extended 2026-10-02)
-
-| PR | Issue | |
-|---|---|---|
-| #397 | **#395** | schedules pytest twins deleted after a mutation pass; the posted-count step now counts by schedule |
-| #398, #399 | **#396** | the suite audit: two isolation blind spots fixed, two tombstone files and three duplicates deleted, and the #64 warning-position check that had **never run** now runs. Every file classified in #399's body |
-| #406 | **#400** | the suite runs in its own `budget_test` database; both runners refuse a database that holds users |
-| #407 | **#401** | connection pooling: 10,247 → 304 connections a run, pytest ~13s → ~6s |
-| #408 | **#402** | scheduled jobs in a compose `worker`, `web` on 2 gunicorn workers, rate limits in `redis` |
-| #410 | **#409** | the morning's record |
-| #412 | **#404** | logging at INFO, one format, a request ID per line + `X-Request-ID`; behave's log capture turned off |
-| #413 | **#405** | 22 action `uses:` pinned to SHAs; `FROM python:3.14.7-slim@sha256:caaf356f…` |
-| #414 | **#411** | every pytest test's daily sweep scoped to its own worker's users |
-| #416 | **#415** | the afternoon's record |
-| #422 | **#421** | `test_an_old_posting_is_outside_the_window` was red every month after a 30-day month; the bill now ends after its one payment |
-| #417–#420 | — | Dependabot: `claude-code-action` 1.0.235, `ruff-action` v4.1.0, ruff 0.16.9 + `anthropic` 1.8.0, the base-image digest |
-| #423 | **#403** | a real Content-Security-Policy: nonce per response, no inline handlers |
-| this PR | **#424** | this record |
-
-**2026-10-02, in brief.** Detail in each PR body, `docs/gotchas.md` and `docs/testing.md`.
-
-- 🛑 **`main` was red from 2026-10-01 because of the calendar** (#421). A monthly schedule due
-  `TODAY - 30 days` lands on today's day of the month whenever the previous month had 30 days, so
-  the runner posted today's occurrence into the window the test asserted empty. It was red for all
-  of May, July, October and December, and green when written. Found on Dependabot #420, whose own
-  change was innocent. **A test relative to `date.today()` can still encode a calendar
-  assumption**: "30 days" and "one month" agree only sometimes.
-- ⚠️ **Branch protection is `strict`**: a PR must be up to date with `main` to merge, so a batch of
-  Dependabot PRs merges one at a time: `gh pr update-branch`, wait, merge, repeat. The refusal
-  reads "5 of 5 required status checks are expected", which looks like missing CI rather than a
-  stale branch. `update-branch` worked on #418, which edits `ci.yml`, so the gh token's
-  `workflow` scope covers it now.
-- **The ruff three-pin split caught a sixth Dependabot group** (#419: #285, #342, #366, #373,
-  #379, #419). The vault note said to file an issue past five. Not filed this session; it's Sean's call.
-- **`anthropic` 1.8.0** refactored request serialization. The outgoing body was captured offline
-  through an `httpx2.MockTransport` under 1.7.0 and 1.8.0, echoing real `TextBlock`/`ToolUseBlock`
-  objects the way `ai.py` does: identical. Still no live model call since 1.0.0.
-- ✅ **#405's unproven Dependabot-docker pin is now proven**: #420 rewrote the digest under the
-  unchanged `3.14.7-slim` tag. `claude-code-action`'s pin (#417) still waits for a `triage` issue.
-- **#403's checks.** Per #357, scenario 1 went to behave (a user's GETs, swept from `url_map`),
-  scenario 2 to pytest (a template scan) and scenario 3 to "Verified by hand". The by-hand part
-  was a Playwright pass in headless Chromium with the policy enforced: 41/41 behaviours, a
-  positive control proving injected script is refused, and every AI endpoint stubbed or aborted.
-  Push needed a second container with dummy VAPID keys, because dev has none.
-  ⏳ **Unverified until deploy:** the installed iOS PWA under the policy.
-
-**The afternoon (2026-09-25), in brief.** Detail in each PR body and in `docs/testing.md`.
-
-- 🛑 **Both test runners lowered the logging level the test checked (#404).** `caplog.at_level`
-  hid the dropped audit line from the backup test for months, and behave's log capture sets the
-  root to INFO around every scenario, so #404's own scenarios survived the "logger at WARNING"
-  mutant until `run_behave.py` passed `--no-logcapture`.
-- 🛑 **#411 was found by keeping every run's output.** `test_month_read` failed 2 in 10: another
-  worker's sweep posted its bill, and only after the 16th of the real month. Reproduced
-  deterministically first. The first fix failed 3 in 30, all in its own new tests, through a
-  simulated-worker prefix that also matched the neighbouring test's victim. After: 30/30 clean.
-- ⚠️ **#405's Dependabot question was settled by reading its source**, because the CLI's proxy is
-  amd64-only. Digest pins are rewritten, but a GitHub-side experiment can suppress digest-only
-  refreshes of an unchanged versioned tag, hence `3.14.7-slim` (Sean's call). ⏳ **Unexercised
-  pins:** `docker/login-action` (next release) and `claude-code-action` (next `triage` issue).
-- ⏳ **#404 is unverified in production** until the next deploy's `docker compose logs web` /
-  `worker` show `[INFO] [<id>] app: …` lines.
-
-🛑 **Release prep must raise the compose scp (#402).** The Droplet's `docker-compose.yml` arrives
-by scp from the Mac, and the release that carries #402 needs the new one. Forgotten, step 3c
-fails ("The worker reports ''") while the new image serves the old path safely. After deploy,
-check `docker compose ps` (worker + redis), `docker compose logs worker` ("Scheduler running:
-…") and `/settings` → Scheduled jobs. **Unverified in production until then.** No new `.env`
-variable: the Redis URI and `SCHEDULER_IN_PROCESS` live in compose.
-
-- 🛑 **#401's pool silently blinded two of three race tests.** With `FOR UPDATE` removed, the
-  page-load race went red 20/20 without the pool and **0/20** with it, and the transfer race
-  **0/20**, green throughout. `helpers.warm_the_pool()` restores 20/20. `docs/testing.md` has the rule.
-- ⚠️ **#402's first cut hid a dead worker.** Overriding `ENABLE_DIGEST_SCHEDULER` to 0 on web made
-  `/settings` report every job unscheduled. It's now two variables, with a test. `app/scheduler.py`
-  carries the old/new image × compose matrix.
-- ⚠️ **The same blind spot, three times:** isolation tests counted the owner's ledger by
-  `user_id`, so an unscoped runner posting under the *wrong* id passed them. Now they count by
-  schedule or account.
-- **#404 was filed with a finding:** `app.logger` is at WARNING, so the admin backup's audit line
-  never reaches the log.
-- The mutation passes wrote stray rows into the dev database's real users twice before #400
-  existed; each was found and deleted by id.
-
-
-✅ **#309'S OUTPUT IS FULLY DISCHARGED as of 2026-09-16.** All twelve issues the full-repo read
-filed are closed: #326 `NOT_PLANNED` on 2026-09-11, then **#314, #328 and #333 merged on
-2026-09-16**. The standing warning below is kept as the worked example, not as outstanding work.
-
-🛑 **AN ISSUE BEING OPEN IS NOT EVIDENCE THAT IT IS OPEN WORK.** This cost a wrong recommendation
-on 2026-09-04, when "#326 and #314, the two migrations" was proposed as the next session's work and
-#326 was not work at all — Sean had decided on 2026-09-02 to close it as premise-wrong, and the
-decision lived only in a comment, where `gh issue list` cannot see it. **Read the comments, not just
-the body, before proposing any issue as work.** ⚠️ A mechanical milestone roll cannot read comments
-either, so it will always overstate the work by however many decided-but-unclosed issues exist.
-
-### The 2026-09-24 session: the BDD thread decided, and a 4× faster suite
-
-**After the mid-session record (#388), the same session went on to:**
-
-| PR | Issue | |
-|---|---|---|
-| #379 | — | Dependabot group (`anthropic` 1.7.0, `resend` 2.47.0, `ruff` 0.16.8), plus the two ruff pins it cannot see. Fifth consecutive group caught by `test_all_three_ruff_pins_agree` |
-| #390 | **#389** closed | transfers → behave, the second area; `test_transfers.py` deleted |
-| #392 | **#391** closed | Cut `0.11.0` |
-
-**#361 and #355 were closed** on Sean's call. **`0.11.0` shipped**; see CLAUDE.md's status block
-for the deploy log.
-
-- 🛑 **#389's mutation pass found two old transfer tests that could not fail.** A same-account
-  transfer records an expense and an income that cancel out, so "balance unchanged" passed while
-  the transfer was recorded. And the history test's `b"Transfer"` matched the nav link. Running
-  every mutant against *both* runners is what showed it. Detail in `docs/testing.md`.
-- 🛑 **behave's type registration depends on step-file load order, which is alphabetical.**
-  Probed, not inferred: a step file sorting before the one registering `Who` crashes the whole run
-  with `format spec 'Who' not recognised`. Fixed with `tests/features/support.py`, and two harness
-  tests hold the layout.
-- ⚠️ **A draft Release sends no notification.** Sean's usual cue is the `production` gate's
-  approval request, which only comes after *publishing*. Drafting and then waiting for a
-  notification that never arrives is the trap. Either publish, or say so.
-- ⚠️ **The mid-session notes pass (#388) was a mistake of timing, not content.** It was written
-  when the session looked finished, and then four more PRs and a release happened. It was
-  extended here at the true end rather than rewritten.
-
-Three PRs merged, **none deployed**. No app code changed.
-
-⚠️ **The 2026-09-22/23 session left no status update.** It merged #381 and #382 (the behave
-pilot, closing **#356**) and #380 (closing **#375**, the phase test reading comments). This file
-still called #356 "scoped and unstarted" at the start of this session. `git log` is the only record
-of that session. The pilot's own report is in #382's body, and it is the evidence #357 was decided
-on.
-
-| PR | Issue | |
-|---|---|---|
-| #383 | **#357** closed | behave for behaviour only, provisionally. The rule is in `docs/testing.md` |
-| #385 | **#384** closed | test users at bcrypt cost 4; dev `tcp_tw_reuse`; #357's question 2 tightened |
-| #386 | **#358** closed | the `Acceptance criteria` PR check (`scripts/check_criteria.py`) |
-
-- **The suite is ~4× faster, and it wasn't behave that got faster.** Test users were hashed at
-  production cost 12 (0.183s a hash; 0.001s at 4), and every `users` fixture creates two. pytest
-  `-n 10` went 63s → 15s, `-n0` 380s → 58s, behave 5.7s → 1.2s. Found by measuring behave's
-  per-scenario cost for #357. ⚠️ The obvious fix (`BCRYPT_LOG_ROUNDS` in a fixture) is a silent
-  no-op, because Flask-Bcrypt reads it once in `init_app`.
-- 🛑 **The speed-up broke back-to-back runs.** A run opens ~9,000 DB connections, each holding a
-  port in TIME_WAIT for 60s, against 28,232 ports. At 15s a run, the third consecutive `./test.sh`
-  failed with 585 `Cannot assign requested address` errors. At 63s it never could. Fixed in the dev
-  override with `net.ipv4.tcp_tw_reuse: 1`, and six back-to-back runs then passed. **A container
-  started before #385 doesn't have it: `docker compose up -d web`.**
-- **#357's rule misfired on the day it was written.** "Needs a user row?" routed #384's own
-  hash-cost check to a `.feature` file. It now asks whether the `When` drives the app as a user.
-- **#358 was designed against its own premise.** Its sketches assumed every criterion becomes a
-  `.feature` file, which #357 had just made false. Sean chose title matching with three claim
-  forms. Run against today's two earlier PRs, it fails and names all six of their scenarios, which
-  is the gap #358 described. Seven guards were mutated separately; two survived at first, both
-  fixture gaps.
-- **#361: 40 more green runs**, made affordable by #384. With #364's 15, that's 55: P = 0.002 at
-  the titled 11%, 0.11 at the pooled 4%. ⚠️ Confound: the timing change moves xdist scheduling,
-  which could hide a race as easily as #364 fixed one.
-- ⚠️ `test.sh`'s serial figure (~204s) and #357's "3.5 minutes" were both stale. Serial was 380s
-  before #384. `test.sh`'s worker-count table predates #384 and was not re-measured.
-
-### The 2026-09-16 session: the #309 remnants cleared
-
-Three PRs merged, **none deployed**. `main` is five commits past `v0.10.0`, carrying **one
-migration and no new env vars**.
-
-| PR | Issue | |
-|---|---|---|
-| #373 | — | Dependabot minor/patch group, plus the two ruff pins it cannot see |
-| #374 | **#328, #333** closed | Delete the dead ingest pipeline; stop shipping `docs/`, `.claude/`, `.ruff_cache/` |
-| #376 | **#314** closed | `sql/38` — refuse a NaN in all nine money columns |
-
-🛑 **#314 NEARLY SHIPPED A CONSTRAINT THAT PROTECTED NOTHING, AND IT WOULD HAVE BEEN GREEN.** The
-issue specified `CHECK (col IS NULL OR col = col)` with the comment `-- NaN <> NaN`. That is IEEE
-754. PostgreSQL `numeric` defines NaN as **equal to itself** so the type can be sorted and indexed,
-so `col = col` holds for a NaN and the row stores. Confirmed against `postgres:16` rather than
-reasoned about — a temp table carrying exactly that constraint accepted a NaN. The working form is
-`<> 'NaN'::numeric`. ⚠️ **This is the inverse of Python**, where `float('nan') != float('nan')`, so
-a guard ported from the app layer into SQL keeps its shape and loses its meaning. **An issue's
-specified approach can be wrong against the platform, not only against the code.**
-
-**What was verified by running it rather than reading it**, on both #374 and #376:
-
-- **Test-first on #314** — 10 failed / 22 passed before `sql/38`, 32 passed after.
-- **`schema.sql` vs the migration** — a fresh database and a migrated pre-change database produce
-  **byte-identical** constraint definitions across all nine columns. CI only checks `schema.sql`
-  was *touched*, never that it agrees.
-- **Against a planted NaN**, `sql/38` fails, exits non-zero, and rolls back leaving **zero**
-  constraints — a failed deploy, not a half-migrated database. ⚠️ The first attempt at this proved
-  nothing: the seed INSERT failed on a wrong column name, so it ran against empty tables and
-  "passed".
-- **Production re-checked** against the **2026-09-16** dump (the recorded clearance was against
-  2026-08-31): zero NaN, zero Infinity, with a **positive control** first, because an absence check
-  passes vacuously if the pipeline is broken.
-- **The new image-exclusion CI step was mutation-tested** — reverting `**/*.md` to `*.md` makes it
-  fail and name `/app/.github/pull_request_template.md` and `/app/app/static/fonts/README.md`.
-
-⚠️ **The in-image skip count moved by 17, not the 16 predicted.** Measured by building both images
-and diffing the skip reports rather than reasoning: `test_changelog_guard.py`'s 14, two in
-`test_verify_skill.py`, and `test_doc_claims.py::test_every_docs_file_an_agent_is_pointed_at_exists`
-— the one missed, guarded on `docs/` rather than `.claude/`. In-image went `1275/26` → `1258/43`;
-the host run is unchanged. Recorded in `docs/testing.md`. ⚠️ Two parsing traps nearly made the
-number wrong quietly: `pytest -rs` collapses identical skips into `SKIPPED [14] …` and a `sed` that
-strips the prefix discards the multiplicity; and `grep -c` **exits 1 on zero matches**, so an
-absence check chained with `&&` stops without saying so.
-
-⚠️ **`.dockerignore` was not in CI's `image` filter** — the file that decides what ships did not
-turn on the in-image suite, so a `.dockerignore`-only PR stayed green everywhere a human looks.
-Third time that filter has been too narrow (#176, #218). Fixed in #374. ⚠️ That PR only ran the
-in-image suite because it happened to touch `ci.yml`.
-
-⚠️ **#375 filed**: `test_migration_phases.py::DESTRUCTIVE_RE` regexes the whole migration file
-**including comments**, so `sql/38` failed the phase tests for quoting the statements it was
-explaining it does not perform — a file described as safe, failing for describing itself. Worked
-around by wording the comment around the scanner; not fixed inline, because a migration stands
-alone. ⚠️ The tempting wrong fixes are `GRANDFATHERED_MIXED` or a false `-- deploy: after-pull`,
-either of which records a lie and damages the guard #277 exists to provide.
-
-⚠️ **The ruff three-pin split has caught four consecutive Dependabot groups** (#285, #342, #366,
-#373). The guard is working as designed; four for four is the signal the mechanism could move to
-deriving all three pins from one source. ⚠️ On #373 the container reported "Up 5 minutes" while
-serving the **pre-bump** versions — uptime is not freshness; confirm with `pip list` inside it.
-
-⚠️ **`anthropic` is now on `1.5.0`, two minors past anything production has exercised.**
-`tests/test_sdk_call_shape.py` passes, which proves the call shape, never a round trip.
-
-
-**The largest open thread is #355 — adopt BDD**, and its pilot #356 is scoped and unstarted.
-Read #355 before touching it: the tool is **`behave`** (Sean's call, 2026-09-03), and the
-reasoning, the corrected cost estimate and the parallelism trade are all recorded there rather
-than here.
-
-### The 2026-09-04 session: three signal bugs, and one that got away
-
-Three PRs merged, all green on `main` after the squash, plus one in the twin repo. **Nothing under
-`app/` changed at all**, so nothing here is user-facing and nothing is deployable on its own.
-
-They were grouped on purpose: **#329, #339 and #361 are one defect wearing three coats — a
-mechanism that exists to speak up misclassifies a state and goes quiet.** None needed a migration
-or touched the shipped artifact, and all three are the machinery every other issue's green run is
-judged by, so they were cleared before anything that depends on that signal.
-
-| PR | Issue | |
-|---|---|---|
-| #362 | **#329** closed | A 500 from `/healthz` is now `DRIFT`, not `UNREACHABLE` |
-| #363 | **#339** closed | The Stop hook fails open on a payload it cannot read |
-| #364 | **#361 still OPEN** | The feedback leak test explains its own failures and checks the right region |
-| twin #84 | twin #83 closed | The same hook fix in `material-list-import-tool` |
-
-**#329 — the cause was a missing test, not a wrong line.** `urlopen` raises `HTTPError` on any
-4xx/5xx and `HTTPError` subclasses `URLError`, so an app answering 500 was filed under
-`UNREACHABLE` — the bucket that deliberately files **no issue**. Production hard down was quieter
-than a certificate three weeks from expiry. It was invisible because `check_health` had **no test
-at all**: the file asserted a network fault is *not* drift and nothing asserted an HTTP error *is*.
-⚠️ **A guard tested in one direction only goes quiet in the other, and the passing test makes it
-look covered.** The enabling defect was that `with_retries` returned a formatted *string*, so the
-exception type was gone by the time the caller saw it — you cannot ask a string what kind of
-failure it was. Verified against the live site before merging; production still reports
-`[ok  ] app health`.
-
-**#339 — the fork was settled by grepping the installed Claude Code binary.** The risk in the fix
-was that if Claude Code *omits* `stop_hook_active` when false, "absent = unknown = fail open"
-would permanently disable the hook. The docs do not say; the binary does —
-`{...,hook_event_name:"Stop",stop_hook_active:o,...}`, an unconditional property, with a schema
-declaring it required. ⚠️ **The artifact is more authoritative than the page describing it, and it
-is the copy actually running.** The same read found the fact that resizes the issue: **a Stop hook
-is overridden after eight consecutive blocks** (`CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`), so the
-"unbounded trap" was always bounded. Also: fixing the code invalidated the documented *command*
-for checking it — `.claude/README.md`'s `echo '{}'` smoke test can no longer ever show a block.
-
-⚠️ **The dev image has `bash` but no `git`**, and the hook's first act is
-`command -v git || exit_open` — so a container-side test of the whole script would have exited 0
-for every payload and the entire 14-test table would have passed **vacuously**.
-`tests/test_changelog_guard.py` therefore *extracts and runs the script's real embedded parser*
-(never a copy — a fixed copy passes while the shipped script stays broken), and the exit codes were
-driven by hand on the host and recorded in #363's body.
-
-**#361 — not solved, and deliberately left open.** 15 full runs, no reproduction. The PR says
-`Refs`, not `Closes`. ⚠️ **15 greens is not absence:** the "1 in 9" rests on a single observation,
-so if the rate were really 11% then 15 clean runs happen ~17% of the time; combining both samples
-puts the estimate nearer 4%. What shipped is the ability to catch it next time — every assertion
-prints the status code, the flash region and the context around every `403` hit, and dumps the
-body. Ruled out by reading and recorded on the issue so nobody re-tests them: page entropy, the
-rate limiter (`limiter.enabled = False`, and no test re-enables it), CSRF (Flask-WTF caches the
-token per request, so a page carries **one**), and cross-test state (`users`/`client_a` are
-function-scoped).
-
-### The 2026-09-11 session: `0.10.0` shipped
-
-Three PRs merged and **a release cut and deployed**. Prod moved `0.9.0` → `0.10.0`.
-
-| PR | Issue | |
-|---|---|---|
-| #366 | — | Dependabot minor/patch group, plus the two ruff pins Dependabot cannot see |
-| #368 | **#367** closed | Cut `0.10.0`: changelog rolled, What's-new strip rewritten to three blocks |
-| #370 | **#369** closed | This record, and the release ordering written into `docs/deployment.md` |
-
-**#366 — the ruff pin split caught a Dependabot group for the THIRD time** (#285, #342, #366).
-Dependabot bumps `ruff==` in `requirements-dev.txt` and cannot see the `version:` input of
-`astral-sh/ruff-action` in `ci.yml` or the `rev:` of `ruff-pre-commit`, so all three disagreed and
-`test_all_three_ruff_pins_agree` failed — taking the Tests **and** the image job red. Two one-line
-edits. ⚠️ **The guard is working exactly as designed and the recurrence is not a defect in it** —
-but three times in three bumps is the signal that the mechanism could move: Dependabot has no way
-to learn about the other two pins, so the fix will keep being manual until something derives them
-from one source.
-
-⚠️ **The local container was seven days old**, so the first suite run would have tested the
-*pre-bump* versions and reported green. Rebuilt with `docker compose up -d --build web` and
-confirmed `anthropic 1.3.0`, `pywebpush 2.5.0`, `ruff 0.16.6` inside it **before** trusting the run.
-
-**`0.10.0` — what it proved and what it did not.**
-
-- No new env vars, no new migrations. Both migration phases were empty passes, as at `0.9.0`.
-- `/healthz` returned **200 on the first attempt** — the retry loop only prints on a non-200 and
-  printed nothing. `Announced 0.10.0 to 3 device(s).`
-- ⚠️ **`anthropic` STILL has not made a live model call.** It is now on `1.3.0` after two bumps
-  (#342, #366) and CI sets no key. This has been carried as unproven since `0.9.0`.
-
-**The What's-new strip trap is live, and it nearly bit.** The comment above the strip warns that
-copy naming an AI-gated element can break an absence assertion elsewhere, because the strip renders
-on `/` **whether or not AI is configured**. Two tests assert the literal string `Ask your finances`
-is absent from an AI-less dashboard (`test_dashboard_layout.py::test_no_read_panel_without_a_key`,
-`test_dashboard_merge.py::test_ask_box_hidden_without_key`), and one of the three agreed blocks is
-about exactly that feature. It is worded around the phrase. ⚠️ **The trap is not the feature being
-AI-gated — it is that the strip is the one element on the page that ignores the gate.**
-
-### ⚠️ `0.9.0`'s milestone was closed LATE, and the reason generalises
-
-`0.9.0` shipped 2026-09-02. Its milestone was left **open** to hold the #309 backlog, so seven
-commits landed after the `v0.9.0` tag (`e07831c`) carrying a milestone for a version that had
-already shipped. That contradicts the rule this file states further down — *exactly one milestone
-is open at a time, closed when that version ships* — and `0.9.0` is the only milestone in the
-project's history that was ever open with work in it.
-
-Corrected 2026-09-03 in #359: `0.10.0` created, 20 post-tag items moved, `0.9.0` closed at 23 with
-`open=0`, which is how every other milestone here closed.
-
-⚠️ **The two traps in drawing that boundary, because the next release will hit both:**
-
-1. **`git log` prints the tag time in `-0400`; the GitHub API reports UTC.** The real cut is
-   `2026-09-02T13:42:54Z`, not `09:42`. Comparing the two as written puts an afternoon of work on
-   the wrong side of the release.
-2. **The release-cutting issue closes AFTER its own tag.** #345 ("Cut 0.9.0") closed at
-   `13:42:56Z` — two seconds after the tag commit — because the close event lands just after the
-   merge. A naive "closed after the tag → next release" rule moves the issue that cut the release
-   out of the release it cut. Check whether the issue's PR **is** the tagged commit (#347 is
-   `e07831c`) rather than trusting the timestamp.
-
-### ✅ SHIPPED in `0.10.0` — was "on `main`, not yet deployed" (2026-09-03)
-
-⚠️ **Header corrected 2026-09-11.** Both PRs below shipped in `0.10.0` on 2026-09-11. The
-block sat claiming "not yet deployed" for eight days after it was written, which is the
-failure this file is most prone to: a section written mid-session asserts a state and nothing
-revisits it. **When you write one of these, the deploy that ships it is what closes it.**
-
-Two PRs merged, both green on `main` after the squash:
-
-| PR | Closed |
-|---|---|
-| #354 | #319, #323, #324 — one design story: Home's lede, History's AI banner, the digest email |
-| #342 | Dependabot minor/patch group, plus the two ruff pins Dependabot cannot see |
-
-**#354** was three #309 findings batched by file and test surface. Worth knowing for later: the
-issue's preferred fix for **#319** (make the email header `--accent`) was **measurably worse** than
-the indigo it replaced — a flat `#378ADD` bar puts the white wordmark at 3.59:1 and its subtitle
-at 2.74:1, both below AA. The shipped answer takes `--grad-hero`'s mid stop for the bar and
-`--accent-deep` for the button, which *improves* both (10.36:1 and 7.88:1). ⚠️ **An issue's
-preferred option is a proposal, not a measurement** — this one had never had the numbers run.
-
-**#342** carried the ruff pin split for the second time (#285 was the first, when there were two
-copies rather than three). ⚠️ **It also needed the dev container REBUILT before the suite meant
-anything**: the running container still had `anthropic` 1.0.0, `click` 8.4.2 and `pydantic` 2.13.4
-from the pre-bump requirements, so `./test.sh` on its own would have reported green for a bump it
-never exercised. `docker compose up -d --build web` first, then test — this applies to every
-dependency PR, not just this one.
-
-⚠️ **`anthropic` is now `1.2.0`.** `tests/test_sdk_call_shape.py` passes against it, so the call
-shape `ai.py` relies on still holds. **The live round trip is still unproven** — that gap has been
-open since #286 and none of this closes it.
-
-⚠️ **Also still unproven: `anthropic` 1.0.0 has never made a live model call.** CI sets no key
-and every seam is stubbed, so the shipped image's first real round trip is the month read and
-the Ask box being exercised **by hand in production**. Do that before assuming the AI surfaces
-survived the major bump.
-
-✅ **`release-prep` is trustworthy again as of #340.** Before that it would have told you a DROP
-needs a manual out-of-band step (wrong since #277) and to verify the deploy with `css_v` (retired
-by #305). If you are reading a session transcript older than 2026-08-31, distrust both.
-
-
-### ✅ `0.9.0` SHIPPED AND LIVE (2026-09-02)
-
-**Prod runs `0.9.0`, deployed and verified 2026-09-02.** 35 commits since `v0.8.0`, **no new env
-vars and no new migrations**. ⚠️ Its milestone was left **open** for the #309 backlog, which
-was the wrong call and was corrected on 2026-09-03 — see the milestone note at the top of this
-file. `0.9.0` is closed at 23; `0.10.0` is the open one.
-
-**The three first-time mechanisms all passed in the real deploy log**, and the ordering is the
-part that mattered:
-
-```
-Nothing to apply for phase before-pull — up to date.     ← #277, empty pass, exit 0
-running version 0.9.0 (matches 0.9.0)                    ← #305, BEFORE the destructive phase
-Nothing to apply for phase after-pull — up to date.      ← #277, empty pass, exit 0
-/healthz -> 200 on the first attempt
-Announced 0.9.0 to 3 device(s).
-```
-
-✅ **This is the first release verified by the pipeline itself rather than by an improvised
-handle.** No `css_v` hash, no second witness on `/login`, nothing chosen before cutting — the
-container was asked what it was and answered. That is the whole of #305 working as designed.
-
-⚠️ **The release carried no user-facing feature at all**, which made the What's-new strip the
-one real judgement call at prep. The single `### Added` was the admin-only version stamp and
-every `### Fixed` was a patch fix — so by the letter of the rule the strip had **nothing** to
-hold. Left at `v0.8.0` it stays dismissed on every device that has seen it, while
-`release.yml`'s success notification ("Check out what's new in the app!") taps through to `/`
-and would land on nothing. Sean's call: **one block, on the Deployment card**, rather than
-padding it with fixes the rule excludes. Worth remembering as the shape, not the instance —
-an infrastructure release still fires a notification that promises the user something.
-
-**Deliberately held out:** Dependabot **#342** (minor-and-patch group, 6 updates). The release
-was already exercising three mechanisms for the first time; six dependency bumps on top would
-have added a variable to the run with the most first-time machinery in it. It rides `0.10.0`.
-
-**Two PRs on release day:** #347 (roll the changelog, repoint the strip — closes #345) and the
-one recording this. `scripts/release_prep.py --version 0.9.0` did the mechanical half and its
-env-var report independently agreed with `git diff v0.8.0..HEAD -- .env.example`.
-
-### ✅ `0.8.0` SHIPPED AND LIVE (2026-08-20)
-
-**Prod runs `0.8.0`, deployed and verified 2026-08-20.** The `0.8.0` milestone is **closed at
-47 issues**. *(That line used to read "no milestone is open"; `0.9.0`'s was opened during
-#309 and is still open for its backlog.)*
-
-**Verified from OUTSIDE, not from the workflow's own report** — the first release where that was
-possible:
-
-```
-local  md5(app/static/style.css) at v0.8.0  -> 7239e2ec
-production serves  style.css?v=              -> 7239e2ec   ✅ match
-v0.7.0 was                                   -> 44ef4f4a
-```
-
-Plus a second independent witness: `/login` carries the brand mark added in #256.
-⚠️ **Do not assume this handle exists next time.** It works only because the overhaul happened
-to rewrite the stylesheet; a release touching no static asset is back to trusting the pipeline.
-**Decide the handle before cutting.**
-✅ **Superseded for `0.9.0` onward by the version stamp (#305)** — the image carries the version
-it was built as, `/settings` reports it, and both deploy workflows fail on a mismatch. `css_v` is
-no longer the handle and no handle has to be chosen per release. The answer is deliberately
-**not** on `/healthz`; see `CLAUDE.md`'s deploy bullet for why.
-
-**Seven PRs on release day**, on top of the front-end overhaul already on `main`:
-
-| PR | Closed |
-|---|---|
-| #268 | #222 — History filters by account; plus a latent Export CSV bug |
-| #269 | #264 — `./test.sh` runs ruff before pytest, fail-fast, pins shared with CI |
-| #270 | #267 — the `verify` skill's teardown delegates instead of duplicating |
-| #273 | #271 — `sql/37`, `users.session_token` (migration, stood alone) |
-| #274 | #272 — a password change signs out every other device |
-| #275 | #257 — Categories shows the drawn colour; fold raised to `PALETTE_SIZE` |
-| #276 | — release prep |
-
-Suite **1142 passed, 4 skipped**. ⚠️ Recount rather than trusting that
-(`./test.sh --collect-only -q -n0 | tail -1`) — the recorded count has been wrong five times.
-
-⚠️ **The `0.8.0` deploy signed every session out once.** Cookies predating #272 carry no token
-to verify. One-time, expected, and called out in the changelog and the What's-new strip.
-
-⚠️ **`sql/36`'s DROP ran BEFORE the image swap**, against a `v0.7.0` container that reads both
-tables. Accepted deliberately — one user, a watched deploy, `pg_dump` first — and **that
-acceptance does not generalise.** Tracked as **#277**. The header on `sql/36` used to claim the
-window was empty; it reasoned about `main`, and deploy ordering is only ever about the image
-that is RUNNING. Corrected in #276.
-
-⚠️ **`CLAUDE.md` said to apply migrations by hand and `RUNBOOK.md` says the deploy job does it.**
-The runbook was right; the `CLAUDE.md` bullet was stale and cost a session's planning before
-anyone read it. Corrected in #276.
-
-### On `main`, not yet deployed (2026-08-31) — the full-repo review, COMPLETE
-
-✅ **#309 IS DONE. There is no resume point, and its absence means finished rather than
-forgotten.** All ten tranches have merged and every tracked file the issue owned — `app/`, `sql/`,
-`scripts/`, `tests/`, `.github/`, `.claude/` and the root build config — has been read once, on
-purpose. The review filed **twelve issues** on the way; those, not a next tranche, are what it
-leaves behind (listed below).
-
-⚠️ **The resume point in this file went stale THREE TIMES while the review ran** — #331 named
-tranche 5 three tranches on, #337 named tranche 8 two tranches on, and #343 is this one. #337
-recorded the cause and could not fix it: **the file goes stale on precisely the step that makes it
-stale — merging a tranche — and nothing connects the two.** The loop has ended here because the
-work finished, **not because that problem was solved.** The next long-running, tranche-shaped
-piece of work will reproduce it exactly unless something mechanical links the two steps. Worth
-knowing before starting one.
-
-| Tranche | PR | What it covered |
-|---|---|---|
-| 1 | #313 | `app/` core — `__init__.py`, `db.py`, `helpers.py`, `models.py` |
-| 2 | #317 | `app/blueprints/` — all 21 files, 6366 lines |
-| 3 | #318 | the seams — `ai.py`, `mailer.py`, `pusher.py`, `github.py`, `jobs.py` |
-| 4 | #320 | `app/templates/` — all 47 files |
-| 5 | #325 | `app/static/` — 18 files; vendored bundles got a provenance pass |
-| 6 | #327 | `sql/` — 37 migrations + `schema.sql` |
-| 7 | #330 | `scripts/` — all 10 files, 2207 lines |
-| 8a | #334 | `tests/` — `conftest.py` + the 19 files that read a repo file, ~4,900 lines |
-| 8b | #336 | `tests/` — the remaining 54 files, ~12,700 lines |
-| 9 | #340 | `.github/` + `.claude/` — 21 files, 2,588 lines |
-| 10 | #341 | root config — `Dockerfile`, compose x2, `test.sh`, `pyproject.toml`, `.dockerignore`, `.pre-commit-config.yaml`, `.env.example`, … 13 files |
-
-**Recount rather than trusting any number here** (`git ls-files | wc -l`) — the commits this
-review produces change it.
-
-#### What tranches 5–7 actually found
-
-**Tranche 5 (`app/static/`).** All three vendored bundles verified **byte-identical to upstream**
-(ApexCharts 4.7.0 js + css, htmx 2.0.4) by fetching the pinned release and diffing.
-
-- ⚠️ **htmx had no provenance at all** — no version recorded anywhere, no licence beside it, while
-  ApexCharts had both plus two tests. Not a compliance gap (2.x is **0BSD**, which asks for
-  nothing), but htmx **changed licence across a major** — 1.x was BSD-2-Clause — which is exactly
-  the ApexCharts trap, unguarded. Now vendored, documented and asserted on both halves.
-- History's Amount/Balance headers were aligned by `th:nth-child(4)`/`(8)`, the **third** place
-  that table's column order is load-bearing and the only one still counting positions.
-- Four comments named features that were removed (the Goal Coach, #232's stacked cards).
-
-**Tranche 6 (`sql/`).** Both of #309's questions answered by measurement in throwaway containers.
-
-- ⚠️ **The chain does NOT build `schema.sql` and cannot.** `users` is created only in `schema.sql`,
-  `transactions.frequency` is `ALTER`ed by `sql/11` and created by nothing, `sql/09` re-adds
-  `sql/04`'s constraints. Known and deliberate — but written down only inside a CI comment, so a
-  reader of `sql/` found nothing. `schema.sql`'s header says it now, along with the
-  `migrate.py --baseline` step it had been omitting.
-- ⚠️ **Fourteen headers still said "Apply BY HAND to prod … BEFORE pulling the new image."** Wrong
-  since #277. **The same sentence in `CLAUDE.md` cost a session's planning at `0.8.0` prep** — it
-  was fixed there and left standing in fourteen files nobody re-read. Marked as history, not
-  deleted: each header is a dated record and #277's rule is built on `sql/13`'s.
-- Every DROP does carry its phase pragma. That half is sound.
-
-**Tranche 7 (`scripts/`).** The four big scripts needed nothing — `migrate.py`, `release_prep.py`,
-`restore_check.py` and `seed_dev.py` are each a documented pure/seam split with real tests.
-
-- ⚠️ **`seed_dev.WIPE_ORDER` is the THIRD copy of the FK-safe delete order.** #267 reconciled the
-  `verify` skill's copy against `conftest._delete_user` and pinned both; it could not reach this
-  one, because `seed_dev.py` deliberately imports nothing from `tests/`. It is correct today, and
-  it is now pinned — **drifting is not reliably loud**, since a missed table whose FK cascades is
-  swept up by the final `DELETE FROM users`.
-- `check_site_drift.py` carried a dead `REPO_ROOT` and still printed "agree with this checkout"
-  after #299 removed the last thing that read the tree.
-
-#### What tranche 8 (`tests/`) actually found
-
-**The split was settled by evidence, not by size** (#309, comment of 2026-08-28): findings in
-`tests/` cluster by **what a test reads and whether that reading can be empty**, not by feature
-area. So 8a took `conftest.py` plus the 19 files that read a repo file, and 8b took the remaining
-54. All the known instances lived in 8a's group, and the split held up.
-
-**Tranche 8a (#334).** `THEME_TOKENS` in `test_design_system.py` named **twelve** tokens that must
-carry a dark-mode value; the dark block redefines **twenty-six**. The fourteen unasserted ones
-include all eight `--series-*` chart hues, whose dark steps exist specifically because the light
-ones do not clear 3:1 against the dark surface — so losing them is a contrast failure in every
-chart, silently. Same shape as `AI_SURFACES`, for the third time in this review: a hand-maintained
-list can only ever fail for a member somebody added.
-
-**Tranche 8b (#336).** Found by reconciling two numbers rather than by reading: the suite reported
-**1232 passed / 9 skipped** against the **1237 / 4** 8a had recorded three days earlier. Same
-total — five tests had moved from passing to *skipping*, because the date was 2026-08-31.
-
-- ⚠️ **Five tests in `test_forecast.py` skip on the last day of every month.** They opened with
-  `if today.day >= days_in_month: pytest.skip(...)`, so the month-ahead projection — which feeds
-  Home's one AI panel **and** the `month_projection` Ask tool — went unchecked roughly **twelve
-  days a year**, at precisely the boundary its month-end arithmetic is most likely to be wrong at.
-  `compute_forecast()` reads `date.today()` directly and offers no seam, while
-  `compute_goal_projection`, `recent_months`, `_report_months`, `compute_digest_facts` and
-  `build_seed_plan` all take an injectable `today=`. A `forecast_today` fixture in `conftest.py`
-  applies the seam from outside; all five run every day now.
-- ⚠️ **`test_read_facts_projection_sees_a_bill_still_to_land` could not fail.** It asserted
-  `remaining_scheduled_expense >= 0` — a sum of positive amounts — and dated its bill for *today*,
-  which `_remaining_scheduled` deliberately excludes. Measured across three frozen dates: the bill
-  was invisible on **every** day of the month.
-- ⚠️ **That rewrite exposed a real gap.** `_remaining_scheduled` guards #32's end date twice — the
-  SQL `WHERE` drops a *finished* schedule, `stop = min(month_last, end_date)` stops the walk for a
-  *live* one. Deleting the `min()` left the whole file green, because the existing test only ever
-  reached the SQL half. Now covered.
-- ⚠️ **Login protection was asserted against 10 of 79 method/route pairs**, and **nothing in the
-  suite derived from `url_map`**. Nothing was actually unguarded — all 79 were probed — but nothing
-  could have noticed if that changed. Now derived, with a `PUBLIC_ROUTES` allowlist so a new route
-  is **protected-by-default** and opening one is a visible edit with a reason. Unguarding
-  `/transactions/export` gives `10 passed` against the old list and `FAILED` against the new sweep.
-- ⚠️ **`conftest.py` was loaded TWICE**, as `conftest` and `tests.conftest`, from one file — nine
-  files used the bare name and thirty-seven the dotted one. Proven at runtime: different module
-  ids, `create_transaction` not even the same function object. Harmless today because every value
-  it defines at module scope is derived deterministically, but
-  `monkeypatch.setattr("tests.conftest.X", ...)` misses one copy. Normalized and guarded.
-- A skip in `test_profile_settings_login.py` named `test_push_reminders.py` as the canonical
-  always-running copy of the consent-record assertion. It lives in `test_release_announce.py` and
-  never lived there — **a skip is not a failure**, so a reader checking whether the consent record
-  was still covered would have found nothing where it said to look. The pointer is asserted now.
-
-**Suite after 8b: 1233 passed, 4 skipped.** The four remaining skips each have a real,
-non-calendar reason. ⚠️ **Recount rather than trusting that** —
-`./test.sh --collect-only -q -n0 | tail -1`.
-
-#### What tranches 9 and 10 found
-
-**Tranche 9 (`.github/` + `.claude/`).** One cause, four victims: the 2026-08-17 CLAUDE.md split
-updated the docs and never reached the things that read CLAUDE.md **with no human in the loop**.
-
-- ⚠️ **`gotcha-auditor`, `test-first` and BOTH triage prompts were sent to sections that no longer
-  exist** — "Key Gotchas" and "Project Structure", plus a "Roadmap" that never existed. The agents
-  were written 2026-08-04, thirteen days before the split. `gotcha-auditor` exists to audit a diff
-  against the Key Gotchas; pointed at the core file it finds **four** grouped Non-negotiables
-  instead of the ~20 in `docs/gotchas.md`, and reports **clear** — indistinguishable from having
-  checked. `tests/test_doc_claims.py` now derives the guard from `docs/*.md`'s own H1 titles.
-- ⚠️ **`release.yml` contradicted itself, and the wrong half recommended the incident.** Its step-0
-  comment records that `${TAG}` has had no default since #190; seventy lines later another said
-  compose reads `${TAG:-latest}` "so a hand-run `docker compose up -d` still works". That is the
-  command that reverted production three releases with every indicator green.
-- ⚠️ **`release-prep` would have misdirected `0.9.0` twice** — it still said a DROP "needs a manual
-  step out of band" (the third home of the sentence tranche 6 corrected in fourteen `sql/` headers),
-  and its whole deploy-verification check was `css_v`, retired by #305.
-- The `verify` skill named `/insights/generate`, removed by #232 and pinned at 404 by a test.
-  `rollback.yml`'s `| tr -d '\r'` turns out to be load-bearing under `set -e` — without it, rolling
-  back to any pre-#305 image aborts instead of warning, during an incident. `/wrap` omitted checking
-  the run on `main` after a merge.
-
-**Tranche 10 (root config).** Three findings, all the hand-maintained-set shape.
-
-- ⚠️ **There are THREE ruff pins and the guard compared two.** `.pre-commit-config.yaml` had drifted
-  to `v0.14.5` against `0.16.4` in `requirements-dev.txt` and `ci.yml` — and it is the copy that runs
-  `--fix` **on commit**, so the oldest ruff in the project was the one EDITING code while the newest
-  judged it. Exactly the property #264 exists to establish, reopened through the copy its test could
-  not see. Same shape as `seed_dev.WIPE_ORDER` and `AI_SURFACES`.
-- The pre-commit exclude protected `chart.umd.min.js`, deleted by #234, while the 563 KB
-  `apexcharts.min.js` was covered by nothing — and the config's own large-file hook caps at 500 KB.
-- ⚠️ **`test.sh`'s parallelism tuning was measured on a 15-core Mac; the suite runs on an 8-core VM.**
-  So `-n auto` is now FEWER workers than the default and marginally faster, and the header's advice
-  to "pass `-n auto` for the 21s back" is backwards. Re-measured, both tables kept and labelled with
-  their machine. **Do not trust either without checking `nproc`.**
-
-#### Issues the review has filed, all on `0.9.0`
-
-**#315 is still the one to read first**, and **#328 is still the loudest**. Those from tranches 1–4
-(#312, #314, #315, #316, #319) are described in the older section below; the rest were filed by
-tranches 5–8 and are listed here. ⚠️ Deliberately not counted — a count in this file is invalidated
-by the next tranche that files one, which is how the line above it went wrong:
-
-| Issue | What |
-|---|---|
-| **#328** | **The `scripts/` ingest pipeline cannot insert a row** — `transactions.user_id` has been `NOT NULL` with no default since `sql/10`. Proven against the dev database, not inferred. It also swallows the failure and exits 0, `data/` has never existed, and `test_connection.py` is referenced by nothing. Deleting five files is a fork |
-| #326 | A fresh database and production disagree about the sequences behind three PKs. `account.account_id` is the one that diverges by NAME — because it is the only PK not called `id`, the irregularity `CLAUDE.md` already warns about. Fix is a migration, so it stands alone |
-| #329 | A 500 from `/healthz` is classified `UNREACHABLE`, which files no issue — so a certificate not covering its hostname pages you and the app being hard down does not |
-| #323 | History's Auto-Categorize banner is the third AI surface and never got the shared material; `AI_SURFACES` omits it, so the guard passes vacuously |
-| #324 | `.page-greeting`/`.page-sub` match no rule, so Home's subtitle is the only page lede in the app rendering at full body weight |
-| **#339** | **`changelog-guard.sh` blocks on a reshaped Stop payload**, which its own comment and `.claude/README.md` both say it must not. Two of the three named fail-open cases work; a dict with the key RENAMED reads as false and blocks, because `.get()` returns None without raising. The fix is a fork — the obvious one breaks the README's documented test and may silently disable the hook — and the script is a declared twin of one in `material-list-import-tool` |
-| **#333** | **`.dockerignore`'s `*.md` matches only the TOP LEVEL, so `docs/` and all of `.claude/` ship in the production image** — fifteen files. Found by tranche 8a running the suite inside the real artifact. `CLAUDE.md` is listed separately and *is* correctly absent, which is what made it invisible: the one file anyone would check for is gone. Not a disclosure (public repo), but two places state the wrong premise that `*.md` is stripped. Changes the shipped artifact, so it wants its own PR |
-
-⚠️ **Nothing here is deployed.** Prod is still `0.8.0`, and this work sits in `## [Unreleased]`
-alongside the four PRs that were already there.
-
-### On `main`, not yet deployed (2026-08-25)
-
-**Five PRs merged across two sessions; nothing shipped.** Prod is still `0.8.0`. A **`0.9.0` milestone is open** —
-the first since `0.8.0` closed — and **#36 is the only issue left open**, correctly date-parked
-to ~Dec 2026 with no milestone.
-
-| PR | Closed |
-|---|---|
-| #302 | #277 — migrations declare which side of the image swap they run on |
-| #285 | — Dependabot minor/patch group, plus the `ci.yml` ruff pin it missed |
-| #286 | — `anthropic` 0.122.0 → **1.0.0**, read rather than rubber-stamped |
-| #303 | #299 — `landing/` removed; the page now lives in its own repo |
-| #306 | #305 — the image is stamped with its version, so a deploy can be verified |
-
-⚠️ **THREE CHANGES HERE ARE UNVERIFIED IN PRODUCTION AND HAVE NO NATURAL CLOSING EVENT.** All
-first execute at the *next* release, not on merge:
-
-1. **The two-phase migration deploy.** `release.yml` now runs `migrate.py --phase before-pull`
-   at step 2 and `--phase after-pull` at step 5. The next release exercises it for the first
-   time — including the empty-pass case, which is the norm and must exit 0. **Watch the deploy
-   log for both invocations**; a release carrying no migration should print
-   `Nothing to apply for phase … — up to date.` twice.
-2. **`anthropic` 1.0.0 inside the shipped image.** The call shapes were verified against the
-   real package, but **no live API round trip was made** — the AI surfaces are gated on
-   `ANTHROPIC_API_KEY`, which CI does not set. First real proof is a model call in production.
-3. **#305's pipeline half.** The app half is fully verified locally (real images built stamped,
-   bare and `--target dev`, with `printenv` read back from each; the card driven at
-   `localhost:5001`). The workflow assertion cannot be: nothing in CI deploys. It was run by hand
-   against live containers with the runner's quoting reproduced — match exits 0, mismatch exits 1,
-   all four rollback branches checked — which proves the *script*, not that the *step* fires in
-   place. **Watch the deploy log for `running version <version> (matches <version>)`** between
-   `up -d` and the migration step. ⚠️ The irony worth keeping: this change exists because
-   production-only state was unobservable, and it is itself production-only until it ships once.
-
-**`## [Unreleased]` now holds four entries:** the CI Postgres probe fix (#282), the migration
-phasing (#277), the SDK bump (#286) and the version stamp (#305). Whether that is a release is
-Sean's call. ⚠️ **#305 is the first of the four with a user-facing surface**, so the "nothing in
-it is user-facing" argument against cutting no longer holds on its own — and `0.9.0` would be the
-first release the new handle can actually verify.
-
-#### The deploy handle is no longer improvised (#305)
-
-Every release since `0.4.1` reached for a different answer to *did the deploy land*, and the
-handle kept not being there — `css_v` proved nothing at `0.4.1` or `0.7.0`, and worked at `0.8.0`
-only because the front-end overhaul happened to rewrite the stylesheet. The image now carries
-`APP_VERSION`/`APP_COMMIT` as build args, `/settings` renders an admin-only **Deployment** card,
-and both deploy workflows fail if the running container is not the release they just deployed.
-
-⚠️ **The answer is deliberately NOT on `/healthz`, and `CLAUDE.md` was wrong to propose it.**
-That file recommended it in two places, against a decision written twice in the code —
-`main.healthz`'s docstring ("the last place to leak anything") and rule 1 above
-`admin.integration_status`. Sean took the admin panel plus a pipeline assertion. Both doc lines
-are corrected and `tests/test_version_stamp.py` pins the boundary, because "just put the version
-on `/healthz`" is exactly the obvious-looking improvement a future session re-makes.
-
-Three things that are not obvious from the diff:
-
-- **A build arg, not a `.env` variable.** `TAG` on the box records what compose was *told* to
-  pull; a stale or hand-restored `.env` makes it lie, which is the gap #190 could not see.
-  **Do not add it to `.env.example`.**
-- **The release checks the version BEFORE the after-pull DROPs.** If the swap silently left the
-  old image running, dropping tables it still SELECTs is the outage #277 exists to prevent.
-- **`rollback.yml` warns where `release.yml` fails.** Every pre-#305 image reports no stamp, and
-  those are exactly what a rollback reaches for — strictness there would refuse a rollback
-  mid-incident. A *wrong* stamp still fails both.
-
-#### `landing/` is gone from this repo
-
-The page serves from **`/var/www/seandesmet.com`**, deployed on push from
-**`CaddisMaster/seandesmet.com`**. Consequences worth knowing here:
-
-- `scripts/check_site_drift.py` has **four** checks now, not five, and **reads no file from the
-  working tree** — its result no longer depends on which branch you run it from. The apex/www
-  **TLS checks stayed**: a certificate belongs to the Droplet, not to whichever repo supplies the
-  HTML, and two repos watching one page would file two issues for one fault.
-- Nginx is **two site files**, so an app config mistake can no longer take the portfolio down.
-- ⚠️ **The `#299` issue body is wrong about the backup config lists.** It says a new nginx site
-  file must be added to both or the tarball silently stops covering it, and flags that as the
-  easiest thing to miss. Both lists name **whole directories** (`/etc/nginx/sites-available`,
-  `sites-enabled`), so a new file inside them is captured with no edit. The real risk — the two
-  scripts drifting from *each other* — is unchanged.
-
-#### The guard that was written and deleted the same afternoon
-
-`check_phase_order()` refused any pending batch whose phases were not numerically monotonic. It
-rejected **both** real batches it was ever shown (`27`/`28`, `36`/`37`), neither of which shares a
-table. Removed, with the reasoning in `migrate.py` and a test pinning those pairs as acceptable so
-reinstating it goes red. **A rule with a 0/2 hit rate on real input is not conservative.**
-
-#### `tests/test_sdk_call_shape.py`
-
-New, and it closes a gap `CLAUDE.md` had only ever described in prose: every model call goes
-through a stubbed `_call_*_model()` seam, so a green suite says **nothing** about an SDK upgrade.
-It introspects the installed package — no network, no key, no cost — and asserts the `**kwargs`
-precondition that stops the other assertions going vacuous.
-
-⚠️ **#285 proved the ruff double-pin real.** Dependabot bumped `requirements-dev.txt` alone and CI
-went red on `test_the_two_ruff_pins_agree` — the sole failure in 1143 passing. A bot only updates
-the file it knows about.
-
-Suite on `main`: **1209 passed, 4 skipped** after #305. ⚠️ Recount rather than trusting that —
-`./test.sh --collect-only -q -n0 | tail -1`.
-
-### ✅ Landing page redeployed OUTSIDE a release (2026-08-24)
-
-**The ai-atlas card is gone from `seandesmet.com`, and the removal is verified live.**
-
-`ai-atlas` was a third portfolio project, added to the landing page by #280 on 2026-08-20. It was
-**abandoned and deleted on 2026-08-24** — local repo, GitHub repo and transcripts — so the card
-linked a repo that returns `404`, on the front page of the portfolio. #288 removed it.
-
-**The diff was the exact reverse of #280's hunk**, not a hand-written deletion: 50 lines added
-there, 50 removed here, leaving `landing/index.html` **byte-identical to the pre-#280 file**. That
-is a far stronger check than counting `<div>`s, and it is available whenever the change being
-undone is a single additive commit — `git show <sha> -- <path> | git apply -R` proposes it, and
-`git show <sha>^:<path> | diff -` proves it landed.
-
-**The changelog entry was DELETED, not answered with a `### Removed` line.** A changelog records
-what reached users, and this card never did: prod is `0.8.0`, and #280 was still sitting in
-`## [Unreleased]`. Deleting the `### Added` entry outright leaves an accurate record of the next
-version, and takes a second dead link with it, since the entry named the repo too. ⚠️ The
-instinct to reach for `### Removed` is the wrong one here — **check whether the thing being
-removed ever shipped** before recording its removal.
-
-⚠️ **A LANDING-PAGE CHANGE IS NOT DEPLOYED BY MERGING IT.** `release.yml` never touches
-`landing/`; Nginx serves the directory off disk, and the page updates only when the file is
-copied to the Droplet by hand. `main` was green and correct for some time while the live page
-still served the dead link. **The merge and the deploy are separate events here** — the same
-shape as a production-only change, and it needs the same explicit "not yet live" marker until
-someone has actually run the copy.
-
-⚠️ **The copy cannot run from the dev VM, and the stale-clone trap is live.** The maintainer
-machine's clone was last measured well behind `main`, so copying `landing/index.html` from it
-would have re-shipped the card. The check that closes this is `grep -c ai-atlas` on the file
-**before** it goes up, expecting `0`; fetching the file from the public repo's raw URL sidesteps
-the clone entirely and is the better default.
-
-**Verified after the copy**, not assumed: the live page is byte-identical to `landing/index.html`
-on `main`, carries one project card, and greps clean for `ai-atlas`.
-
-⚠️ **A SKIPPED JOB REPORTS `pass`, NOT `skipped`.** #288 was the inert shape (`landing/` +
-`*.md`), so the classifier emitted `app=false image=false sql=false` — and `gh pr checks` still
-printed **"Tests pass 30s"** and **"Image builds and runs as non-root pass 44s"**. The steps skip
-*inside* jobs that succeed, so a run that executed nothing is visually indistinguishable from a
-real one. This is the sharp edge of the #281 lesson below, and it is worse than "the expensive
-jobs did not run": it actively looks like they did. **The `main` run is the one that means
-something**, or read the `app=/image=/sql=` line in the "What changed" job log. The `main` run
-for #288 (`32737263585`) did run all five jobs, and was green.
-
-**Still no open milestone**, so #287 and #289 carry none. Prod still runs `0.8.0`.
-
-### ✅ The docs became executable (2026-08-24, later the same day)
-
-Four stale-doc defects surfaced in one day. The common factor was not carelessness — **nothing
-executed the claim**. So two mechanisms merged, and both are now load-bearing.
-
-**#296 — `tests/test_doc_claims.py`.** Five assertions on claims a machine can check: every path in
-`CLAUDE.md`'s project map exists, the landing page names no retired library, `RUNBOOK.md`
-hardcodes no versioned certbot lineage, and the vendored ApexCharts version *and licence* match
-what `CLAUDE.md` claims. Two of those pin rules that had been written warnings and were violated
-anyway.
-
-⚠️ **Scope is structured claims, never prose.** Every assertion targets something with a shape. A
-test that fails on a reworded paragraph is worse than no test — it trains the next person to
-delete the file and take the useful assertions with it. The line worth copying is the cert one:
-`RUNBOOK.md` **may** name `seandesmet.com-0001` while recounting the incident; it **may not** use
-it as a config path. The regex requires the `/etc/letsencrypt/live/` prefix. **Assert the USE, not
-the mention.**
-
-⚠️ **It found a live defect in the disaster-recovery path.** The nginx snippet hardcoded
-`/etc/letsencrypt/live/seandesmet.com-0001/` — the lineage **deleted** when the www handshake was
-fixed — while §"Full rebuild" step 6 says "write the site files from §3". A rebuild copying it
-verbatim writes a config pointing at a path that does not exist: nginx will not start, during a
-rebuild, while the site is down. It had been **anticipated** (step 7 already warned about copying
-paths verbatim) and left armed for a year. **The fix was not to update the path** — that resets
-the expiry. It names `certbot certificates` and the property the lineage must have, so it cannot
-drift again.
-
-**#298 — `scripts/check_site_drift.py` + `site-drift.yml`.** Daily, and it needs **no secret and no
-Droplet access** — every check is public HTTP/TLS, deliberately, because the Droplet is
-unreachable from the VM by design and a monitor needing privileged access would become an argument
-against that boundary. It byte-compares the live landing page against `main`, checks SAN coverage
-per hostname, fails under an expiry threshold, and pings `/healthz`.
-
-⚠️ **Drift files one deduped issue; unreachable files NOTHING** (exit 1 vs exit 2). A flaky runner
-must never open an issue, or the tracker fills with noise until nobody reads it and the one real
-report is lost. A genuine outage shows as a run of red scheduled runs.
-
-The network sits behind two seams and everything else is pure, so 29 tests run with no network.
-The workflow's own shell is asserted as text too — that it reads `PIPESTATUS` rather than `$?`
-(which is `tee`'s status, always 0, and would make every drift report green), and that only exit 1
-files an issue. **A monitor that costs money and can never fire is worse than none.** Proven in
-both directions: clean against real production, and a side-labelled diff when handed a stale file.
-
-⚠️ **THE `.dockerignore` TRAP, THIRD OCCURRENCE (#176, #218, now #298)** — and the new part is
-*why the guard missed*. The test file carried `skipif(not SCRIPT.exists())`. **`scripts/` ships;
-`landing/` does not.** So the guard never fired, the script short-circuited on the absent landing
-file before reaching its fetch, and an assertion expecting UNREACHABLE quietly got OK. It passed
-locally and failed in the image, again.
-
-> **Guard the artifact the test READS, not the one it imports.**
-
-Better than a second skip: remove the dependency. The test now writes its own file into `tmp_path`
-and monkeypatches the constant, so it holds in any environment.
-
-⚠️ And a warning about simulating the image: moving `landing/` aside locally made
-`test_doc_claims.py` fail, which looked like a second bug and was not — the real image also strips
-`*.md`, so that test skips there and the failure existed only in a half-way state no environment
-has. **Reproduce the whole restriction, or trust the real in-image skip count.**
-
-**#299 filed and PARKED** — move the landing page to its own repo, still on the Droplet. No date,
-no milestone. Its ordering is written down, including the trap most likely to bite: the backup
-config path list exists in two places, so a new nginx site file has to be added to both or the
-portfolio's config silently stops being backed up.
-
-### On `main`, not yet deployed (2026-08-20, evening)
-
-**One PR, no app change.** #282 closed #281: CI's image job waited for Postgres with
-`pg_isready` over the **unix socket**, and `postgres:16` runs `initdb` against a temporary server
-started `-c listen_addresses=''` — socket only, no TCP — then stops it with `pg_ctl -m fast`
-before starting the real one. The probe answered READY for the throwaway server, the wait broke
-early, and the schema load landed in the shutdown window:
-
-```
-psql: FATAL:  the database system is shutting down
-```
-
-Now probes `-h 127.0.0.1`. The temp server never listens on TCP at all, so the race is
-**removed, not narrowed** — a longer sleep or an N-consecutive-successes rule would have left the
-same ~200ms window. An exhausted wait also fails loudly now instead of falling through to `psql`.
-
-⚠️ **The lesson is about the CI shape, not Postgres.** #280 changed `landing/index.html` and
-`CHANGELOG.md` only. Its PR was green in **41s**; the push to `main` for the same tree failed in
-**3m50s**. Every job runs on both events, but the `changes` classifier **fails open on a push to
-`main`**, so the expensive STEPS skip on an inert PR and run on the push. Consequence:
-
-> A docs- or landing-only change meets the image job for the FIRST time after it is merged, and
-> the defect it trips belongs to neither that PR nor its author.
-
-When `main` goes red just after a merge that obviously could not have caused it, suspect the
-path-gated steps before re-reading the innocent diff. ⚠️ And note a re-run would have gone
-**green** here — the window is sub-second. Green-on-re-run is the failure hiding, not a
-diagnosis. That is why the guard is `tests/test_ci_postgres_probe.py` rather than a comment: it
-asserts no `pg_isready` in that step may omit `-h`, and that the loop has a failure path. Both
-fail against the unfixed workflow.
-
-⚠️ The test parses `ci.yml` as **text**, deliberately. PyYAML is in neither requirements file —
-it resolves transitively, and the suite runs inside the shipped image whenever `tests/` changes.
-
-**`## [Unreleased]` holds the CI fix and nothing else**, which is not a reason to cut a
-release. It briefly also held the ai-atlas landing card (#280); that card was removed again by
-#287 on 2026-08-24 after the project was abandoned and its repo deleted, and because it never
-shipped in a release its changelog entry was deleted rather than answered with a `### Removed`
-line. Prod is still `0.8.0`. Still **no open milestone**.
-
-### Open after `0.8.0`
-
-- **#277** — `release.yml` applies DROP migrations before the image swap (filed 2026-08-20)
-- **#36** — date-parked to ~Dec 2026, correctly carries no milestone
-
-### Superseded — the morning of the same day (2026-08-19)
-
-**Three PRs merged after `0.7.0`, all under the then-open `0.8.0` milestone.**
-
-- **#226 — the design system** (#225 phase 1). See the 2026-08-18 block below.
-- **#229 — automated triage inverted to opt-in.** See below.
-- **#227 — Home, rebuilt.** One squash-merge closing **four** issues:
-  - **#223** the page opens with the answer (hero net position, ranked category bars,
-    year-over-year as one line);
-  - **#232** the four AI surfaces become ONE "Ask your finances" panel — a cached month
-    read plus the box. The read merges `compute_month_facts()` with `compute_forecast()`
-    into a single model call cached in the **existing `insights` table** (no migration).
-    Two new Ask tools, `month_summary` and `month_projection`, so the box reaches what the
-    retired cards showed. The v9 NL quick-add is **removed entirely**;
-  - **#233** two layout holes closed (a lone stat tile filled a third of its row; Goals in
-    the narrow column left a 380px void). Page height 3107 → 2983 at 1440;
-  - **#234** the charts redrawn — **Chart.js out, ApexCharts 4.7.0 in**.
-
-Tests: **953** on `main` (was 921 at `0.7.0`). CI on the merge commit is green.
-
-⚠️ **`blueprints/forecasts.py` and `blueprints/agent.py` no longer define a blueprint** —
-both lost their routes; 18 registered, was 20. The forecast arithmetic feeds the month
-read and an Ask tool; the money agent runs inside the weekly digest, which is deliberately
-untouched.
-
-⚠️ ~~**The `forecasts` TABLE is now dead** — dropping it is **#236**~~ — **DONE**, dropped
-with `goal_coach` in `sql/36` (PR #265). Kept here because the reasoning still applies to the
-next dead table: a migration stands alone in its own PR.
-
-⚠️ **ApexCharts is pinned at 4.7.0 for a LICENCE reason, not inertia.** 5.x is dual-licensed
-and 6.x ships a `LicenseEnforcer` that watermarks charts, with terms binding on annual
-revenue. 4.7.0 is the last MIT release. `tests/test_design_system.py` asserts the vendored
-licence still says MIT and that no enforcer is in the bundle — treat any bump of this
-library as a licence decision.
-
-⚠️ **A conflicting PR runs NO CI at all** (learned the hard way this session). #227 sat a
-full day with a `CHANGELOG.md` conflict; `pull_request` workflows test the merge ref,
-GitHub cannot compute one for a conflicting PR, so nothing queued — and its last real run
-had been a **failure**. This file previously recorded that PR as "green, 954 passing".
-Check `gh pr view <n> --json mergeable,mergeStateStatus` before believing an absence of red.
-
-⚠️ **Put every `Closes #N` in the PR BODY.** Two of the four were only in commit messages,
-which a squash-merge does not reliably carry; `gh pr view --json closingIssuesReferences`
-showed only two linked until they were added to the body.
-
-### The rest of #225 is now filed, one issue per page
-
-**14 issues, #237–#250, all on `0.8.0`** — History, Budgets, Accounts, Goals, Scheduled,
-Transfer, Categories, Add transaction, Profile, Settings, User management, Login, Change
-password, Create user. Written from the templates themselves, so each names what that page
-actually is today. Three things worth knowing before picking one up:
-
-- **Five share one shape** — Accounts, Categories, Goals, Scheduled, Transfer are all "Add
-  X form on top, Existing X table below", which is the #223 complaint. Decide it once.
-- **Three may not deserve to exist** — #247, #249, #250 are 18, 13 and 16 lines and are
-  arguably sections of Settings and Profile.
-- **Four carry a "do not break this"**: Profile's notification copy is a consent record;
-  Settings must never render a secret or its prefix, and `NOT_SCHEDULED` must not read as a
-  fault; Login is the second shell and must not leak whether a username exists.
-
-Also open: **#235** (two stacked topbars, ~49px and a hamburger the desktop does not need —
-touches `base.html`, so every page) and **#236** (the `forecasts` drop). **Both shipped that evening — see the block at the top.**
-
-⚠️ **#225 stays OPEN** — it is the umbrella, and its own plan is "design-system PR, then
-per-page PRs". #226 and Home are done; the 14 are the rest.
-
-### On `main`, not yet deployed (2026-08-18)
-
-Two PRs merged after `0.7.0`, both under the open **`0.8.0`** milestone:
-
-- **#226 — the design system (#225 phase 1).** Two vendored typefaces (`app/static/fonts/`,
-  ~52 KB, latin subset, OFL texts beside them), tabular figures on every money surface, a dark
-  nav rail in both themes, a gradient hero, one entrance + one hover, and a single
-  `prefers-reduced-motion` block. `tests/test_design_system.py` (10 tests) asserts the
-  stylesheet itself; 7 were red against `main` first. ⚠️ `--accent` deliberately still holds
-  the exact brand blue — `icons/icon.svg` hardcodes it and the PNG rasters have no build step.
-- **#229 — automated triage inverted to opt-in.** The `triage` label now runs
-  `claude-triage.yml`; the two issue templates and `app/blueprints/feedback.py` apply it
-  themselves. Verified after merge: a hand-filed unlabelled issue produced a successful run
-  with **0 comments** and both model steps skipped. `skip-triage` is left in place and now
-  does nothing.
-
-~~**Open and deliberately held: PR #227**~~ — **merged 2026-08-19**, see the block above.
-⚠️ Two claims made here were wrong and are worth keeping as a caution: it was recorded as
-"green, 954 passing" when its last CI run had **failed** (two ruff errors), and the
-`CHANGELOG.md` conflict noted here was not merely cosmetic — **it suppressed CI entirely**
-for a day.
-
-Tests: **932** on `main`; **954** on the #227 branch.
-
-⚠️ **Three defects shipped through a green suite this session** and were caught only by
-screenshotting the running app: every chart blank (deleting the doughnut took the shared
-`Chart.defaults`/`gridScales`/`initCharts` scaffolding with it), a `hidden` list rendering
-anyway (`[hidden]` is user-agent origin and loses to any author `display` rule), and bars
-squeezed to a stub on a phone. A Flask test client returns markup — it applies no CSS and runs
-no JS. Headless Chromium now lives in `~/.tools/bb-shots/` (outside the repo); `check.mjs`
-reports page errors, ink per canvas and real visibility.
-
-### Level with production before this session (2026-08-17)
-
-**Prod runs `0.7.0`, shipped and verified.** `main` carries nothing unreleased beyond the docs
-commit recording this session. The `0.7.0` milestone is **closed** (19 issues); **no milestone
-is open**, so the next cycle needs one created. **#36 is the only open issue** — date-parked to
-~Dec 2026, correctly carrying no milestone.
-
-Tests **921** (measured 2026-08-17; `910 passed, 11 skipped` inside the shipped image — two
-legitimately different numbers, see `docs/testing.md`).
-
-⚠️ **Loose ends, none blocking:**
-
-- **Nothing on the public surface distinguishes deployed versions.** `app/static/` did not change
-  between `0.6.0` and `0.7.0`, so `css_v` could not verify the deploy and neither could anything
-  else reachable without logging in. Decide the verification handle **before** cutting next time;
-  a version string on `/healthz` would end this class of doubt permanently and does not exist.
-- **The `workflow` token scope is now persistently granted** (needed to push `ci.yml` for #218).
-  It was previously withheld on purpose. Either revoke it after workflow work or drop that
-  rationale from the notes — do not leave a claimed protection that no longer holds.
-- **`docs/status.md` is no longer auto-loaded.** `CLAUDE.md` was split on 2026-08-17 and keeps
-  only a pointer, so this file is *more* likely to go unread and stale than before, not less.
-
-**Applied to production this session:** #190's `${TAG}` fix, which had been merged-but-unapplied
-since 2026-08-13. The ordering resolved itself — `release.yml` step 0 writes the `.env` pin
-before any other compose command, so the `scp` of the new compose file became safe afterwards
-rather than needing a hand-typed pin first. ⚠️ The sequence previously recorded here started
-with `printf 'TAG=0.6.0' >> .env`; following that *after* a deploy would append a second `TAG=`
-line. Check `grep -c '^TAG=' .env` is exactly 1.
+### Older sessions
+
+Every session from 2026-08-17 to 2026-10-21 is in [`status-archive.md`](status-archive.md),
+unedited (#493). Read it for the reasoning behind a decision, not for current state.
+
+### `CLAUDE.md`'s status block as it stood on 2026-10-26 (moved here by #493)
+
+> Moved out of `CLAUDE.md`, unedited, when its `## Current status` was cut down to current state
+> and standing rules. The per-release detail below is history; the rules it argued for are
+> restated briefly in `CLAUDE.md`.
+
+▶️ **On `main`, not yet deployed (`0.13.1`'s content): #483** (the digest sent twice, #494),
+**#491** (rows read by name), **#490** (the app factory: gunicorn runs `app.wsgi:app`, and the
+compose file changes with it), **#492** (CI compares `schema.sql` with what the migrations build),
+**#489** (the `app/services/` layer, #506–#519: no blueprint imports another) and **#513** (five
+more positional row reads). Cutting it is Sean's call, with no deadline. **NEXT UP:** **#493**,
+then the container-hardening issues **#497–#500**, in the order `docs/status.md` gives. ✅ **Prod runs `0.13.0`, shipped 2026-10-12** (27 PRs; three additive migrations
+`sql/39`–`41`; `pypdf`; statement import #445–#474; the device list #437). The deploy log is in
+`docs/status.md`: **#433's compose copy passed on its first real run** and left `db` untouched,
+and RUNBOOK §3's Nginx upload block was added first and proven from outside (a 2 MB POST went
+from Nginx's 413 to the app's response). ⏳ **Not yet checked by Sean:** his real Discover
+export **in production** (the first real bank file, and the first live call on `anthropic`
+1.12.1), a real phone screenshot, a multi-page PDF, and #437 on his phone. ⚠️ The Droplet's
+banner says `System restart required`; a reboot takes Orbit Ops down too. **#36** stays
+date-parked.
+
+🛑 **THE MAC HAS NO CLONE OF THIS REPO** (2026-10-05). Every Droplet step runs from the Mac, and
+every line of code lives in the VM. So "scp it from your clone" copies whatever file is in the
+Mac shell's directory. A `diff` against that file is then vacuous, and at 0.12.0 it printed
+`identical` over the stale v0.11.0 compose file. #433 (shipped in `0.13.0`, proven on its first deploy) makes the
+workflows copy it themselves; as break-glass, use RUNBOOK §5's recipe:
+a download pinned to a tag, checked against a hash taken from the repo at both ends. **Before
+handing Sean commands for the Mac, check what exists there**, and give one command per copy box.
+Rolling back past #402 still needs the old compose file first (RUNBOOK §5).
+
+⚠️ **"Issue criteria are claimed by tests" is still NOT a required check** (re-checked
+2026-10-23 against branch protection), so a red result doesn't block a merge. It's Sean's
+setting.
+
+🛑 **AN ISSUE BEING OPEN IS NOT EVIDENCE THAT IT IS OPEN WORK.** Kept as a standing rule now that
+its examples are closed. On 2026-09-04 "#326 and #314, the two migrations" was proposed as the next
+session's work when **#326 was not work at all** — Sean had decided on 2026-09-02 to close it as
+premise-wrong, and a decision recorded in a comment leaves no trace in `gh issue list`. **Read the
+comments, not just the body, before proposing any issue as work.** A mechanical milestone roll
+cannot read comments either, so it always overstates the work.
+
+🛑 **AN ISSUE'S SPECIFIED FIX CAN BE WRONG AGAINST THE PLATFORM, not just against the code**
+(#314, 2026-09-16). It specified `CHECK (col = col)` to reject a NaN, on the premise that
+`NaN <> NaN`. True in IEEE 754; **false in PostgreSQL `numeric`, which defines NaN as equal to
+itself** so the type can be sorted and indexed. Verified against `postgres:16`: that constraint
+accepts a NaN and stores it, so the migration would have applied cleanly, passed CI and protected
+nothing. The working form is `<> 'NaN'::numeric`, and it is the **inverse of Python** — a guard
+ported from the app layer into SQL keeps its shape and loses its meaning. `docs/gotchas.md` carries
+the rule; `docs/status.md` carries the session.
+
+
+⚠️ **The open milestone is `0.13.1`** (#483). ✅ **`0.13.0` was closed on ship day** (2026-10-12, 42/42). ✅ **`0.12.0` was closed on ship day** (2026-10-05, 24/24). ✅ **`0.10.0` was closed ON SHIP DAY** (2026-09-11) at
+`open=0, closed=25`, with its nine open items moved to `0.11.0` first — the corrective landing, and
+the shape every milestone but `0.9.0`'s has closed at. `0.9.0` was closed 2026-09-03, late: it
+shipped on 2026-09-02 but was left open to hold a backlog, so **seven commits landed after the
+`v0.9.0` tag carrying a milestone for a version that had already shipped**. That contradicts the rule two
+sections above — *exactly one is open at a time, closed when that version ships* — and it is the
+only milestone in the project's history that has ever been open with work in it. Corrected in
+#359; `docs/status.md` records how the boundary was drawn, including the two traps that make it
+easy to get wrong.
+
+⚠️ **[`docs/status.md`](docs/status.md) is the detail, and it lags `main` by construction** — it
+describes the last session rather than the current tree, and it asserts rather than going quiet.
+**Reconcile against `git log` and `gh issue list` at the start of every session.**
+
+- ✅ **`0.12.0`, shipped 2026-10-05** (23 PRs, no new env vars, no migrations, **the
+  compose file changed**). The **first** deploy failed at step 3c (`service "worker" is not
+  running`), because the Droplet still held the v0.11.0 compose file. Production stayed up on
+  0.12.0 with the safe single-worker path. After a tag-pinned, hash-checked copy, the failed job
+  re-ran green: `redis:7-alpine` pulled, `worker-1` and `redis-1` started, `running version
+  0.12.0` → `worker version 0.12.0 (matches 0.12.0)` → `Nothing to apply for phase after-pull`
+  → `Announced 0.12.0 to 3 device(s).` Live `/healthz` 200, and the CSP header is served.
+  ⏳ **Not yet checked by Sean:** the installed PWA under the CSP, `docker compose logs worker`
+  showing `Scheduler running`, the `[INFO] [<id>]` lines (#404), and the first live model call on
+  **`anthropic` 1.11.0** (request shape compared offline against 1.8.0: identical apart from the
+  version strings).
+- ✅ **`0.11.0`, shipped and verified 2026-09-24** (16 PRs, no new env vars, **one
+  migration**). The deploy log read, in order: `backup ok` → `applying 38_money_is_finite.sql ...
+  ok` → `running version 0.11.0 (matches 0.11.0)` → `Nothing to apply for phase after-pull` →
+  `Announced 0.11.0 to 3 device(s).`, and live `/healthz` returned 200. `sql/38` was rehearsed
+  first against a restore of that morning's production dump, because it fails the deploy if a NaN
+  exists. The What's-new strip holds one block (the NaN refusal), on Sean's call: nothing else in
+  the release is user-facing. ⚠️ **`anthropic` is now 1.7.0 (#379) and still has made no live
+  model call**, so the first round trip is still a manual check in prod. ⚠️ The Release was
+  **drafted, then published only after `main` was confirmed at the prep commit**. The tag is
+  created at publish time, so a merge in between would have shipped a commit the prep never saw.
+- ✅ **`0.10.0`, shipped and verified 2026-09-11** (13 PRs, no new env vars, no new
+  migrations). `/healthz` 200 on the first attempt; `Announced 0.10.0 to 3 device(s).` Unlike
+  `0.9.0` it carries **user-facing change** — the What's-new strip holds three blocks rather than
+  one admin-only note. ⚠️ **`anthropic` STILL has not made a live model call**, now on `1.3.0`
+  after two bumps (#342, #366); CI sets no key, so the first round trip remains a manual check in
+  prod. ⚠️ **The release-prep PR must merge BEFORE the Release is published** — `release.yml`
+  builds the release's *target commit*, so publishing first ships an image stamped with the new
+  version whose What's-new strip names the old one, and **every check still passes**.
+- ✅ **`0.9.0`, shipped and verified 2026-09-02** (35 commits, no new env vars, no
+  new migrations). **All three of its first-time mechanisms passed in the real deploy log**, in
+  this order: `Nothing to apply for phase before-pull — up to date.` → `running version 0.9.0
+  (matches 0.9.0)` → `Nothing to apply for phase after-pull — up to date.`, then `/healthz` 200
+  on the first attempt and `Announced 0.9.0 to 3 device(s).` The empty-pass migration case and
+  the version-stamp assertion are now **proven**, not just written down. ⚠️ **Still unproven:
+  `anthropic` 1.0.0 has made no live model call** — CI sets no key, so the first real round trip
+  is the month read and the Ask box being exercised in prod by hand. ⚠️ The release carried **no
+  user-facing feature at all**: the single `### Added` was the admin-only version stamp, so the
+  What's-new strip holds one block naming a `/settings` card, and every `### Fixed` was a patch
+  fix. The `0.8.0` milestone is closed at 47 issues; `0.9.0`'s stays open for its backlog.
+  Dependabot **#342 was deliberately held out** of the bundle and rides `0.10.0`. The bundle
+  briefly also held the ai-atlas landing card (#280); **#288 removed that card again on
+  2026-08-24** after the project was abandoned and its repo deleted, and since it never shipped
+  in a release its changelog entry was deleted outright rather than answered with a
+  `### Removed` line — which is why nothing in `0.9.0`'s notes mentions it
+- **The tracker is NO LONGER empty**, and its contents are now mostly **#309's output rather than
+  #309 itself**. ✅ **The full-repo read is COMPLETE** (closed 2026-08-31, ten tranches): every
+  tracked file — `app/`, `sql/`, `scripts/`, `tests/`, `.github/`, `.claude/` and the root build
+  config — has been read once, on purpose. It filed **twelve issues**: **#312**, **#314**,
+  **#315**, **#316**, **#319** (tranches 1–4), **#323**, **#324**, **#326**, **#328**, **#329**
+  (5–7), **#333** (8) and **#339** (9). **#315** is still the one to read first (two categories
+  sharing a name merge into one budget row and invent an overrun, which the AI month read then
+  narrates as ground truth); **#328** is the loudest (the `scripts/` ingest pipeline cannot insert
+  a row and has not been able to since the app gained users). **#36** stays date-parked to
+  ~Dec 2026 with no milestone. (The open milestone at the time was `0.10.0`.)
+  ⚠️ **`docs/status.md` carried the review's resume point, and it went stale THREE times** (#331,
+  #337, #343) — every time because a tranche merged without touching it. **The loop ended because
+  the work finished, not because the problem was solved**; the next tranche-shaped piece of work
+  will reproduce it unless something mechanical links merging to updating
+- ⚠️ **`anthropic` is on `1.0.0`** (#286, merged 2026-08-25) alongside the minor/patch group
+  (#285). The major bump was read rather than rubber-stamped, because the mocked `_call_*_model()`
+  seams mean a green suite says nothing about an SDK change. **`tests/test_sdk_call_shape.py`
+  now closes that gap** — it introspects the installed SDK and asserts it still accepts what
+  `ai.py` passes, with no network call and no key. ⚠️ #285 also proved the ruff double-pin real:
+  Dependabot bumped `requirements-dev.txt` alone and CI went red until `ci.yml` matched
+- ⚠️ **A green PR does not predict a green `main`.** The `changes` classifier fails open on a
+  push to `main`, so an inert PR (docs) skips the expensive STEPS and meets them for
+  the first time AFTER merge — that is #281, found by a landing-page change. Check the `main` run
+  after every squash-merge, and do not re-run a red one before reading it: a race goes green on
+  re-run and hides. ⚠️ **A skipped job reports `pass`, not `skipped`** — the steps skip inside a
+  job that still succeeds, so `gh pr checks` prints "Tests pass" for a run that executed no
+  tests, and it is indistinguishable from a real one at a glance (seen on #288). The number to
+  trust is the `main` run, or the classifier's own `app=/image=/sql=` line in the "What changed"
+  job log
+- ✅ **The deploy handle is the version stamp, not `css_v`** (#305). The image is built with
+  `--build-arg APP_VERSION`/`APP_COMMIT`, so `/settings` reports which build is serving and both
+  deploy workflows fail if the running container is not the release they just deployed. **A
+  release no longer needs a handle chosen before cutting** — which `css_v` did, and it proved
+  nothing at `0.4.1` or `0.7.0` and worked at `0.8.0` only because the front-end overhaul
+  happened to rewrite the stylesheet.
+  ⚠️ **It is a build arg, NOT a `.env` variable** — `TAG` there records what compose was *told*
+  to pull, which a stale or hand-restored `.env` can make lie. Do not add it to `.env.example`.
+  ⚠️ **It is admin-only and must never reach `/healthz`.** This file proposed exactly that for
+  months, against a deliberate decision written in `main.healthz` and `admin.integration_status`;
+  `tests/test_version_stamp.py` now states the boundary so the suggestion cannot come back
+- **Standing decisions that must not be re-opened** are listed in `docs/status.md`. Check there
+  before re-filing anything that looks like an obvious improvement
 
 ### Standing decisions — settled, do not re-open
 

@@ -1,9 +1,6 @@
 """The month-ahead projection: every NUMBER behind "where is this month going".
 
-Was the v10.2 "Forecast" card — a cached AI narration of its own, sitting under
-the Insight card on Home. #232 removed the card, the `/forecasts/generate` route
-and the narration; the deterministic arithmetic here SURVIVED it and now feeds
-two callers instead of one:
+It has no narration of its own (#232); the arithmetic feeds two callers:
 
   * month_read.build_read_facts() — the projection half of the one month read
   * ask.py's `month_projection` tool — the same figures, on demand
@@ -17,11 +14,8 @@ written by one.
 app/blueprints/, where it sat with no blueprint from #232 until then.
 
 ⚠️ The `forecasts` TABLE is GONE — `sql/36` dropped it alongside `goal_coach`
-once nothing referenced either. This note used to say the table "still exists"
-and that dropping it was outstanding work; that was true when #232 removed the
-card and stopped being true at `sql/36`, so a reader following it would have
-written a migration for a table that is not there. Older backups still contain
-it, which is fine: `restore_check.py` has no expected-table list.
+once nothing referenced either, so there is nothing left to drop. Older
+backups still contain it, which is fine: `restore_check.py` has no expected-table list.
 """
 import calendar
 from datetime import date

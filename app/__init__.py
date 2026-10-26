@@ -60,14 +60,14 @@ _CSP = ("default-src 'self'; "
 
 
 def _secure_cookies():
-    """v10.1.1 hardening. Secure cookies + HSTS are gated on COOKIE_SECURE=1
+    """Secure cookies + HSTS are gated on COOKIE_SECURE=1
     (set in the Droplet .env) so local HTTP dev and the Werkzeug test client —
     both plain http — still set and send the session cookie."""
     return os.getenv('COOKIE_SECURE', '') == '1'
 
 
 def set_security_headers(response):
-    """Defense-in-depth response headers (v10.1.1, a real CSP since #403). HSTS
+    """Defense-in-depth response headers (a real CSP since #403). HSTS
     is sent only in prod (COOKIE_SECURE=1), where TLS is terminated at Nginx."""
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'DENY'

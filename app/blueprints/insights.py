@@ -1,9 +1,6 @@
 """#232 — the month read: the ONE narrated line in Home's "Ask your finances".
 
-Supersedes the v10.1 "Insight" card. Home used to stack four AI surfaces — the
-monthly insight, the month-ahead forecast, the weekly money check and the Ask
-box — each with its own card, cache and Generate button. They are one panel now:
-a single read of the month, then the box.
+Home has one AI panel: a single read of the month, then the Ask box.
 
 The split of responsibility is unchanged and is the whole point:
 

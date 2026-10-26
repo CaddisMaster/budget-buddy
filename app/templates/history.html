@@ -69,7 +69,7 @@
 {% if total == 0 and not search and not selected_month and not selected_account %}
 <p style="color:var(--text-muted)">No transactions yet. <a href="{{ url_for('transactions.new_transaction') }}">Add your first transaction →</a></p>
 {% else %}
-{# v10.11 Bulk edit: hidden until at least one row is selected (script below). #}
+{# Bulk edit: hidden until at least one row is selected (script below). #}
 <div id="bulk-bar" class="bulk-bar" hidden>
   <span id="bulk-count">0 selected</span>
   {% if categories %}

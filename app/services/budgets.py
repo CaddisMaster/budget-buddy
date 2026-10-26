@@ -2,9 +2,8 @@
 month, and the log of every budget change (#489).
 
 Home, the month read, the month projection, Ask and the categories page all
-need these, and they used to import them from the budgets blueprint (the
-categories page lazily, to dodge a cycle). The budgets cockpit itself, with its
-suggestions, report and AI review, stays in blueprints/budgets.py.
+need these. The budgets cockpit itself, with its suggestions, report and AI
+review, stays in blueprints/budgets.py.
 """
 from datetime import datetime
 
@@ -12,7 +11,7 @@ from app.db import db_cursor
 
 
 def record_budget_change(cursor, user_id, category_id, amount):
-    """Append to budget_history (v10.9) — the only record of past budget
+    """Append to budget_history — the only record of past budget
     amounts, since the budgets row upserts in place. amount None = cleared.
     Nothing reads the log yet; a future budget report will grade past months
     against the amount actually in effect.

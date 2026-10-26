@@ -1,4 +1,4 @@
-"""v10.8 — Weekly Email Digest (Budget Buddy's first PUSH feature).
+"""Weekly Email Digest (a scheduled PUSH feature).
 
 A scheduled Sunday-evening email that recaps the month-to-date (spend vs budget,
 net position) and the week ahead (scheduled items in the next 7 days). Same split
@@ -202,7 +202,7 @@ def send_weekly_digests(*, today=None):
             facts = compute_digest_facts(user_id, today=today)
             narrative = generate_digest(facts)
 
-            # Money agent (v10.10) — this week's findings, as their own email
+            # Money agent — this week's findings, as their own email
             # section. Reuse this week's cached run if one exists (don't re-pay
             # Sonnet); otherwise run it now. ⚠️ That cache used to be shared with
             # a dashboard card the user could trigger themselves, and this

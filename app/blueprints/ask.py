@@ -1,4 +1,4 @@
-"""v10.3 — "Ask your finances" (tool-use, Budget Buddy's fourth AI feature).
+"""The "Ask your finances" box (tool-use).
 
 A plain-English question box on Home, answered from the user's REAL data. The
 model orchestrates; the app computes. This module is only the /ask route: it
