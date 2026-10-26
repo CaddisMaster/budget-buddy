@@ -278,6 +278,15 @@ would point at a path that does not exist and Nginx would fail to start.
 
 ```yaml
 # /opt/budget-buddy/docker-compose.yml
+x-locked-down: &locked-down
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 200
+
 services:
   db:
     image: postgres:16
@@ -293,14 +302,16 @@ services:
       - "127.0.0.1:5432:5432"
     logging:
       driver: json-file
-      options: { max-size: "10m", max-file: "3" }
+      options:
+        max-size: "10m"
+        max-file: "3"
   web:
     image: ghcr.io/caddismaster/budget-buddy:${TAG:?TAG is not set — pass TAG=<version>, or see RUNBOOK §5}
     restart: always
     env_file:
       - .env
     command: ["gunicorn", "--workers", "2", "--threads", "4", "--timeout", "120",
-              "--bind", "0.0.0.0:5000", "app.wsgi:app"]
+              "--no-control-socket", "--bind", "0.0.0.0:5000", "app.wsgi:app"]
     environment:
       SCHEDULER_IN_PROCESS: "0"
       RATELIMIT_STORAGE_URI: redis://redis:6379
@@ -316,26 +327,38 @@ services:
     depends_on:
       - db
       - redis
+    <<: *locked-down
+    mem_limit: 512m
     logging:
       driver: json-file
-      options: { max-size: "10m", max-file: "3" }
+      options:
+        max-size: "10m"
+        max-file: "3"
   worker:
     image: ghcr.io/caddismaster/budget-buddy:${TAG:?TAG is not set — pass TAG=<version>, or see RUNBOOK §5}
     restart: always
     env_file:
       - .env
     command: ["flask", "run-scheduler"]
+    <<: *locked-down
+    mem_limit: 256m
+    environment:
+      SCHEDULER_IN_PROCESS: "0"
     depends_on:
       - db
     logging:
       driver: json-file
-      options: { max-size: "10m", max-file: "3" }
+      options:
+        max-size: "10m"
+        max-file: "3"
   redis:
-    image: redis:7-alpine
+    image: redis:7.4.11-alpine@sha256:d9436322172a5b482c187bf1f363d3c4fea086fcca6b9c8a94de8f0f39ed3193
     restart: always
     logging:
       driver: json-file
-      options: { max-size: "10m", max-file: "3" }
+      options:
+        max-size: "10m"
+        max-file: "3"
 volumes:
   postgres_data:
 ```
@@ -416,6 +439,14 @@ daily materialize + reminders, the weekly digest) from the **same image and tag*
 it, and `/settings` reads it in `web` to tell a dead worker from a switched-off one (#151). **`redis`** holds the
 rate-limit counters so limits hold across web workers. It has no volume and no port, and
 restarting it just resets the limits.
+
+- ⚠️ **`web` and `worker` are read-only (#498).** Their root filesystem is read-only, `/tmp` is
+  the only writable path (a tmpfs, `noexec`, and charged to the memory limit), every Linux
+  capability is dropped, and memory is capped at 512m and 256m. Every command this runbook runs
+  in them (`printenv`, `whoami`, `migrate.py`, `flask announce-release`, the `python -c`
+  probes) writes nothing, so they all still work. Something new that needs to write a file
+  must write under `/tmp`, or it fails with `Read-only file system`. `db` and `redis` are not
+  locked down: changing `db` is a scheduled window (#500).
 
 - ⚠️ **Exactly one process may run the scheduler.** Two would run every job twice. That's
   why the worker count lives in this file beside the switch, and not in the image: the image's

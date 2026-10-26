@@ -1,3 +1,21 @@
+# #498 — web and worker run locked down. Nothing in either needs a writable
+# root filesystem, a Linux capability, setuid, or unbounded PIDs. The db is
+# deliberately NOT given this: any edit to its definition recreates the
+# database container, and install_compose.sh refuses such a release (#500).
+x-locked-down: &locked-down
+  read_only: true
+  tmpfs:
+    # The only writable path. Werkzeug spools uploads over 500 KB here (a
+    # statement import can be 16 MB), and gunicorn keeps its worker heartbeat
+    # files here. ⚠️ tmpfs is charged to the container's memory cgroup, so
+    # mem_limit must cover a spooled upload, not just an idle process.
+    # Docker mounts it noexec, so nothing written here can be run.
+    - /tmp
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 200
+
 services:
   db:
     image: postgres:16
@@ -30,7 +48,7 @@ services:
     # ⚠️ Editing anything in this service's definition makes the next
     # `docker compose up -d` RECREATE the database container. That is a
     # deliberate, scheduled operation with a verified dump in hand — see
-    # RUNBOOK.md §7. Never let it happen as a side effect of a release.
+    # RUNBOOK.md §5, "changing the db service at all". Never let it happen as a side effect of a release.
     logging:
       driver: json-file
       options:
@@ -70,8 +88,11 @@ services:
     # in-process scheduler, so a new image on the pre-#402 compose file behaves
     # exactly as before. Two schedulers would run every job twice — see
     # app/scheduler.py for the whole old/new matrix.
+    #
+    # --no-control-socket (#498): gunicorn 26 opens a control socket in $HOME by
+    # default, and $HOME is read-only below. Nothing here uses that interface.
     command: ["gunicorn", "--workers", "2", "--threads", "4", "--timeout", "120",
-              "--bind", "0.0.0.0:5000", "app.wsgi:app"]
+              "--no-control-socket", "--bind", "0.0.0.0:5000", "app.wsgi:app"]
     environment:
       # The worker hosts the jobs, so web must not (#402). NOT an override of
       # .env's ENABLE_DIGEST_SCHEDULER: /settings reads that in this process to
@@ -97,6 +118,13 @@ services:
     depends_on:
       - db
       - redis
+    <<: *locked-down
+    # Measured (#498), on the release image under this file: ~200 MiB idle
+    # with two gunicorn workers, 324 MiB peak during the largest upload the
+    # app accepts (three screenshots, ~15 MB, held in memory AND on the /tmp
+    # tmpfs). A backup is negligible beside that: the production dump is
+    # well under 1 MB. 512m leaves room for two big uploads at once.
+    mem_limit: 512m
     # Belt and braces (#150). `web` already resets its log on every deploy, so
     # this caps the one window that matters: a crash loop between releases.
     # Unlike the db block above, changing this is free — a release recreates
@@ -115,6 +143,15 @@ services:
     env_file:
       - .env
     command: ["flask", "run-scheduler"]
+    <<: *locked-down
+    # Measured (#498): ~60 MiB idle, 107 MiB peak with a second `flask
+    # run-daily` process running beside the scheduler.
+    mem_limit: 256m
+    # No healthcheck, deliberately (#498). The scheduler is this container's
+    # main process, so if it dies the container exits and `restart: always`
+    # brings it back. The only liveness signal for a HUNG scheduler is
+    # job_runs going stale (#151), which takes a database query and a day to
+    # show, so /settings remains the place that reports it.
     environment:
       # `flask run-scheduler` imports the app to find the command, and that
       # import starts the in-process scheduler unless this is 0. Without it the
@@ -131,7 +168,12 @@ services:
   redis:
     # Rate-limit counters only (#402). No volume: they are disposable, and a
     # restart simply resets every limit. No published port: only web talks to it.
-    image: redis:7-alpine
+    #
+    # Pinned by patch tag AND index digest (#498), for the Dockerfile's reason
+    # (#405): a tag is movable, and the patch in the name makes every update a
+    # visible tag change. Dependabot's docker-compose ecosystem bumps it.
+    # Recreating redis is harmless, so this never needs a scheduled window.
+    image: redis:7.4.11-alpine@sha256:d9436322172a5b482c187bf1f363d3c4fea086fcca6b9c8a94de8f0f39ed3193
     restart: always
     logging:
       driver: json-file

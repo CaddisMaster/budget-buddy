@@ -33,3 +33,16 @@ updates:
     schedule:
       interval: monthly
     labels: ["dependencies"]
+
+  # #498: compose's own images. redis is pinned by tag + digest like the
+  # Dockerfile's base, and only this ecosystem can move it. postgres is
+  # IGNORED on purpose: any edit to the db service recreates the database,
+  # and install_compose.sh refuses such a release. Postgres moves in a
+  # scheduled window instead (#500).
+  - package-ecosystem: docker-compose
+    directory: "/"
+    schedule:
+      interval: monthly
+    labels: ["dependencies"]
+    ignore:
+      - dependency-name: postgres

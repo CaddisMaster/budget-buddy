@@ -50,8 +50,10 @@
   taking the `^{}` line for an annotated tag) and the digest with `docker buildx imagetools inspect
   <image:tag>`. Never copy one from a blog post or a README. ⚠️ **Pin the INDEX digest, never a
   platform manifest's:** the VM builds arm64 and CI and the Droplet build amd64, so a
-  platform-specific digest breaks one of them. The compose files' `postgres:16` and
-  `redis:7-alpine` are **not** pinned. They were outside #405, and the Droplet's copy only changes by scp.
+  platform-specific digest breaks one of them. The compose file's `redis` is pinned
+  by patch tag and index digest too (#498), bumped by Dependabot's `docker-compose` ecosystem.
+  `postgres:16` is **not** pinned, and that ecosystem ignores it on purpose: any edit to `db`
+  recreates the database container, so Postgres moves in a scheduled window (#500).
 - **Env vars:** `ANTHROPIC_API_KEY` gates every AI surface via `ai_enabled()` (optional — app runs
   fine without it). `RESEND_API_KEY` gates email (`mail_enabled()`), `ENABLE_DIGEST_SCHEDULER=1`
   switches the scheduled jobs on (since #402 they run in the compose `worker` service, and
