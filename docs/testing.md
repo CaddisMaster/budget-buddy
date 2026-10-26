@@ -384,7 +384,7 @@ interpreter holding the dependencies is the one that runs them. (In the `dev` st
 installed as root into system site-packages, so bare `pytest` would in fact resolve there — but
 CI installs `requirements-dev.txt` into the *prod* image as `appuser`, where console scripts land
 in `/home/appuser/.local/bin`, which is NOT on `PATH`.) `test.sh` also passes
-`-p no:cacheprovider`: `/app` is root-owned (`WORKDIR` created it before the `COPY --chown`) so
+`-p no:cacheprovider`: `/app` is root-owned and not writable by appuser (#497), so
 pytest can never write its cache there, and passing it turns two warnings per run into none.
 
 **⚠️ Test-run economy is OBSOLETE — a full run costs ~35 SECONDS.** **Just run the full
