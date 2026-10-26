@@ -5,24 +5,47 @@
 
 ## Current Status
 
-▶️ **NEXT SESSION: #493** (the docs sweep), then the container-hardening issues **#497 → #498 →
-#499**; **#500** (Postgres) is a scheduled operation and gets no milestone until Sean picks a date.
-Dependabot **#487** and **#488** have waited since 2026-10-19 (rebuild the container before testing
-#488). Prod runs **`0.13.0`** (shipped 2026-10-12). **On `main`, NOT deployed, all `0.13.1`
-content:** #483 (the digest sent once, #494), #491 (rows read by name, #501), #490 (the app
-factory, #502), #492 (CI compares `schema.sql` with what the migrations build, #503), **#489** (the
-services layer, #506–#519) and **#513** (five more positional unpacks, #514). Production still
-sends the digest twice until `0.13.1` ships; cutting it is Sean's call, with no deadline. ⚠️
-**`0.13.1` changes `docker-compose.yml`** (#490: web runs `app.wsgi:app`); the deploy ships it
-(#433) and `db` is untouched, so the guard passes. **After that deploy:** `docker compose logs
-worker` shows `Scheduler running`, and that is the whole check. #489 adds no migration, env var or
-compose change. ⏳ **Not yet checked by Sean:** his real Discover export through the import **in
-production** (the first real bank file, and the first live call on `anthropic` 1.12.1), a real
-phone screenshot, a multi-page PDF (only one page was ever timed: 5.9 s against a 12-page cap),
-and #437's device list on his phone. ⚠️ **The Droplet's login banner says `System restart
-required`**: a reboot takes Budget Buddy and Orbit Ops down together, so schedule it on its own.
-**#36** stays date-parked. ⚠️ The `Acceptance criteria` check is **still not a required status
-check** (re-checked 2026-10-23).
+▶️ **NEXT SESSION: merge #526 (#498) once Sean has checked the Droplet's `docker stats --no-stream`**
+against its 512m/256m caps, then **#499** (scan, SBOM, signing); **#500** (Postgres) is a
+scheduled operation and gets no milestone until Sean picks a date. Prod runs **`0.13.0`** (shipped
+2026-10-12). **On `main`, NOT deployed, all `0.13.1` content:** #483 (the digest sent once, #494),
+#491 (rows read by name, #501), #490 (the app factory, #502), #492 (CI compares `schema.sql` with
+what the migrations build, #503), **#489** (the services layer, #506–#519), **#513** (#514),
+**#493** (the docs sweep, #524), **#497** (root owns the image's code, #525) and Dependabot
+**#522/#523** (which superseded #487/#488). Production still sends the digest twice until
+`0.13.1` ships; cutting it is Sean's call, with no deadline. ⚠️ **`0.13.1` changes
+`docker-compose.yml`** (#490: web runs `app.wsgi:app`; #498 too if it merges first); the deploy
+ships it (#433) and `db` is untouched, so the guard passes. **After that deploy:** `docker compose
+logs worker` shows `Scheduler running`. ⏳ **Not yet checked by Sean:** his real Discover export
+through the import **in production**, a real phone screenshot, a multi-page PDF, and #437's device
+list on his phone. ⚠️ **The Droplet's login banner says `System restart required`**: a reboot
+takes Budget Buddy and Orbit Ops down together, so schedule it on its own. **#36** stays
+date-parked. ⚠️ The `Acceptance criteria` check is **still not a required status check**
+(re-checked 2026-10-23).
+
+### The 2026-10-26 session: a `/cycle` of three, two merged and one left for Sean
+
+| PR | Issue | |
+|---|---|---|
+| #522, #523 | Dependabot | actions group; ruff 0.17.2, pydantic, pypdf, resend. Merged one at a time (strict protection) |
+| #524 | #493 | README rebuilt from `ai.py`, no counts; ~80 `v10.x` tags out of `app/` (the issue said 11); `CLAUDE.md` 474 → 367 lines; sessions before 2026-10-23 → `docs/status-archive.md` |
+| #525 | #497 | plain `COPY`, `PYTHONDONTWRITEBYTECODE`; CI fails on `find /app -writable` as the default user |
+| #526 **open** | #498 | web/worker read-only, `cap_drop: ALL`, no-new-privileges, pids 200, mem 512m/256m; redis pinned; Dependabot `docker-compose` ecosystem |
+
+- **#497 measured before changing:** `docker diff` on the old image showed the only writes under
+  `/app` were `__pycache__`. The CI step was run, pulled out of `ci.yml` rather than copied,
+  against the old image (fails on ownership) and a `chmod o+w` mutant (fails on writability).
+- **#498 was run as a separate compose project** (release image, no override, a dummy AI key aimed
+  at a dead port). Backup, a 0.9 MB import through apply and a 14.7 MB upload all worked. web
+  peaked at 324 MiB. Docker's tmpfs is **`noexec`** (broke three dev tests, so dev allows `exec`),
+  and the dev suite peaks at ~1.7 GB (OOM under the cap, so dev `!reset`s it). `db`'s
+  `config --hash` is unchanged.
+- ⚠️ **A compose mutation run through `./test.sh` recreated the dev `db` container read-only.**
+  `test.sh` applies the real compose file. Restored at once with data intact; compose guards are
+  now mutated on a string.
+- **RUNBOOK §5's compose block was regenerated from the file**, not patched: it had been
+  missing #483's `SCHEDULER_IN_PROCESS` since before this session.
+- Not filed: `helpers.ai_enabled()`'s docstring still describes the "NL quick-add (v9)".
 
 ### The 2026-10-24 session: #489 finished in twelve parts, and #513 found on the way
 
