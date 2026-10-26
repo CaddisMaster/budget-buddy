@@ -14,10 +14,10 @@ MarkupSafe==3.0.4
 psycopg2-binary==2.9.13
 # pydantic is imported directly (app/ai.py) — declared here so an anthropic-SDK
 # bump can't silently drop it out from under us.
-pydantic==2.14.0
+pydantic==2.14.1
 # Statement import from PDF (#460): the page count and an encrypted file are
 # checked BEFORE the PDF is sent to the model. Pure Python, BSD-3-Clause.
-pypdf==6.19.0
+pypdf==6.21.2
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.4
 # The rate limiter's shared store in production (#402); `limits` imports it.
@@ -25,6 +25,6 @@ redis==8.1.0
 # Web Push for the installed PWA (#33). Pulls py-vapid + cryptography, both of
 # which ship manylinux wheels — no compiler is added to the image.
 pywebpush==2.5.0
-resend==2.49.1
+resend==2.50.0
 six==1.17.0
 Werkzeug==3.1.9
