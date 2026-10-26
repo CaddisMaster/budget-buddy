@@ -320,8 +320,9 @@ and `gh issue list` at the start of every session.
 - ▶️ **On `main`, not yet deployed (`0.13.1`'s content): #483** (the digest sent twice, #494),
   **#491** (rows read by name), **#490** (the app factory: gunicorn runs `app.wsgi:app`, and the
   compose file changes with it), **#492** (CI compares `schema.sql` with what the migrations
-  build), **#489** (the `app/services/` layer) and **#513**. Cutting it is Sean's call, with no
-  deadline. **NEXT UP** is in `docs/status.md`
+  build), **#489** (the `app/services/` layer), **#513**, **#493** (the docs sweep) and **#497**
+  (root owns the image's code). **#498 is PR #526, open** until Sean checks the Droplet's memory.
+  Cutting it is Sean's call, with no deadline. **NEXT UP** is in `docs/status.md`
 - ✅ **Prod runs `0.13.0`, shipped 2026-10-12.** ⏳ **Not yet checked by Sean:** his real Discover
   export **in production**, a real phone screenshot, a multi-page PDF, and #437 on his phone.
   ⚠️ The Droplet's banner says `System restart required`; a reboot takes Orbit Ops down too.
