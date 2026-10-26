@@ -25,10 +25,27 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client && rm -rf /var/lib/apt/lists/*
 # Run as an unprivileged user — the app only READS /app (state is in Postgres,
-# Flask-Limiter is in-memory, /admin/backup streams pg_dump to the response).
+# Flask-Limiter is in Redis or in memory, /admin/backup holds pg_dump's output
+# in memory via capture_output, statement uploads spool to /tmp).
 # gunicorn binds :5000 (>1024) so no privileged-port need.
 RUN useradd --create-home --uid 10001 appuser
-COPY --chown=appuser:appuser . .
+
+# ⚠️ ROOT owns the code (#497), so a compromised app process cannot persist by
+# rewriting what it serves. Measured, not assumed: `docker diff` on a running
+# container showed the ONLY writes under /app were __pycache__ — which is what
+# PYTHONDONTWRITEBYTECODE stops — plus gunicorn's control socket in $HOME,
+# which stays writable. CI's docker-build job fails if appuser can write
+# anything under /app. Do not add --chown here; if something genuinely must
+# write at runtime, give appuser that one directory and say why.
+#
+# PYTHONDONTWRITEBYTECODE rather than `compileall` at build: nothing then even
+# tries to write, which #498's read-only root filesystem also needs, and the
+# cost is compiling the app's own modules in memory once per process start.
+# It is set AFTER the pip install on purpose, so site-packages keeps the
+# bytecode pip compiled for it. PYTHONUNBUFFERED: logs reach stdout (#404) as
+# they are written, not when a buffer fills.
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+COPY . .
 
 # #305 — the version this image WAS BUILT AS, so a deploy can be verified.
 #
@@ -56,7 +73,7 @@ USER appuser
 EXPOSE 5000
 # --threads keeps one process (in-memory Flask-Limiter stays consistent) while
 # letting a slow request run concurrently with others. --timeout 120 gives the
-# v10.3 Ask tool-use loop room for several sequential model calls (the default
+# Ask tool-use loop room for several sequential model calls (the default
 # 30s killed the worker mid-loop → the HTMX request hung).
 CMD ["gunicorn", "--workers", "1", "--threads", "4", "--timeout", "120", "--bind", "0.0.0.0:5000", "app.wsgi:app"]
 

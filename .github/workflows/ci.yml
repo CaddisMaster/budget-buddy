@@ -536,6 +536,33 @@ jobs:
             exit 1
           fi
 
+      # #497: root owns the code, so a compromised app process cannot persist by
+      # rewriting what it serves. Run as the image's DEFAULT user (no `-u`),
+      # because the property is "the user the app runs as cannot write here".
+      # `find -writable` covers every file under /app, not just the two named
+      # directories, and names what it finds. Positive control first: if the
+      # image had no /app, both checks would pass vacuously.
+      - name: Container cannot write its own code
+        run: |
+          docker run --rm budget-buddy:ci sh -c 'test -f /app/app/__init__.py' || {
+            echo "::error::/app/app/__init__.py is missing, so the checks below would prove nothing."
+            exit 1
+          }
+          owners=$(docker run --rm budget-buddy:ci stat -c '%U %n' /app /app/app)
+          echo "$owners"
+          if echo "$owners" | grep -qv '^root '; then
+            echo "::error::/app and /app/app must be owned by root. Got: $(echo $owners)"
+            exit 1
+          fi
+          writable=$(docker run --rm budget-buddy:ci find /app -writable)
+          if [ -n "$writable" ]; then
+            echo "::error::The app user can write its own code. Writable paths (first 10):"
+            echo "$writable" | head -10
+            echo "The Dockerfile must COPY the source without --chown (see its #497 note)."
+            exit 1
+          fi
+          echo "no path under /app is writable by the app user, as expected"
+
       # The Dockerfile has a `dev` stage carrying pytest for ./test.sh, and the
       # build above passes no --target, so it gets the FINAL stage. This asserts
       # that final stage is still `prod`. Reordering the stages so `dev` lands
@@ -670,7 +697,7 @@ jobs:
               # /home/appuser/.local/bin, which is not on PATH. Going through
               # the module also guarantees the interpreter that did the install
               # is the one that runs. -p no:cacheprovider because /app is
-              # root-owned (WORKDIR created it before the COPY --chown).
+              # root-owned and not writable by appuser (#497).
               python -m pytest -q -p no:cacheprovider -n auto
             '
 

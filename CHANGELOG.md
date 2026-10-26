@@ -19,6 +19,13 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The app can no longer rewrite its own code.** The image copied the
+  source in owned by the unprivileged user the app runs as, so a compromised
+  app process could have edited the code it serves and kept that change across
+  requests. Root now owns the code, Python no longer writes bytecode beside it,
+  and CI fails any image in which the app's user can write anything under
+  `/app`. Checked first: the running app wrote nothing there except bytecode.
+  No visible change. (#497)
 - **The README describes the app as it is.** Its AI list named three
   features removed long ago (Quick add, Forecast, Goal coach), left out the
   month read and statement reading, and stated tool and test counts that had
