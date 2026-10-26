@@ -152,7 +152,7 @@ def _t_total_for_category(user_id, args):
     end = _parse_date(args, 'end_date')
     with db_cursor() as cursor:
         cid, cname, ckind = _resolve_category(cursor, user_id, args.get('category'))
-        # Kind-aware (v10.12): an income-kind category sums what came IN, so
+        # Kind-aware: an income-kind category sums what came IN, so
         # "how much from Freelance" doesn't answer $0.
         ttype = 'income' if ckind == 'income' else 'expense'
         cursor.execute("""
@@ -200,7 +200,7 @@ def _t_search_transactions(user_id, args):
 
 
 def _t_recent_transactions(user_id, args):
-    # The no-text-filter sibling of search_transactions (v10.10, added for the
+    # The no-text-filter sibling of search_transactions (added for the
     # money agent's free hunt — "show me the week's activity" has no search
     # term). Same fixed query shape; carries the transfer/adjustment flags so
     # the model can recognize and dismiss transfer legs and balance check-ins
@@ -262,9 +262,9 @@ def _t_upcoming_scheduled(user_id, args):
 def _t_account_balances(user_id, args):
     # Reuse the Accounts page's balance query (the single source of the balance
     # formula). Credit cards with a limit set also report limit / available /
-    # utilization (v10.10 — same shared math as the /accounts bar); cards with
-    # an apr set that carry a balance also report apr / ~monthly interest
-    # (v10.15). Present highest balance first.
+    # utilization (same shared math as the /accounts bar); cards with
+    # an apr set that carry a balance also report apr / ~monthly interest.
+    # Present highest balance first.
     with db_cursor() as cursor:
         cursor.execute(ACCOUNT_ROW_SQL.format(extra=""), (user_id,))
         rows = cursor.fetchall()

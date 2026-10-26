@@ -19,6 +19,15 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The README describes the app as it is.** Its AI list named three
+  features removed long ago (Quick add, Forecast, Goal coach), left out the
+  month read and statement reading, and stated tool and test counts that had
+  drifted. It also called the service worker offline-capable, which it has
+  never been, and its diagram now shows the worker and Redis. A test ties each
+  listed AI feature to the code behind it and refuses exact counts. Comments in
+  `app/` no longer cite `v10.x` versions from the archived repo, and the
+  maintainer docs are shorter: release history moved out of `CLAUDE.md`, and
+  older session notes moved to `docs/status-archive.md`. (#493)
 - **Database rows are read by column name everywhere, never by position.**
   About thirty places across twelve files read a row as `row[1]`, unpacked it
   into a tuple, or built History's rows with `HistoryRow(*row)`, so adding or

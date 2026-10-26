@@ -264,7 +264,7 @@ def delete_transfer(group_id):
 
 
 # ---------------------------------------------------------------------------
-# v10.4 Auto-Transfer — recurring transfers (the transfer-tab twin of Scheduled).
+# Auto-Transfer — recurring transfers (the transfer-tab twin of Scheduled).
 # A transfer_schedules row materializes a PAIRED transfer (linked expense+income
 # legs sharing one transfer_group_id, is_transfer=true) on each due date going
 # forward. Reuses the schedules.py date math + the paired-leg INSERT above.

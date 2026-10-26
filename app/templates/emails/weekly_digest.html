@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 {#
-  Weekly Email Digest (v10.8). Standalone, inline-styled HTML — email clients
+  Weekly Email Digest. Standalone, inline-styled HTML — email clients
   ignore <style> blocks and the app's base.html, so everything is inline and
   table-based. `narrative` = {summary, tips} from ai.generate_digest (the model's
   prose); `facts` = the deterministic dict from compute_digest_facts (every
@@ -100,7 +100,7 @@
           {% endif %}
         </td></tr>
 
-        <!-- Money agent — this week's findings (v10.10; section omitted when
+        <!-- Money agent — this week's findings (section omitted when
              the run failed or never happened, i.e. agent_run is None) -->
         {% if agent_run %}
         <tr><td style="padding:20px 28px 4px 28px;">

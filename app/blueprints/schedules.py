@@ -1,4 +1,4 @@
-"""v10.0 Scheduled — recurring income & expense templates.
+"""Scheduled — recurring income & expense templates.
 
 A schedule is NOT a ledger row. `run_due_schedules()` materializes a plain
 transaction on each due date (going forward, no back-fill) and advances next_due.

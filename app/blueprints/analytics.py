@@ -1,5 +1,5 @@
-"""Legacy /analytics URL — the page merged into the dashboard (v10.9), which
-itself became the home page (v10.13), so this targets / directly to avoid a
+"""Legacy /analytics URL — the page merged into the dashboard, which
+itself became the home page, so this targets / directly to avoid a
 double hop.
 
 The redirect keeps old bookmarks alive and carries the month filter across.

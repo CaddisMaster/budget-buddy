@@ -1,4 +1,4 @@
-"""v10.8 — outbound email via Resend (the Weekly Email Digest's send path).
+"""outbound email via Resend (the Weekly Email Digest's send path).
 
 Deliberately named `mailer` (NOT `email`) so it never shadows Python's stdlib
 `email` package. Mirrors app/ai.py's shape: a single isolated network seam

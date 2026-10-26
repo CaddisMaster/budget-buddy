@@ -1,4 +1,4 @@
-/* Budget Buddy service worker (v10.13) — deliberately MINIMAL, no offline
+/* Budget Buddy service worker — deliberately MINIMAL, no offline
  * promises. Only same-origin GETs under /static/ are handled, with
  * stale-while-revalidate (NOT cache-first: htmx.min.js and apexcharts.min.js
  * carry no cache-bust param, so SWR keeps them at most one page-load stale

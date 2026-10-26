@@ -393,3 +393,79 @@ def test_every_docs_file_an_agent_is_pointed_at_exists():
         if not (DOCS_DIR / f"{ref}.md").exists()
     })
     assert not missing, f"agent prompts point at docs/ files that do not exist: {missing}"
+
+
+# ---------------------------------------------------------------------------
+# README.md — the AI feature list (#493)
+# ---------------------------------------------------------------------------
+
+README = REPO_ROOT / "README.md"
+AI_PY = REPO_ROOT / "app" / "ai.py"
+
+# Each feature the README lists, and the ai.py entry point that IS it. The
+# README named three features (Quick add, Forecast, Goal coach) for over a year
+# after #232/#262 removed them, because nothing tied a bullet to code. A new AI
+# feature adds a row here; a removed one fails until its bullet goes too.
+README_AI_FEATURES = {
+    "Month read": "generate_month_read",
+    "Ask your finances": "answer_question",
+    "Auto-categorise": "classify_transactions",
+    "Budget review": "propose_budgets",
+    "Weekly email digest": "generate_digest",
+    "Money agent": "investigate_finances",
+    "Statement reading": "read_screenshots",
+}
+
+
+def _readme_ai_features():
+    """The bold names of the bullets under `### AI assistance`."""
+    text = README.read_text(encoding="utf-8")
+    section = text.split("### AI assistance", 1)[1].split("\n#", 1)[0]
+    return re.findall(r"^- \*\*(.+?)\*\*", section, re.M)
+
+
+@pytest.mark.skipif(not README.exists(), reason=_NOT_IN_IMAGE)
+@pytest.mark.criterion(493, "README describes only features that exist")
+def test_readme_lists_only_ai_features_that_exist():
+    listed = _readme_ai_features()
+    assert listed, "no bullets found under ### AI assistance — the parser is broken"
+    assert set(listed) == set(README_AI_FEATURES), (
+        f"README lists {sorted(set(listed) - set(README_AI_FEATURES))} that this test "
+        f"does not know, and omits {sorted(set(README_AI_FEATURES) - set(listed))}"
+    )
+    ai_src = AI_PY.read_text(encoding="utf-8")
+    gone = [f"{name} -> {fn}()" for name, fn in README_AI_FEATURES.items()
+            if not re.search(rf"^def {fn}\(", ai_src, re.M)]
+    assert not gone, f"README features whose ai.py entry point no longer exists: {gone}"
+
+
+@pytest.mark.skipif(not README.exists(), reason=_NOT_IN_IMAGE)
+@pytest.mark.criterion(493, "README describes only features that exist")
+def test_readme_states_no_exact_tool_or_test_count():
+    """`nine query tools` was wrong by two and `565 tests` by hundreds: a count
+    in a README is invalidated by the commit after it."""
+    text = README.read_text(encoding="utf-8")
+    number = r"(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)"
+    counts = re.findall(rf"\b{number}\s+(?:\w+\s+)?(?:tools|tests|AI features)\b", text, re.I)
+    assert not counts, f"README states an exact count: {counts}"
+
+
+# ---------------------------------------------------------------------------
+# app/ — no version numbers from the archived repo (#493)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.criterion(493, "No archived-version references remain in app code")
+def test_app_code_cites_no_archived_v10_version():
+    """The numbering reset at 0.1.0; a `v10.x` in a comment points at a repo
+    nobody reads and a scheme that no longer exists. Cite the issue instead.
+    app/ ships in the image, so this one runs there too."""
+    app_dir = REPO_ROOT / "app"
+    hits = [
+        f"{path.relative_to(REPO_ROOT)}:{n}"
+        for path in sorted(app_dir.rglob("*"))
+        if path.is_file() and path.suffix in {".py", ".html", ".css", ".js"}
+        and not path.name.endswith(".min.js")
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        if "v10." in line
+    ]
+    assert not hits, f"archived v10.x version references in app/: {hits}"

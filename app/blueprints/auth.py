@@ -41,7 +41,7 @@ _EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
 
 # A throwaway bcrypt hash checked when the username doesn't exist, so a missing
 # user costs the same bcrypt work as a wrong password — no username enumeration
-# via response timing (v10.1.1).
+# via response timing.
 _DUMMY_PASSWORD_HASH = bcrypt.generate_password_hash('dummy-password-never-matches').decode('utf-8')
 
 
@@ -60,7 +60,7 @@ def login():
         password_ok = bcrypt.check_password_hash(password_hash, password)
         if user and password_ok:
             session.clear()  # drop any pre-login session state (fixation hygiene)
-            # remember=True (v10.13): the installed-PWA case — without the
+            # remember=True: the installed-PWA case — without the
             # remember cookie a standalone app re-prompts login every launch.
             # The REMEMBER_COOKIE_* flags were already configured in __init__.py.
             login_user(user, remember=True)

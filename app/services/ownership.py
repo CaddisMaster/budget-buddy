@@ -8,7 +8,7 @@ two imported a blueprint to reach it.
 
 
 def validate_category_account(cursor, user_id, category_id, account_id):
-    """Ownership guard for write-side FK ids (v10.1.1 IDOR fix). For each
+    """Ownership guard for write-side FK ids (the IDOR fix). For each
     non-null id, confirm the row belongs to user_id; return a list of error
     strings for any that don't, so callers fold it into their existing
     validation-error path. Mirrors the budgets `/budgets/set` guard, but for

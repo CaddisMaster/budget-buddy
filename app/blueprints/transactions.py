@@ -38,7 +38,7 @@ TxnEditRow = namedtuple('TxnEditRow', (
 
 
 # Cells that begin with these chars are interpreted as formulas by Excel/Sheets;
-# prefixing an apostrophe neutralizes CSV formula injection (v10.1.1).
+# prefixing an apostrophe neutralizes CSV formula injection.
 _CSV_FORMULA_PREFIXES = ('=', '+', '-', '@', '\t', '\r')
 
 
@@ -329,7 +329,7 @@ def _bulk_error(message):
 @bp.route('/transactions/bulk/category', methods=['POST'])
 @login_required
 def bulk_category():
-    """Bulk edit (v10.11): set the category on every selected History row.
+    """Bulk edit: set the category on every selected History row.
     Guards per the cleanup/apply precedent — the target category is ownership-
     checked once, each row id is int-coerced and scoped WHERE user_id, and
     transfer legs are excluded server-side (is_transfer = false) even though the
@@ -362,7 +362,7 @@ def bulk_category():
 @bp.route('/transactions/bulk/delete', methods=['POST'])
 @login_required
 def bulk_delete():
-    """Bulk edit (v10.11): delete every selected History row. POST (not DELETE)
+    """Bulk edit: delete every selected History row. POST (not DELETE)
     because the selection travels as a form body. Same guards as bulk_category;
     transfer legs are skipped so a pair can never be orphaned."""
     checked = request.form.getlist('row_id')
@@ -428,7 +428,7 @@ def export_transactions():
 
 
 # ---------------------------------------------------------------------------
-# v10.5 — Auto-Categorize & Cleanup.
+# Auto-Categorize & Cleanup.
 #
 # A banner on History counts uncategorized rows; "Review" runs ONE batched Sonnet
 # call (app/ai.py::classify_transactions) over the candidate rows and renders a
@@ -445,7 +445,7 @@ CLEANUP_RECENT_DAYS = 90        # window of categorized rows eligible for re-sug
 def count_uncategorized(user_id):
     """How many of the user's real EXPENSE transactions have no category — the
     deterministic number the History banner shows. Scoped to expenses on purpose:
-    the scan only proposes expense-kind categories (v10.12 — categories carry an
+    the scan only proposes expense-kind categories (categories carry an
     explicit kind now), so an uncategorized income row can never get a suggestion —
     counting it would make the banner promise a fix the scan can't deliver.
     Income rows are categorized manually via the forms."""

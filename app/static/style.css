@@ -242,7 +242,7 @@ td,
 .sidebar nav a.active { background: var(--sidebar-active); color: var(--sidebar-ink); font-weight: 600; }
 .sidebar nav a.active svg { opacity: 1; }
 .nav-sep { height: 1px; background: var(--sidebar-border); margin: 0.5rem 0.7rem; border: none; }
-/* v10.13 nav regroup — non-link section labels between nav groups. */
+/* nav regroup — non-link section labels between nav groups. */
 .nav-group-label { display: block; padding: 0.7rem 0.7rem 0.15rem; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--sidebar-ink-muted); }
 /* Logout is a POST (CSRF-proof) so it's a tiny form — the button must render
    exactly like the sibling nav <a> links. */
@@ -281,7 +281,7 @@ td,
    as one indivisible block. Any page adding a fourth control depends on this. */
 .page-actions { display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0; flex-wrap: wrap; }
 
-/* v10.13 — the global "Add transaction" entry point: a pill in the header row
+/* the global "Add transaction" entry point: a pill in the header row
    on desktop, a floating action button on mobile (see the media block). */
 .quick-add-btn { display: inline-flex; align-items: center; gap: 6px; padding: 0.5rem 1.15rem; border-radius: 999px; background: var(--grad-accent); color: #fff; font-size: 14px; font-weight: 600; line-height: 1.2; box-shadow: var(--shadow-sm); transition: background var(--dur-1) var(--ease), transform var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease); }
 .quick-add-btn:hover { background: var(--accent-hover); color: #fff; box-shadow: var(--shadow-md); }
@@ -879,7 +879,7 @@ tr.transfer td { background: var(--accent-soft); }
 .row-actions { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; white-space: nowrap; }
 /* On a <td>, display:flex replaces the table-cell box — the cell stops
    stretching to the row height, so its border-bottom hugs the buttons and
-   drifts off the row line whenever a sibling cell is taller (v10.10's
+   drifts off the row line whenever a sibling cell is taller (the
    utilization bar made this visible). Cells stay cells; the flex gap becomes
    button margins. The flex rule above still serves the non-table uses
    (goal cards). */
@@ -894,7 +894,7 @@ tr.editing input, tr.editing select { padding: 0.3rem 0.5rem; font-size: 13px; }
 .sched-finished { font-weight: 600; color: var(--text-muted); }
 .sched-until { display: block; font-size: 11px; color: var(--text-muted); }
 
-/* Bulk edit (v10.11) — the multi-select action bar on History */
+/* Bulk edit — the multi-select action bar on History */
 .bulk-bar {
   display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;
   background: var(--surface-2); border: 1px solid var(--border);
@@ -918,13 +918,13 @@ body.bulk-mode td.bulk-col { cursor: pointer; } /* whole cell toggles the box */
 .goal-bar { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; height: 18px; margin: 0.5rem 0; overflow: hidden; }
 .goal-bar-fill { background: var(--accent); height: 100%; }
 
-/* Credit-card utilization (v10.10) — reuses the goal bar, compact */
+/* Credit-card utilization — reuses the goal bar, compact */
 .credit-bar { height: 8px; margin: 0.4rem 0 0.15rem; max-width: 170px; }
 .goal-bar-fill.warn { background: var(--warning); }
 .goal-bar-fill.danger { background: var(--danger); }
 .credit-meta { font-size: 12px; color: var(--text-muted); display: block; white-space: nowrap; }
 
-/* Goals — cards, grid, and overall summary strip (v10.8 glow-up) */
+/* Goals — cards, grid, and overall summary strip */
 .goal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
 .goal-card .goal-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 0.5rem; }
 .goal-name { font-size: var(--fs-md); font-weight: 650; letter-spacing: -0.01em; }
@@ -950,12 +950,12 @@ body.bulk-mode td.bulk-col { cursor: pointer; } /* whole cell toggles the box */
 .goal-summary-bar { flex: 1 1 160px; margin: 0; height: 14px; }
 .goal-summary-pct { font-size: var(--fs-sm); color: var(--text-muted); font-weight: 600; white-space: nowrap; }
 
-/* v10.13 — page toolbars (filter/search rows) + pagination. */
+/* page toolbars (filter/search rows) + pagination. */
 .toolbar { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; align-items: flex-end; }
 .toolbar form { display: flex; gap: 0.5rem; align-items: flex-end; flex-wrap: wrap; }
 .pager { display: flex; gap: 0.5rem; margin-top: 1rem; align-items: center; }
 
-/* v10.13 — the What's-new strip on the merged home/dashboard. */
+/* the What's-new strip on the merged home/dashboard. */
 .whatsnew { padding: 0.8rem 1rem; margin-bottom: 1.25rem; }
 .whatsnew-head { display: flex; align-items: center; gap: 0.6rem; }
 .whatsnew-actions { margin-left: auto; display: flex; gap: 0.4rem; }
@@ -985,7 +985,7 @@ body.bulk-mode td.bulk-col { cursor: pointer; } /* whole cell toggles the box */
 .whatsnew-block + .whatsnew-block { border-top: 1px solid var(--border); margin-top: 1rem; padding-top: 1rem; }
 .whatsnew-list { margin: 0; padding-left: 1.2rem; color: var(--text-muted); font-size: 14px; line-height: 1.7; }
 
-/* v10.13 — collapsible dashboard Charts section. */
+/* collapsible dashboard Charts section. */
 .charts-details summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none; }
 .charts-details summary::-webkit-details-marker { display: none; }
 .charts-details summary h2 { display: inline; margin: 0.5rem 0; }
@@ -1046,7 +1046,7 @@ body.bulk-mode td.bulk-col { cursor: pointer; } /* whole cell toggles the box */
   .quick-add-btn span { display: none; }
   #toast-host { left: 1rem; right: 1rem; bottom: calc(1rem + 64px + env(safe-area-inset-bottom)); max-width: none; }
 
-  /* v10.13 — History becomes stacked cards on phones: same <tr> markup, the
+  /* History becomes stacked cards on phones: same <tr> markup, the
      9-column table is unusable at 375px. Each row is a grid card; the Type
      cell hides (the row's income/expense class colors the amount instead). */
   .txn-table thead { display: none; }
@@ -1093,7 +1093,7 @@ body.bulk-mode td.bulk-col { cursor: pointer; } /* whole cell toggles the box */
   .toolbar { gap: 0.6rem; }
   .toolbar form { flex: 1 1 100%; }
   .toolbar form > div { flex: 1; }
-  /* v10.15 — the What's-new head stays one line on phones: the date badge
+  /* the What's-new head stays one line on phones: the date badge
      hides (the version heading carries the identity; Details still expands)
      and the heading ellipsizes instead of wrapping on very narrow screens. */
   .whatsnew-head > strong { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1140,7 +1140,7 @@ body.bulk-mode td.bulk-col { cursor: pointer; } /* whole cell toggles the box */
    together with that template. The .fact* classes this comment also claimed
    are gone entirely; nothing defines or uses one. */
 .insight-summary { font-size: 15px; line-height: 1.5; margin: 0.9rem 0; }
-/* Budget report (v10.9): hit/miss month cells + trend words. The tr:hover
+/* Budget report: hit/miss month cells + trend words. The tr:hover
    overrides keep the verdict tint from being wiped by the global hover rule. */
 .budget-report td { white-space: nowrap; }
 td.report-hit  { background: var(--success-soft); color: var(--success); }

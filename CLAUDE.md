@@ -312,150 +312,43 @@ server itself — **read it before touching anything on the Droplet.**
 
 ## Current status
 
-▶️ **On `main`, not yet deployed (`0.13.1`'s content): #483** (the digest sent twice, #494),
-**#491** (rows read by name), **#490** (the app factory: gunicorn runs `app.wsgi:app`, and the
-compose file changes with it), **#492** (CI compares `schema.sql` with what the migrations build),
-**#489** (the `app/services/` layer, #506–#519: no blueprint imports another) and **#513** (five
-more positional row reads). Cutting it is Sean's call, with no deadline. **NEXT UP:** **#493**,
-then the container-hardening issues **#497–#500**, in the order `docs/status.md` gives. ✅ **Prod runs `0.13.0`, shipped 2026-10-12** (27 PRs; three additive migrations
-`sql/39`–`41`; `pypdf`; statement import #445–#474; the device list #437). The deploy log is in
-`docs/status.md`: **#433's compose copy passed on its first real run** and left `db` untouched,
-and RUNBOOK §3's Nginx upload block was added first and proven from outside (a 2 MB POST went
-from Nginx's 413 to the app's response). ⏳ **Not yet checked by Sean:** his real Discover
-export **in production** (the first real bank file, and the first live call on `anthropic`
-1.12.1), a real phone screenshot, a multi-page PDF, and #437 on his phone. ⚠️ The Droplet's
-banner says `System restart required`; a reboot takes Orbit Ops down too. **#36** stays
-date-parked.
+This section holds **current state and standing rules only**. Sessions, release history and
+standing decisions are in [`docs/status.md`](docs/status.md) (older sessions in
+`docs/status-archive.md`). ⚠️ **It lags `main` by construction** — reconcile against `git log`
+and `gh issue list` at the start of every session.
 
-🛑 **THE MAC HAS NO CLONE OF THIS REPO** (2026-10-05). Every Droplet step runs from the Mac, and
-every line of code lives in the VM. So "scp it from your clone" copies whatever file is in the
-Mac shell's directory. A `diff` against that file is then vacuous, and at 0.12.0 it printed
-`identical` over the stale v0.11.0 compose file. #433 (shipped in `0.13.0`, proven on its first deploy) makes the
-workflows copy it themselves; as break-glass, use RUNBOOK §5's recipe:
-a download pinned to a tag, checked against a hash taken from the repo at both ends. **Before
-handing Sean commands for the Mac, check what exists there**, and give one command per copy box.
-Rolling back past #402 still needs the old compose file first (RUNBOOK §5).
-
-⚠️ **"Issue criteria are claimed by tests" is still NOT a required check** (re-checked
-2026-10-23 against branch protection), so a red result doesn't block a merge. It's Sean's
-setting.
-
-🛑 **AN ISSUE BEING OPEN IS NOT EVIDENCE THAT IT IS OPEN WORK.** Kept as a standing rule now that
-its examples are closed. On 2026-09-04 "#326 and #314, the two migrations" was proposed as the next
-session's work when **#326 was not work at all** — Sean had decided on 2026-09-02 to close it as
-premise-wrong, and a decision recorded in a comment leaves no trace in `gh issue list`. **Read the
-comments, not just the body, before proposing any issue as work.** A mechanical milestone roll
-cannot read comments either, so it always overstates the work.
-
-🛑 **AN ISSUE'S SPECIFIED FIX CAN BE WRONG AGAINST THE PLATFORM, not just against the code**
-(#314, 2026-09-16). It specified `CHECK (col = col)` to reject a NaN, on the premise that
-`NaN <> NaN`. True in IEEE 754; **false in PostgreSQL `numeric`, which defines NaN as equal to
-itself** so the type can be sorted and indexed. Verified against `postgres:16`: that constraint
-accepts a NaN and stores it, so the migration would have applied cleanly, passed CI and protected
-nothing. The working form is `<> 'NaN'::numeric`, and it is the **inverse of Python** — a guard
-ported from the app layer into SQL keeps its shape and loses its meaning. `docs/gotchas.md` carries
-the rule; `docs/status.md` carries the session.
-
-
-⚠️ **The open milestone is `0.13.1`** (#483). ✅ **`0.13.0` was closed on ship day** (2026-10-12, 42/42). ✅ **`0.12.0` was closed on ship day** (2026-10-05, 24/24). ✅ **`0.10.0` was closed ON SHIP DAY** (2026-09-11) at
-`open=0, closed=25`, with its nine open items moved to `0.11.0` first — the corrective landing, and
-the shape every milestone but `0.9.0`'s has closed at. `0.9.0` was closed 2026-09-03, late: it
-shipped on 2026-09-02 but was left open to hold a backlog, so **seven commits landed after the
-`v0.9.0` tag carrying a milestone for a version that had already shipped**. That contradicts the rule two
-sections above — *exactly one is open at a time, closed when that version ships* — and it is the
-only milestone in the project's history that has ever been open with work in it. Corrected in
-#359; `docs/status.md` records how the boundary was drawn, including the two traps that make it
-easy to get wrong.
-
-⚠️ **[`docs/status.md`](docs/status.md) is the detail, and it lags `main` by construction** — it
-describes the last session rather than the current tree, and it asserts rather than going quiet.
-**Reconcile against `git log` and `gh issue list` at the start of every session.**
-
-- ✅ **`0.12.0`, shipped 2026-10-05** (23 PRs, no new env vars, no migrations, **the
-  compose file changed**). The **first** deploy failed at step 3c (`service "worker" is not
-  running`), because the Droplet still held the v0.11.0 compose file. Production stayed up on
-  0.12.0 with the safe single-worker path. After a tag-pinned, hash-checked copy, the failed job
-  re-ran green: `redis:7-alpine` pulled, `worker-1` and `redis-1` started, `running version
-  0.12.0` → `worker version 0.12.0 (matches 0.12.0)` → `Nothing to apply for phase after-pull`
-  → `Announced 0.12.0 to 3 device(s).` Live `/healthz` 200, and the CSP header is served.
-  ⏳ **Not yet checked by Sean:** the installed PWA under the CSP, `docker compose logs worker`
-  showing `Scheduler running`, the `[INFO] [<id>]` lines (#404), and the first live model call on
-  **`anthropic` 1.11.0** (request shape compared offline against 1.8.0: identical apart from the
-  version strings).
-- ✅ **`0.11.0`, shipped and verified 2026-09-24** (16 PRs, no new env vars, **one
-  migration**). The deploy log read, in order: `backup ok` → `applying 38_money_is_finite.sql ...
-  ok` → `running version 0.11.0 (matches 0.11.0)` → `Nothing to apply for phase after-pull` →
-  `Announced 0.11.0 to 3 device(s).`, and live `/healthz` returned 200. `sql/38` was rehearsed
-  first against a restore of that morning's production dump, because it fails the deploy if a NaN
-  exists. The What's-new strip holds one block (the NaN refusal), on Sean's call: nothing else in
-  the release is user-facing. ⚠️ **`anthropic` is now 1.7.0 (#379) and still has made no live
-  model call**, so the first round trip is still a manual check in prod. ⚠️ The Release was
-  **drafted, then published only after `main` was confirmed at the prep commit**. The tag is
-  created at publish time, so a merge in between would have shipped a commit the prep never saw.
-- ✅ **`0.10.0`, shipped and verified 2026-09-11** (13 PRs, no new env vars, no new
-  migrations). `/healthz` 200 on the first attempt; `Announced 0.10.0 to 3 device(s).` Unlike
-  `0.9.0` it carries **user-facing change** — the What's-new strip holds three blocks rather than
-  one admin-only note. ⚠️ **`anthropic` STILL has not made a live model call**, now on `1.3.0`
-  after two bumps (#342, #366); CI sets no key, so the first round trip remains a manual check in
-  prod. ⚠️ **The release-prep PR must merge BEFORE the Release is published** — `release.yml`
-  builds the release's *target commit*, so publishing first ships an image stamped with the new
-  version whose What's-new strip names the old one, and **every check still passes**.
-- ✅ **`0.9.0`, shipped and verified 2026-09-02** (35 commits, no new env vars, no
-  new migrations). **All three of its first-time mechanisms passed in the real deploy log**, in
-  this order: `Nothing to apply for phase before-pull — up to date.` → `running version 0.9.0
-  (matches 0.9.0)` → `Nothing to apply for phase after-pull — up to date.`, then `/healthz` 200
-  on the first attempt and `Announced 0.9.0 to 3 device(s).` The empty-pass migration case and
-  the version-stamp assertion are now **proven**, not just written down. ⚠️ **Still unproven:
-  `anthropic` 1.0.0 has made no live model call** — CI sets no key, so the first real round trip
-  is the month read and the Ask box being exercised in prod by hand. ⚠️ The release carried **no
-  user-facing feature at all**: the single `### Added` was the admin-only version stamp, so the
-  What's-new strip holds one block naming a `/settings` card, and every `### Fixed` was a patch
-  fix. The `0.8.0` milestone is closed at 47 issues; `0.9.0`'s stays open for its backlog.
-  Dependabot **#342 was deliberately held out** of the bundle and rides `0.10.0`. The bundle
-  briefly also held the ai-atlas landing card (#280); **#288 removed that card again on
-  2026-08-24** after the project was abandoned and its repo deleted, and since it never shipped
-  in a release its changelog entry was deleted outright rather than answered with a
-  `### Removed` line — which is why nothing in `0.9.0`'s notes mentions it
-- **The tracker is NO LONGER empty**, and its contents are now mostly **#309's output rather than
-  #309 itself**. ✅ **The full-repo read is COMPLETE** (closed 2026-08-31, ten tranches): every
-  tracked file — `app/`, `sql/`, `scripts/`, `tests/`, `.github/`, `.claude/` and the root build
-  config — has been read once, on purpose. It filed **twelve issues**: **#312**, **#314**,
-  **#315**, **#316**, **#319** (tranches 1–4), **#323**, **#324**, **#326**, **#328**, **#329**
-  (5–7), **#333** (8) and **#339** (9). **#315** is still the one to read first (two categories
-  sharing a name merge into one budget row and invent an overrun, which the AI month read then
-  narrates as ground truth); **#328** is the loudest (the `scripts/` ingest pipeline cannot insert
-  a row and has not been able to since the app gained users). **#36** stays date-parked to
-  ~Dec 2026 with no milestone. (The open milestone at the time was `0.10.0`.)
-  ⚠️ **`docs/status.md` carried the review's resume point, and it went stale THREE times** (#331,
-  #337, #343) — every time because a tranche merged without touching it. **The loop ended because
-  the work finished, not because the problem was solved**; the next tranche-shaped piece of work
-  will reproduce it unless something mechanical links merging to updating
-- ⚠️ **`anthropic` is on `1.0.0`** (#286, merged 2026-08-25) alongside the minor/patch group
-  (#285). The major bump was read rather than rubber-stamped, because the mocked `_call_*_model()`
-  seams mean a green suite says nothing about an SDK change. **`tests/test_sdk_call_shape.py`
-  now closes that gap** — it introspects the installed SDK and asserts it still accepts what
-  `ai.py` passes, with no network call and no key. ⚠️ #285 also proved the ruff double-pin real:
-  Dependabot bumped `requirements-dev.txt` alone and CI went red until `ci.yml` matched
+- ▶️ **On `main`, not yet deployed (`0.13.1`'s content): #483** (the digest sent twice, #494),
+  **#491** (rows read by name), **#490** (the app factory: gunicorn runs `app.wsgi:app`, and the
+  compose file changes with it), **#492** (CI compares `schema.sql` with what the migrations
+  build), **#489** (the `app/services/` layer) and **#513**. Cutting it is Sean's call, with no
+  deadline. **NEXT UP** is in `docs/status.md`
+- ✅ **Prod runs `0.13.0`, shipped 2026-10-12.** ⏳ **Not yet checked by Sean:** his real Discover
+  export **in production**, a real phone screenshot, a multi-page PDF, and #437 on his phone.
+  ⚠️ The Droplet's banner says `System restart required`; a reboot takes Orbit Ops down too.
+  **#36** stays date-parked
+- **The open milestone is `0.13.1`.** Exactly one is open at a time; create the next one and move
+  open items **before** closing it on ship day. The full rule and its traps are in
+  `docs/status.md` §Milestone convention
+- 🛑 **THE MAC HAS NO CLONE OF THIS REPO** (2026-10-05). Every Droplet step runs from the Mac and
+  every line of code lives in the VM, so "scp it from your clone" copies whatever stale file is in
+  the Mac shell's directory. Break-glass copies use RUNBOOK §5's tag-pinned, hash-checked recipe.
+  **Before handing Sean commands for the Mac, check what exists there**, one command per copy box
+- ⚠️ **"Issue criteria are claimed by tests" is NOT a required check** (re-checked 2026-10-23), so
+  a red result doesn't block a merge. It's Sean's setting
+- 🛑 **AN ISSUE BEING OPEN IS NOT EVIDENCE THAT IT IS OPEN WORK.** A decision recorded in a
+  comment leaves no trace in `gh issue list`. **Read the comments, not just the body, before
+  proposing any issue as work**
+- 🛑 **AN ISSUE'S SPECIFIED FIX CAN BE WRONG AGAINST THE PLATFORM, not just the code** (#314: a
+  NaN guard that is correct in Python is a no-op in PostgreSQL `numeric`). Check the premise
+  against the real platform; `docs/gotchas.md` carries the NaN rule
 - ⚠️ **A green PR does not predict a green `main`.** The `changes` classifier fails open on a
-  push to `main`, so an inert PR (docs) skips the expensive STEPS and meets them for
-  the first time AFTER merge — that is #281, found by a landing-page change. Check the `main` run
-  after every squash-merge, and do not re-run a red one before reading it: a race goes green on
-  re-run and hides. ⚠️ **A skipped job reports `pass`, not `skipped`** — the steps skip inside a
-  job that still succeeds, so `gh pr checks` prints "Tests pass" for a run that executed no
-  tests, and it is indistinguishable from a real one at a glance (seen on #288). The number to
-  trust is the `main` run, or the classifier's own `app=/image=/sql=` line in the "What changed"
-  job log
-- ✅ **The deploy handle is the version stamp, not `css_v`** (#305). The image is built with
-  `--build-arg APP_VERSION`/`APP_COMMIT`, so `/settings` reports which build is serving and both
-  deploy workflows fail if the running container is not the release they just deployed. **A
-  release no longer needs a handle chosen before cutting** — which `css_v` did, and it proved
-  nothing at `0.4.1` or `0.7.0` and worked at `0.8.0` only because the front-end overhaul
-  happened to rewrite the stylesheet.
-  ⚠️ **It is a build arg, NOT a `.env` variable** — `TAG` there records what compose was *told*
-  to pull, which a stale or hand-restored `.env` can make lie. Do not add it to `.env.example`.
-  ⚠️ **It is admin-only and must never reach `/healthz`.** This file proposed exactly that for
-  months, against a deliberate decision written in `main.healthz` and `admin.integration_status`;
-  `tests/test_version_stamp.py` now states the boundary so the suggestion cannot come back
+  push to `main`, so an inert PR skips steps it then meets after merge. **Check the `main` run
+  after every squash-merge**, and read a red one before re-running it. ⚠️ A skipped job reports
+  `pass`, so `gh pr checks` can say "Tests pass" for a run that executed no tests
+- ✅ **The deploy handle is the version stamp** (#305): `--build-arg APP_VERSION`/`APP_COMMIT`,
+  shown on `/settings`, checked by both deploy workflows. ⚠️ It is a **build arg, not a `.env`
+  variable**, and it is **admin-only — it must never reach `/healthz`**
+  (`tests/test_version_stamp.py` holds the boundary)
 - **Standing decisions that must not be re-opened** are listed in `docs/status.md`. Check there
   before re-filing anything that looks like an obvious improvement
 

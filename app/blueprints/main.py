@@ -133,7 +133,7 @@ def bills_outstanding(remaining_items):
 
 @bp.route('/sw.js')
 def service_worker():
-    """The PWA service worker (v10.13). Served from the root — a worker's
+    """The PWA service worker. Served from the root — a worker's
     scope is capped at its URL's directory, and installability requires it to
     control start_url '/', so /static/sw.js wouldn't do. No @login_required:
     the browser re-fetches it outside any session."""
@@ -171,7 +171,7 @@ def healthz():
 
 @bp.route('/dashboard')
 def dashboard():
-    """Legacy URL — the dashboard became the home page (v10.13). The redirect
+    """Legacy URL — the dashboard became the home page. The redirect
     keeps old bookmarks alive and carries the month filter; no @login_required
     since / enforces auth after the hop (the /analytics precedent)."""
     return redirect(url_for('main.index', month=request.args.get('month')))
@@ -194,7 +194,7 @@ def index():
         spending = category_totals(cursor, current_user.id, 'expense',
                                     filter_year, filter_month)
 
-        # v10.12 income-by-category — the categorization payoff for income-kind
+        # income-by-category — the categorization payoff for income-kind
         # categories (salary vs freelance vs interest). Same shape/filters as
         # the spending rollup; feeds the Spending card's Expense/Income toggle.
         income_by_category = category_totals(cursor, current_user.id, 'income',
@@ -250,7 +250,7 @@ def index():
         """, (current_user.id,))
         account_balances = cursor.fetchall()
 
-        # Spending by day of week (merged from /analytics, v10.9) — expense totals
+        # Spending by day of week (merged from /analytics) — expense totals
         # grouped Sunday-first by Postgres DOW.
         if selected_month:
             cursor.execute("""
@@ -278,7 +278,7 @@ def index():
             """, (current_user.id,))
         spending_by_day = cursor.fetchall()
 
-        # Year over year (merged from /analytics, v10.9) — expenses for the same
+        # Year over year (merged from /analytics) — expenses for the same
         # month last year. Only meaningful when a single month is selected; the
         # this-year side reuses the hero's expense total (same filters), computed
         # after the cursor closes.
@@ -383,7 +383,7 @@ def index():
 
     has_transactions = bool(cash_flow) or bool(spending)
 
-    # v10.6 hero — income/expenses/net for the current view (a single selected
+    # hero — income/expenses/net for the current view (a single selected
     # month, or all time). Derived from cash_flow (already fetched) — no extra query.
     hero_income = sum(float(r.income) for r in cash_flow)
     hero_expenses = sum(float(r.expenses) for r in cash_flow)
