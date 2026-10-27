@@ -21,7 +21,32 @@ through the import **in production**, a real phone screenshot, a multi-page PDF,
 list on his phone. ⚠️ **The Droplet's login banner says `System restart required`**: a reboot
 takes Budget Buddy and Orbit Ops down together, so schedule it on its own. **#36** stays
 date-parked. ⚠️ The `Acceptance criteria` check is **still not a required status check**
-(re-checked 2026-10-23).
+(re-checked 2026-10-23). **Infrastructure as code (filed 2026-10-27, `infrastructure` label):**
+#529 → **#530** (host role, which unblocks Orbit Ops #322) → #531 → #532 → #535; #533 after #530;
+#534 optional. **#530's first decision is Sean's:** where Ansible check mode runs, given the Mac
+has no clone.
+
+### The 2026-10-27 session: the IaC set filed from Orbit Ops's handoff
+
+No code changed. The handoff (vault, `Budget Buddy/reference/IaC handoff.md`) was checked against
+the repo before anything was filed, and six of its claims needed changing:
+
+| # | Issue | What the check changed |
+|---|---|---|
+| #529 | multi-arch release image | the base is already pinned to the index digest; `release.yml` has **no scan** to extend, so scanning and `--hash` are out of scope |
+| #530 | Ansible host role, `infra/ansible/roles/droplet_host/` | Orbit Ops consumes it by SHA; `deploy`'s `authorized_keys` is shared, so keys are managed non-exclusively; open decision: **the Mac has no clone** to run check mode from |
+| #531 | BB app role, plus a separate `www_site` role | `release.yml` already writes `docker-compose.yml` and `.env`'s `TAG=`, so the role **asserts, never writes** both |
+| #532 | backup units into the repo | **in neither layer of the handoff**, so a rebuilt server would take no backups. The scripts hold no secrets |
+| #533 | Terraform, imported, plan shows no changes | owns `learn`'s record; state on the backup-less Mac is accepted (re-import); notes the cutover's IP change |
+| #534 | LXD staging (optional) | — |
+| #535 | `backup-export` ships Orbit Ops's dumps | Sean chose option B (below) |
+
+- 🛑 **Orbit Ops's database had no nightly backup.** Orbit Ops's RUNBOOK §6 said to add its
+  backups dir to BB's export, which was never done: neither droplet script mentions it. Sean
+  chose **option B**: Orbit Ops owns its nightly dump (orbit-ops #324, first), and BB's
+  `backup-export` ships it (#535, blocked by #532 so the change is made once, in this repo).
+- **No IaC milestone, despite the handoff asking for one.** BB keeps exactly one open milestone,
+  and it means a release, so the set is under `0.13.1` and moves on ship day.
 
 ### The 2026-10-26 session: a `/cycle` of three, two merged and one left for Sean
 
