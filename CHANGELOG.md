@@ -35,6 +35,10 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The docs no longer say production can only be reached from the Mac.**
+  The development VM can reach the server now, by the maintainer's choice, so
+  the runbook and setup notes give the VM route first and keep the Mac route
+  beside it. No visible change. (#546)
 - **Release images are built for arm64 as well as amd64.** One tag now holds
   both, and each host pulls its own half: the server keeps running amd64, and
   the arm64 development VM can run the real release image for testing the

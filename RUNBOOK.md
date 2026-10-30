@@ -375,8 +375,21 @@ follows for the file, then re-run the failed job. The guard then passes, because
 
 Only for the scheduled db change above, or when Actions is unavailable.
 
-🛑 **There is no clone on the Mac.** Development happens in the `jupiter` VM, and the Droplet is
-unreachable from there, so the file goes VM → GitHub → Mac → Droplet. At the 0.12.0 deploy an
+**From the VM** (it can reach the Droplet since 2026-10-30, while the editor connection is up),
+copy straight from the tag, never the working tree:
+
+```bash
+git show v0.12.0:docker-compose.yml > /tmp/compose.yml && sha256sum /tmp/compose.yml
+scp /tmp/compose.yml root@<droplet>:/opt/budget-buddy/docker-compose.yml
+ssh root@<droplet> sha256sum /opt/budget-buddy/docker-compose.yml   # must match the first hash
+```
+
+The VM's key opens **root**, not `deploy`, as the Mac's does.
+
+The steps below are the **Mac** route, for when the VM isn't connected.
+
+🛑 **There is no clone on the Mac.** Development happens in the `jupiter` VM, so from the Mac
+the file goes VM → GitHub → Mac → Droplet. At the 0.12.0 deploy an
 older recipe said "from a clone on the Mac": the `scp` sent whatever `docker-compose.yml` was in
 the Mac shell's directory, and the `diff` compared the Droplet with that same file and printed
 `identical`. The Droplet still held the old file, and `release.yml` step 3c caught it.

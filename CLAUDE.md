@@ -324,7 +324,7 @@ and `gh issue list` at the start of every session.
   build), **#489** (the `app/services/` layer), **#513**, **#493** (the docs sweep), **#497**
   (root owns the image's code) and **#529** (the release builds amd64 + arm64; open until a
   release proves the pushed tag). **#530**'s host role is on `main` (`infra/`, nothing deploys
-  it), open until Sean's check-mode run from the Mac. **#498 is PR #526, open** until Sean
+  it), open until Sean's check-mode run against production. **#498 is PR #526, open** until Sean
   checks the Droplet's memory.
   Cutting it is Sean's call, with no deadline. **NEXT UP** is in `docs/status.md`
 - ✅ **Prod runs `0.13.0`, shipped 2026-10-12.** ⏳ **Not yet checked by Sean:** his real Discover
@@ -334,10 +334,14 @@ and `gh issue list` at the start of every session.
 - **The open milestone is `0.13.1`.** Exactly one is open at a time; create the next one and move
   open items **before** closing it on ship day. The full rule and its traps are in
   `docs/status.md` §Milestone convention
-- 🛑 **THE MAC HAS NO CLONE OF THIS REPO** (2026-10-05). Every Droplet step runs from the Mac and
-  every line of code lives in the VM, so "scp it from your clone" copies whatever stale file is in
-  the Mac shell's directory. Break-glass copies use RUNBOOK §5's tag-pinned, hash-checked recipe.
-  **Before handing Sean commands for the Mac, check what exists there**, one command per copy box
+- ✅ **The VM can reach the Droplet** (Sean, 2026-10-30; it couldn't from 2026-08-14), while
+  the editor connection is up, and a Claude session asks before every `ssh`/`scp`. So a Droplet
+  step can run from the VM, next to the clone: copy files from `git show <tag>:<file>`, never
+  the working tree
+- 🛑 **THE MAC HAS NO CLONE OF THIS REPO** (2026-10-05). For a step run from the Mac, "scp it
+  from your clone" copies whatever stale file is in the Mac shell's directory. Break-glass copies
+  there use RUNBOOK §5's tag-pinned, hash-checked recipe. **Before handing Sean commands for the
+  Mac, check what exists there**, one command per copy box
 - ⚠️ **"Issue criteria are claimed by tests" is NOT a required check** (re-checked 2026-10-23), so
   a red result doesn't block a merge. It's Sean's setting
 - 🛑 **AN ISSUE BEING OPEN IS NOT EVIDENCE THAT IT IS OPEN WORK.** A decision recorded in a
