@@ -5,26 +5,75 @@
 
 ## Current Status
 
-▶️ **NEXT SESSION: merge #526 (#498) once Sean has checked the Droplet's `docker stats --no-stream`**
-against its 512m/256m caps, then **#499** (scan, SBOM, signing); **#500** (Postgres) is a
-scheduled operation and gets no milestone until Sean picks a date. Prod runs **`0.13.0`** (shipped
-2026-10-12). **On `main`, NOT deployed, all `0.13.1` content:** #483 (the digest sent once, #494),
-#491 (rows read by name, #501), #490 (the app factory, #502), #492 (CI compares `schema.sql` with
-what the migrations build, #503), **#489** (the services layer, #506–#519), **#513** (#514),
-**#493** (the docs sweep, #524), **#497** (root owns the image's code, #525) and Dependabot
-**#522/#523** (which superseded #487/#488). Production still sends the digest twice until
+▶️ **NEXT SESSION:** two of Sean's hands-on checks unblock most of what's open. **(1)** The
+check-mode run of `infra/ansible/host.yml` against production from the Mac (`infra/README.md` has
+the throwaway-fetch recipe). It closes **#530**, and every difference it reports is either fixed in
+the role or recorded in RUNBOOK. **(2)** Merging **#526** (#498) once he has checked the Droplet's
+`docker stats --no-stream`. After those: **#531** (BB's app role and www's site), then #532 → #535.
+#533 can follow #530; #534 is optional. **#529 is open only until the next release** proves the
+pushed tag holds both platforms. **#499** (scan, SBOM, signing) needs a per-platform scan matrix
+now that the image is multi-arch. **#500** (Postgres) is a scheduled operation and gets no milestone
+until Sean picks a date. Prod runs **`0.13.0`** (shipped 2026-10-12). **On `main`, NOT deployed,
+all `0.13.1` content:** #483 (the digest sent once, #494), #491 (rows read by name, #501), #490
+(the app factory, #502), #492 (CI compares `schema.sql` with what the migrations build, #503),
+**#489** (the services layer, #506–#519), **#513** (#514), **#493** (the docs sweep, #524),
+**#497** (root owns the image's code, #525), **#529** (multi-arch, #538), **#530**'s role (#539;
+deploys nothing) and Dependabot **#522/#523**. Production still sends the digest twice until
 `0.13.1` ships; cutting it is Sean's call, with no deadline. ⚠️ **`0.13.1` changes
 `docker-compose.yml`** (#490: web runs `app.wsgi:app`; #498 too if it merges first); the deploy
-ships it (#433) and `db` is untouched, so the guard passes. **After that deploy:** `docker compose
-logs worker` shows `Scheduler running`. ⏳ **Not yet checked by Sean:** his real Discover export
-through the import **in production**, a real phone screenshot, a multi-page PDF, and #437's device
-list on his phone. ⚠️ **The Droplet's login banner says `System restart required`**: a reboot
-takes Budget Buddy and Orbit Ops down together, so schedule it on its own. **#36** stays
-date-parked. ⚠️ The `Acceptance criteria` check is **still not a required status check**
-(re-checked 2026-10-23). **Infrastructure as code (filed 2026-10-27, `infrastructure` label):**
-#529 → **#530** (host role, which unblocks Orbit Ops #322) → #531 → #532 → #535; #533 after #530;
-#534 optional. **#530's first decision is Sean's:** where Ansible check mode runs, given the Mac
-has no clone.
+ships it (#433) and `db` is untouched, so the guard passes. ⚠️ **`0.13.1`'s release build takes
+minutes, not seconds** (the emulated arm64 half). **After that deploy:** `docker compose logs
+worker` shows `Scheduler running`, and `docker buildx imagetools inspect` lists linux/amd64 and
+linux/arm64 (then close #529). ⏳ **Not yet checked by Sean:** his real Discover export through the
+import **in production**, a real phone screenshot, a multi-page PDF, #437's device list on his
+phone, and the round-trip of `budget-buddy-env-local` through the new `bw-env.sh`. ⚠️ **The
+Droplet's login banner says `System restart required`**: a reboot takes Budget Buddy and Orbit Ops
+down together, so schedule it on its own. **#36** stays date-parked. ⚠️ The `Acceptance criteria`
+check is **still not a required status check** (re-checked 2026-10-23). **Cross-project items
+(Sean's call, 2026-10-30):** an action another repo must take is a `cross-repo` issue in **that**
+repo; a shared VM/droplet change is an entry in `personal-vault/infra/CHANGES.md`. No more
+handoff notes.
+
+### The 2026-10-30 session: #529 and #530, from Orbit Ops's last handoff note
+
+| PR | Issue | |
+|---|---|---|
+| #538 | #529 | QEMU before buildx; `platforms: linux/amd64,linux/arm64`; smoke stays amd64. **Reopened** (see below) |
+| #539 | #530 | `infra/ansible/roles/droplet_host/` + `infra/test.sh`; pinned control node, `tests/test_infra_pins.py`; `infra/` kept out of the image |
+| this PR | #540 | this record |
+
+- **The handoff was checked before acting on it**, and every checkable claim held. #529's arm64
+  image was built natively on the VM and booted with `--read-only --cap-drop ALL` against a
+  throwaway Postgres: `/healthz` 200, `uname -m` `aarch64`. That was a local build, **not the
+  pushed tag**, so #529's criteria wait for a release.
+- 🛑 **#538 closed #529 by accident.** Its body said `Refs #529`, then "Close #529 by hand after
+  the next release", and GitHub read `Close #529` as a keyword. `closingIssuesReferences` showed
+  `[529]` throughout. Reopened with a comment. **Run that check on a Refs-only PR too.** The
+  criteria check reads the same field, which is why #538's was red and #539's (closing nothing)
+  was green.
+- **#530 is merged but open.** Six of its seven criteria are claimed by hand from `infra/test.sh`
+  runs (three passes in a row: first run `changed=14`, second `changed=0`). The seventh,
+  "Production already matches the role", is Sean's check-mode run from the Mac. Orbit Ops's three
+  answers (SHA `5dad811`, the LXD settings, the shared duties) are on #530.
+- **The role is defined by what it refuses**, because the box is shared: non-exclusive
+  `authorized_keys` (a planted Orbit Ops-shaped key survives), no Nginx site purge (a planted
+  site survives; only the packaged `default` link is removed, by name), no certificate request
+  (`acme-v02` is pointed at 127.0.0.1 in the test container). **RUNBOOK §3 was wrong**: the
+  configs backup shows `default` is *not* enabled on prod.
+- **LXD on `jupiter`** was initialised from a preseed (`dir` pool, `lxdbr0` on `10.111.0.1/24`,
+  no IPv6; `infra/README.md`). ⚠️ **Docker's `FORWARD DROP` blackholed `lxdbr0`**: two
+  `DOCKER-USER` rules, added with Sean's go-ahead after the permission classifier refused them,
+  fix it. **They don't survive a reboot**; `infra/test.sh` fails fast naming the fix. Logged in
+  `personal-vault/infra/CHANGES.md`.
+- **Three bugs found by the first real runs:** `sshd -t` needs `/run/sshd`, which a
+  socket-activated 24.04 host lacks; `sshd -T | grep -q` under `pipefail` failed **one run in
+  two** on a correct setting (SIGPIPE; the first guess, `\r` from `lxc exec`, was wrong and was
+  caught by counting bytes); an `lxc launch` hung for 14 minutes with no LXD operation running,
+  so it's now under `timeout 300`.
+- **Guesses check mode will settle** (the configs backup holds Nginx sites only): Docker's apt
+  source (`docker.sources` from `download.docker.com`), whether the sshd drop-in is new, and
+  ufw's rule spelling (`22` per §2, `OpenSSH` per §8).
+- The `bw-env.sh`/`bw-seed.sh` symlinks are in BB's root (gitignored). Their round-trip is Sean's.
 
 ### The 2026-10-27 session: the IaC set filed from Orbit Ops's handoff
 
