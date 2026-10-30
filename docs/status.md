@@ -5,20 +5,23 @@
 
 ## Current Status
 
-▶️ **NEXT SESSION:** two of Sean's hands-on checks unblock most of what's open. **(1)** The
-check-mode run of `infra/ansible/host.yml` against production. Since 2026-10-30 it can run from
-the VM's clone; `infra/README.md` also has the Mac's throwaway-fetch recipe. It closes **#530**, and every difference it reports is either fixed in
-the role or recorded in RUNBOOK. **(2)** Merging **#526** (#498) once he has checked the Droplet's
-`docker stats --no-stream`. After those: **#531** (BB's app role and www's site), then #532 → #535.
-#533 can follow #530; #534 is optional. **#529 is open only until the next release** proves the
+▶️ **NEXT SESSION:** **#530 is CLOSED** (2026-10-30, second session): check mode ran from the
+VM, the role was fixed to match production's Docker (#548), and the one SSH difference is recorded
+in RUNBOOK §8 (#550). **(1)** Merging **#526** (#498) once Sean has checked the Droplet's
+`docker stats --no-stream` (now runnable from the VM), **and** after it gains the dev override's
+`cap_add: [CHOWN]` for PyCharm's interpreter (noted on the PR). Then **#531** (BB's app role and
+www's site), then #532 → #535. #533 can follow; #534 is optional. **Before any real role run
+against the Droplet, run check mode first** (RUNBOOK §8). **#529 is open only until the next release** proves the
 pushed tag holds both platforms. **#499** (scan, SBOM, signing) needs a per-platform scan matrix
 now that the image is multi-arch. **#500** (Postgres) is a scheduled operation and gets no milestone
 until Sean picks a date. Prod runs **`0.13.0`** (shipped 2026-10-12). **On `main`, NOT deployed,
 all `0.13.1` content:** #483 (the digest sent once, #494), #491 (rows read by name, #501), #490
 (the app factory, #502), #492 (CI compares `schema.sql` with what the migrations build, #503),
 **#489** (the services layer, #506–#519), **#513** (#514), **#493** (the docs sweep, #524),
-**#497** (root owns the image's code, #525), **#529** (multi-arch, #538), **#530**'s role (#539;
-deploys nothing) and Dependabot **#522/#523**. Production still sends the digest twice until
+**#497** (root owns the image's code, #525), **#529** (multi-arch, #538), **#530**'s role (#539,
+#549; deploys nothing), **#544** (Python 3.14.10 for two critical CVEs, #545) and Dependabot
+**#522/#523**. After the deploy, `docker compose exec web python -V` should say 3.14.10 (#544's
+second criterion). Production still sends the digest twice until
 `0.13.1` ships; cutting it is Sean's call, with no deadline. ⚠️ **`0.13.1` changes
 `docker-compose.yml`** (#490: web runs `app.wsgi:app`; #498 too if it merges first); the deploy
 ships it (#433) and `db` is untouched, so the guard passes. ⚠️ **`0.13.1`'s release build takes
@@ -33,6 +36,31 @@ check is **still not a required status check** (re-checked 2026-10-23). **Cross-
 (Sean's call, 2026-10-30):** an action another repo must take is a `cross-repo` issue in **that**
 repo; a shared VM/droplet change is an entry in `personal-vault/infra/CHANGES.md`. No more
 handoff notes.
+
+### The 2026-10-30 second session: the VM reaches the Droplet, and #530 closes
+
+| PR | Issue | |
+|---|---|---|
+| #545 | #544 | `python:3.14.10-slim` by index digest; two CRITICAL CPython CVEs found by Orbit Ops's Grype scan, filed here `cross-repo` |
+| #547 | #546 | Docs: the VM can reach the Droplet; VM routes first, Mac routes kept |
+| #549 | #548 | Host role installs `docker.io` + Docker's Compose plugin, `docker.list`, checksummed key |
+| #550 | (#530) | RUNBOOK §8 "Where the host role and production differ, deliberately" |
+| this PR | #551 | this record |
+
+- 🔁 **Sean reversed the VM-isolation rule** (standing decision below). The VM reaches the
+  Droplet as root while JetBrains Gateway is connected; every Claude session asks before
+  `ssh`/`scp`/`sftp`/`rsync` (user-level `permissions.ask`). The mechanics live in the gitignored
+  `CLAUDE.local.md`. Orbit Ops (orbit-ops #357) and the landing site (seandesmet.com #41) have
+  `cross-repo` issues for their own docs.
+- 🛑 **#530's check mode found an engine swap.** Production runs Ubuntu's `docker.io`; the role
+  installed `docker-ce`, so its first real run would have removed the engine under both apps.
+  `infra/test.sh` builds from nothing and passed throughout: **a from-scratch test cannot see how
+  production got where it is.** Fixed in the role (#549), and the LXD test now asserts `docker.io`.
+  Orbit Ops was told to pin `4632f78`, not `5dad811` (orbit-ops #322).
+- **Public comments stay generic.** The auto-mode classifier refused a #530 comment listing
+  production's exact versions and SSH settings; the detail is in the maintainer's notes.
+- **#526 (#498) will break PyCharm's interpreter** without `cap_add: [CHOWN]` in the dev override
+  (orbit-ops #354's measurement); noted on the PR.
 
 ### The 2026-10-30 session: #529 and #530, from Orbit Ops's last handoff note
 
@@ -53,7 +81,8 @@ handoff notes.
   was green.
 - **#530 is merged but open.** Six of its seven criteria are claimed by hand from `infra/test.sh`
   runs (three passes in a row: first run `changed=14`, second `changed=0`). The seventh,
-  "Production already matches the role", is Sean's check-mode run against production. Orbit Ops's three
+  "Production already matches the role", is Sean's check-mode run against production.
+  *(Done the same day from the VM; #530 closed. See the second session above.)* Orbit Ops's three
   answers (SHA `5dad811`, the LXD settings, the shared duties) are on #530.
 - **The role is defined by what it refuses**, because the box is shared: non-exclusive
   `authorized_keys` (a planted Orbit Ops-shaped key survives), no Nginx site purge (a planted
@@ -384,6 +413,10 @@ describes the last session rather than the current tree, and it asserts rather t
 
 ### Standing decisions — settled, do not re-open
 
+- **The development VM may reach the Droplet** (Sean, 2026-10-30). This reverses the 2026-08-14
+  isolation rule. Claude sessions ask before every `ssh`/`scp`/`sftp`/`rsync`, and production
+  changes are still confirmed with Sean first. Don't re-propose locking the VM out; the
+  mechanics are in the gitignored `CLAUDE.local.md` §Droplet access.
 - **Do not send a release notification for a release with no user-facing change** (Sean,
   2026-08-10). The only built-in lever is marking the GitHub Release as a pre-release —
   `release.yml` gates the announce step on `prerelease == false` — but that also suppresses the
