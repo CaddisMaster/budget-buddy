@@ -323,9 +323,10 @@ and `gh issue list` at the start of every session.
   compose file changes with it), **#492** (CI compares `schema.sql` with what the migrations
   build), **#489** (the `app/services/` layer), **#513**, **#493** (the docs sweep), **#497**
   (root owns the image's code) and **#529** (the release builds amd64 + arm64; open until a
-  release proves the pushed tag). **#530**'s host role is on `main` (`infra/`, nothing deploys
-  it), open until Sean's check-mode run against production. **#498 is PR #526, open** until Sean
-  checks the Droplet's memory.
+  release proves the pushed tag), **#544** (Python 3.14.10, two critical CVEs) and **#530**'s
+  host role (`infra/`, nothing deploys it; **#530 closed** after check mode, with #548 matching
+  production's Docker). **#498 is PR #526, open** until Sean checks the Droplet's memory and it
+  gains the dev override's `cap_add: [CHOWN]` for PyCharm.
   Cutting it is Sean's call, with no deadline. **NEXT UP** is in `docs/status.md`
 - ✅ **Prod runs `0.13.0`, shipped 2026-10-12.** ⏳ **Not yet checked by Sean:** his real Discover
   export **in production**, a real phone screenshot, a multi-page PDF, and #437 on his phone.
