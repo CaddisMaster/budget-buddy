@@ -6,8 +6,8 @@
 ## Current Status
 
 ▶️ **NEXT SESSION:** two of Sean's hands-on checks unblock most of what's open. **(1)** The
-check-mode run of `infra/ansible/host.yml` against production from the Mac (`infra/README.md` has
-the throwaway-fetch recipe). It closes **#530**, and every difference it reports is either fixed in
+check-mode run of `infra/ansible/host.yml` against production. Since 2026-10-30 it can run from
+the VM's clone; `infra/README.md` also has the Mac's throwaway-fetch recipe. It closes **#530**, and every difference it reports is either fixed in
 the role or recorded in RUNBOOK. **(2)** Merging **#526** (#498) once he has checked the Droplet's
 `docker stats --no-stream`. After those: **#531** (BB's app role and www's site), then #532 → #535.
 #533 can follow #530; #534 is optional. **#529 is open only until the next release** proves the
@@ -53,7 +53,7 @@ handoff notes.
   was green.
 - **#530 is merged but open.** Six of its seven criteria are claimed by hand from `infra/test.sh`
   runs (three passes in a row: first run `changed=14`, second `changed=0`). The seventh,
-  "Production already matches the role", is Sean's check-mode run from the Mac. Orbit Ops's three
+  "Production already matches the role", is Sean's check-mode run against production. Orbit Ops's three
   answers (SHA `5dad811`, the LXD settings, the shared duties) are on #530.
 - **The role is defined by what it refuses**, because the box is shared: non-exclusive
   `authorized_keys` (a planted Orbit Ops-shaped key survives), no Nginx site purge (a planted
@@ -249,9 +249,10 @@ export **in production** (the first real bank file, and the first live call on `
 banner says `System restart required`; a reboot takes Orbit Ops down too. **#36** stays
 date-parked.
 
-🛑 **THE MAC HAS NO CLONE OF THIS REPO** (2026-10-05). Every Droplet step runs from the Mac, and
-every line of code lives in the VM. So "scp it from your clone" copies whatever file is in the
-Mac shell's directory. A `diff` against that file is then vacuous, and at 0.12.0 it printed
+🛑 **THE MAC HAS NO CLONE OF THIS REPO** (2026-10-05). Every line of code lives in the VM. Until
+2026-10-30 every Droplet step also ran from the Mac; since then the VM can reach the Droplet
+(Sean's call), so a step can run next to the clone instead. From the Mac, "scp it from your
+clone" copies whatever file is in the Mac shell's directory. A `diff` against that file is then vacuous, and at 0.12.0 it printed
 `identical` over the stale v0.11.0 compose file. #433 (shipped in `0.13.0`, proven on its first deploy) makes the
 workflows copy it themselves; as break-glass, use RUNBOOK §5's recipe:
 a download pinned to a tag, checked against a hash taken from the repo at both ends. **Before

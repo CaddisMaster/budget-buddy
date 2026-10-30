@@ -26,10 +26,9 @@ library only**. It has to run anywhere — a GitHub runner, the VM, a laptop —
 and cannot assume this project's virtualenv or its containers are present.
 
 ⚠️ **Every check is PUBLIC HTTP/TLS. It needs no Droplet access, no key and no
-secret.** That is a deliberate design constraint, not a happy accident: the
-Droplet is unreachable from the development VM on purpose, and a monitoring
-script that needed privileged access would either be useless there or become an
-argument for weakening that boundary.
+secret.** That is a deliberate design constraint, not a happy accident: a
+monitoring script that needed privileged access would need a Droplet key
+wherever it runs, CI included, and the public view is the one that matters.
 
 ⚠️ **The network lives behind two seams** — ``_fetch_page()`` and
 ``_fetch_cert()`` — and everything else is a pure function. Tests monkeypatch
