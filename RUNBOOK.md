@@ -1080,6 +1080,19 @@ transaction is present.
     (`docker compose exec web whoami` → `appuser`).
 13. **Re-point** the Mac backup job at the new host.
 
+### Where the host role and production differ, deliberately (#530)
+
+`infra/`'s host role describes this server, and a check-mode run against production
+(`infra/README.md`, "Checking production") compares the two. Production is never changed
+to match the role: each difference is either fixed in the role or recorded here.
+
+- **The role's SSH drop-in (`Keys only, never a password`).** Production's SSH settings
+  predate the role, and its first real run adds the role's own file under
+  `/etc/ssh/sshd_config.d/`. That file restricts root to key logins. Password and
+  keyboard-interactive logins are already off on production, so **nobody's access
+  changes**: every login that works today is a key login, and still works. Check mode
+  reports this task as `changed`, and that's expected. Checked 2026-10-30.
+
 ---
 
 ## 9. Health checks

@@ -35,6 +35,10 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The runbook records where the server setup code and the live server
+  differ on purpose.** The first entry covers SSH: the setup code tightens a
+  setting the server already enforces in practice, so no one's access changes.
+  No visible change. (#530)
 - **The server setup code installs Docker the way the server already has it.**
   Checking it against the live server showed it would have replaced the
   server's Docker engine on its first real run. It now matches what is there,
