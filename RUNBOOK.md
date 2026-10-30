@@ -115,7 +115,10 @@ loopback.
 ## 3. Nginx
 
 Config lives at `/etc/nginx/sites-available/`, symlinked into `sites-enabled/`.
-One site is enabled: `budget-buddy` (plus the packaged `default`). The
+Three sites are enabled: `budget-buddy`, `seandesmet.com` and `learn.seandesmet.com`
+(Orbit Ops's, managed from its repo). The packaged `default` is in `sites-available` but
+**not** enabled, read from the 2026-10-29 configs backup; the host role (#530,
+`infra/`) keeps it that way and never touches any other site. The
 `mealie.seandesmet.com` and `status.seandesmet.com` files were removed with
 those services on 2026-07-27.
 

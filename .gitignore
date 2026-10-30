@@ -46,3 +46,10 @@ __pycache__/
 
 # Scratch data for the scripts/ ingest pipeline
 data/*.csv
+
+# Ansible (#530). The real inventory holds the Droplet's address and this repo
+# is public; inventory.example.yml is the tracked template. The venv and the
+# installed collections are rebuilt from the pins by infra/test.sh.
+infra/ansible/inventory.yml
+infra/ansible/collections/
+infra/.venv/

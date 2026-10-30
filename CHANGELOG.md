@@ -17,6 +17,15 @@ this project uses the `0.x` versioning scheme described in
   writing or sending anything, so overlapping runs can never send the same
   email twice. A send that fails is still retried by the next run. (#483)
 
+### Added
+
+- **The server's host setup is written down as code.** An Ansible role in
+  `infra/` describes what was set up by hand: the deploy user, SSH, the
+  firewall, Docker, Nginx's base and Certbot. It is tested by building a
+  throwaway container from nothing and running it twice, and it leaves alone
+  everything it does not own, including the other app's site and keys. The
+  server itself is unchanged. No visible change. (#530)
+
 ### Changed
 
 - **Release images are built for arm64 as well as amd64.** One tag now holds

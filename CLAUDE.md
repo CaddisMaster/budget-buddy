@@ -64,6 +64,7 @@ sql/               # numbered migrations + schema.sql (clean single-file schema)
 scripts/           # migrate.py, seed_dev.py, release_prep.py, restore_check.py, check_site_drift.py, check_schema_matches.py
 .github/workflows/ # ci.yml, release.yml, rollback.yml, changelog.yml, claude-triage.yml
 docs/              # the reference detail this file points at
+infra/             # Ansible roles for the Droplet, tested in LXD on the VM (#530); infra/README.md. NOT in the image
 ```
 
 **Blueprints** (`app/blueprints/`, all registered with no `url_prefix`): `auth`, `main` (`/` IS the
