@@ -35,6 +35,11 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The server setup code installs Docker the way the server already has it.**
+  Checking it against the live server showed it would have replaced the
+  server's Docker engine on its first real run. It now matches what is there,
+  and the check finds nothing to change in Docker. The server is unchanged.
+  No visible change. (#548)
 - **The docs no longer say production can only be reached from the Mac.**
   The development VM can reach the server now, by the maintainer's choice, so
   the runbook and setup notes give the VM route first and keep the Mac route
