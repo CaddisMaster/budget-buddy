@@ -19,6 +19,11 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **Release images are built for arm64 as well as amd64.** One tag now holds
+  both, and each host pulls its own half: the server keeps running amd64, and
+  the arm64 development VM can run the real release image for testing the
+  server's setup scripts. The arm64 half is emulated, so a release build takes a
+  few minutes longer. No visible change. (#529)
 - **The app can no longer rewrite its own code.** The image copied the
   source in owned by the unprivileged user the app runs as, so a compromised
   app process could have edited the code it serves and kept that change across

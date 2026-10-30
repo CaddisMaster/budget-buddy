@@ -741,6 +741,16 @@ boots that pushed image and checks `/healthz`, then **waits for an approval**
 on the `production` environment before deploying over SSH as `deploy` and
 verifying the public `/healthz`. To ship, cut the Release and click approve.
 
+The pushed tag is a **multi-arch index, amd64 and arm64** (#529): the Droplet pulls
+amd64, and the `jupiter` VM (arm64) runs the same tag for the LXD-tested Ansible
+roles. The `smoke` job boots amd64 only. To check a release carries both halves:
+
+```bash
+docker buildx imagetools inspect ghcr.io/caddismaster/budget-buddy:<version>
+# lists linux/amd64 and linux/arm64; the two unknown/unknown entries are the
+# build attestations, not broken images
+```
+
 To go back to a known-good version, run the **Rollback** workflow with a
 version (e.g. `0.1.0`). It refuses versions that are not in the registry, so a
 typo fails before the running container is touched.
