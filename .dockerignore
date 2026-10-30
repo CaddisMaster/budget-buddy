@@ -45,3 +45,5 @@ docs/
 .claude/
 docker-compose*.yml
 test.sh
+# The Ansible roles describe the HOST (#530); nothing in the image runs them.
+infra/
