@@ -46,7 +46,10 @@ echo "ok: infra/ansible/inventory.yml is ignored"
 # --- launch ------------------------------------------------------------------
 step "launch $name"
 [[ ${KEEP:-} == 1 ]] || trap 'delete_container "$name"' EXIT
-lxc launch -q ubuntu:24.04 "$name" -c security.nesting=true
+# A stalled image fetch once hung here for 14 minutes with no LXD operation
+# running; bound it so a hang is a failure that says so.
+timeout 300 lxc launch -q ubuntu:24.04 "$name" -c security.nesting=true \
+  || die "lxc launch failed or took over 5 minutes (try: lxc image list; lxc launch by hand)"
 lxc exec "$name" -- cloud-init status --wait >/dev/null || true
 
 # Docker on the VM sets the FORWARD policy to DROP, which silently blackholes
@@ -113,9 +116,14 @@ ct test ! -e /etc/nginx/sites-enabled/default || die "the packaged default site 
 
 ct grep -qxF "$unmanaged_line" /home/deploy/.ssh/authorized_keys || die "the unmanaged key line changed or vanished"
 ct grep -qF "$(cut -d' ' -f2 "$tmp/declared.pub")" /home/deploy/.ssh/authorized_keys || die "the declared key is missing"
-ct id -nG deploy | grep -qw docker || die "deploy is not in the docker group"
-! ct id -nG deploy | grep -qw sudo || die "deploy is in the sudo group"
-ct sshd -T | grep -qx 'passwordauthentication no' || die "sshd still accepts passwords"
+# Output is captured before grep, never piped: `grep -q` stops reading at its
+# match, the writer dies of SIGPIPE, and pipefail turns a correct setting into
+# an intermittent failure (sshd -T did exactly that, 1 run in 2).
+groups=$(ct id -nG deploy)
+grep -qw docker <<<"$groups" || die "deploy is not in the docker group"
+! grep -qw sudo <<<"$groups" || die "deploy is in the sudo group"
+sshd_config=$(ct sshd -T)
+grep -qx 'passwordauthentication no' <<<"$sshd_config" || die "sshd still accepts passwords"
 [[ $(ct date +%Z) == UTC ]] || die "the host is not on UTC"
 
 # No certificate was requested: no ACME account, no live lineage.
