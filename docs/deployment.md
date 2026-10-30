@@ -40,7 +40,7 @@
   `git show v0.1.0:deploy.sh`.
 - **Every action and the base image are pinned (#405).** A workflow `uses:` names a full commit SHA
   with its release as a trailing comment (`actions/checkout@<40-hex> # v7.0.1`), and the
-  Dockerfile's `FROM` carries the image's **multi-arch index** digest (`python:3.14.7-slim@sha256:…`).
+  Dockerfile's `FROM` carries the image's **multi-arch index** digest (`python:3.14.10-slim@sha256:…`).
   The tag names the Python **patch** on purpose: a GitHub-side Dependabot experiment can suppress
   digest-only refreshes of an unchanged versioned tag, and a patch tag changes name at every Python
   patch, which is never suppressed. The Dockerfile comment has the detail.

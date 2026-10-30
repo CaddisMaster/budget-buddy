@@ -8,6 +8,13 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Security
+
+- **The app runs on Python 3.14.10.** The image's Python, 3.14.7, carried two
+  critical vulnerabilities with fixes available (CVE-2026-19445, fixed in
+  3.14.8, and CVE-2026-115557, fixed in 3.14.10). Orbit Ops's image scan found
+  them; this app's image is not scanned yet (#499). No visible change. (#544)
+
 ### Fixed
 
 - **The weekly digest is sent once again, not twice.** Since 0.12.0 the
