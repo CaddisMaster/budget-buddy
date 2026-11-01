@@ -398,8 +398,7 @@ follows for the file, then re-run the failed job. The guard then passes, because
 
 Only for the scheduled db change above, or when Actions is unavailable.
 
-This runs from a **Mac terminal**: the VM can't reach the Droplet (since 2026-11-01, when the
-editor stopped forwarding an SSH agent into it).
+This runs from a **Mac terminal**: the VM is deliberately locked out of the Droplet.
 
 🛑 **There is no clone on the Mac.** Development happens in the `jupiter` VM, so the file goes
 VM → GitHub → Mac → Droplet. At the 0.12.0 deploy an
