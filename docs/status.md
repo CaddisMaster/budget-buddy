@@ -47,7 +47,7 @@ handoff notes.
 | #526 | #498 | The lockdown, merged after `main` was merged in and the memory check was done |
 | this PR | #565 | this record |
 
-- 🔁 **Sean weighed agent forwarding through VS Code and decided against it**, the same day. He
+- 🔁 **Sean weighed agent forwarding through VS Code and decided against it**, the same day. Sean
   removed the VM's key from root's `authorized_keys`, and the user-level `permissions.ask` for
   `ssh`/`scp`/`sftp`/`rsync` is gone too. The Mac logs in to the VM with that same key, so it stays
   in the VM's `authorized_keys`.
