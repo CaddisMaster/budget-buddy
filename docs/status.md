@@ -7,9 +7,10 @@
 
 ▶️ **NEXT SESSION:** **#530 is CLOSED** (2026-10-30, second session): check mode ran from the
 VM, the role was fixed to match production's Docker (#548), and the one SSH difference is recorded
-in RUNBOOK §8 (#550). **Since 2026-11-01 the front end is VS Code again and Droplet steps run from
-a Mac terminal** (#556). **(1)** Merging **#526** (#498) once Sean has checked the Droplet's
-`docker stats --no-stream` from the Mac. It no longer needs `cap_add: [CHOWN]`: that was only for
+in RUNBOOK §8 (#550). **Since 2026-11-01 the front end is VS Code again and Droplet steps are
+Mac-only** (#556, #558). **(1)** Merging **#526** (#498), which is Sean's call. Its memory check is
+done (2026-11-01): after 11 days up, production's peaks were about 300 MiB for web and 178 MiB for
+worker, under the 512m and 256m caps. It no longer needs `cap_add: [CHOWN]`: that was only for
 PyCharm's interpreter, so the note on the PR is stale. Then **#531** (BB's app role and
 www's site), then #532 → #535. #533 can follow; #534 is optional. **Before any real role run
 against the Droplet, run check mode first** (RUNBOOK §8). **#529 is open only until the next release** proves the
@@ -416,11 +417,12 @@ describes the last session rather than the current tree, and it asserts rather t
 
 ### Standing decisions — settled, do not re-open
 
-- **Droplet steps run from a Mac terminal** (2026-11-01). Sean allowed the VM to reach the
-  Droplet on 2026-10-30, reversing the 2026-08-14 isolation rule, but that route was the
-  JetBrains client's forwarded agent and ended with it. `Permission denied (publickey)` from the
-  VM is expected: don't work around it. Turning forwarding back on is Sean's call. Claude
-  sessions ask before every `ssh`/`scp`/`sftp`/`rsync`, and production changes are still
+- **The development VM is deliberately locked out of the Droplet; Droplet steps are Mac-only**
+  (Sean, 2026-11-01). This restores the 2026-08-14 isolation rule. The VM had a route from
+  2026-10-30 through the JetBrains client's forwarded agent. Sean weighed the same thing through
+  VS Code and decided against it, and the VM's key is gone from the Droplet. `Permission denied
+  (publickey)` from the VM is the expected result: don't work around it or re-propose forwarding.
+  Claude sessions ask before every `ssh`/`scp`/`sftp`/`rsync`, and production changes are still
   confirmed with Sean first. The mechanics are in the gitignored `CLAUDE.local.md` §Droplet
   access.
 - **Do not send a release notification for a release with no user-facing change** (Sean,
