@@ -39,6 +39,19 @@ services:
     # "Cannot assign requested address". Namespaced to this container only.
     sysctls:
       net.ipv4.tcp_tw_reuse: 1
+    # #498: lift production's memory cap here. ./test.sh runs the whole suite
+    # INSIDE this container with ten xdist workers, and under the 512m cap it
+    # was OOM-killed mid-run (memory.peak hit exactly 512 MiB). read_only,
+    # cap_drop and the rest stay ON in dev: the bind mount and the masked
+    # caches are separate mounts, so they stay writable, and keeping them on
+    # here is what shows the hardening breaks nothing before a release.
+    mem_limit: !reset null
+    # Docker mounts the tmpfs noexec, which production keeps. The suite needs
+    # exec there: tests/test_compose_shipping.py puts a stub `docker` in
+    # pytest's tmp_path and runs the deploy script against it, and under
+    # noexec the stub silently never ran, so three db-guard tests failed.
+    tmpfs: !override
+      - /tmp:exec
     # Same as the image's CMD plus --reload, which restarts the worker when a
     # source file changes. Kept in full rather than as a fragment so it is
     # obvious this is the production command with one flag added.
@@ -54,3 +67,4 @@ services:
     volumes:
       - .:/app
       - /app/.venv
+    mem_limit: !reset null  # as for web above

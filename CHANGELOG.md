@@ -35,6 +35,14 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The web and worker containers run locked down.** Each now has a read-only
+  filesystem apart from a temporary `/tmp`, no Linux capabilities, no way to
+  gain privileges, and limits on processes and memory (512 MB for web, 256 MB
+  for the worker, sized from measurements under the largest upload the app
+  accepts). On a server shared with another app, a runaway container can no
+  longer starve everything else. The database container is untouched, so this
+  release does not restart it. Redis is pinned to an exact version, and
+  Dependabot now watches the compose file's images. No visible change. (#498)
 - **The runbook records where the server setup code and the live server
   differ on purpose.** The first entry covers SSH: the setup code tightens a
   setting the server already enforces in practice, so no one's access changes.
