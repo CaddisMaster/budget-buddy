@@ -322,10 +322,10 @@ and `gh issue list` at the start of every session.
   **#491** (rows read by name), **#490** (the app factory: gunicorn runs `app.wsgi:app`, and the
   compose file changes with it), **#492** (CI compares `schema.sql` with what the migrations
   build), **#489** (the `app/services/` layer), **#513**, **#493** (the docs sweep), **#497**
-  (root owns the image's code) and **#529** (the release builds amd64 + arm64; open until a
+  (root owns the image's code), **#529** (the release builds amd64 + arm64; open until a
   release proves the pushed tag), **#544** (Python 3.14.10, two critical CVEs) and **#530**'s
   host role (`infra/`, nothing deploys it; **#530 closed** after check mode, with #548 matching
-  production's Docker). **#498 is PR #526, open**: the memory check is done, and merging it is Sean's call.
+  production's Docker), and **#498** (web and worker locked down, #526).
   Cutting it is Sean's call, with no deadline. **NEXT UP** is in `docs/status.md`
 - ✅ **Prod runs `0.13.0`, shipped 2026-10-12.** ⏳ **Not yet checked by Sean:** his real Discover
   export **in production**, a real phone screenshot, a multi-page PDF, and #437 on his phone.
