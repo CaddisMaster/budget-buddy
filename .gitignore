@@ -44,6 +44,10 @@ __pycache__/
 # interpreter, window layout. Nothing in it is shared, so all of it is ignored.
 .idea/
 
+# VS Code, the same reasoning. Settings here also outrank the remote ones, so a
+# committed copy could override a choice made per machine.
+.vscode/
+
 # macOS. Note the capital S — git patterns are case-sensitive and the file
 # Finder actually creates is ".DS_Store".
 .DS_Store
