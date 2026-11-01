@@ -8,10 +8,8 @@
 ▶️ **NEXT SESSION:** **#530 is CLOSED** (2026-10-30, second session): check mode ran from the
 VM, the role was fixed to match production's Docker (#548), and the one SSH difference is recorded
 in RUNBOOK §8 (#550). **Since 2026-11-01 the front end is VS Code again and Droplet steps are
-Mac-only** (#556, #558). **(1)** Merging **#526** (#498), which is Sean's call. Its memory check is
-done (2026-11-01): after 11 days up, production's peaks were about 300 MiB for web and 178 MiB for
-worker, under the 512m and 256m caps. It no longer needs `cap_add: [CHOWN]`: that was only for
-PyCharm's interpreter, so the note on the PR is stale. Then **#531** (BB's app role and
+Mac-only** (#556, #558), so check mode now runs from the Mac (`infra/README.md`). **#526 (#498) is
+merged**, so `0.13.1` carries the lockdown. **(1)** **#531** (BB's app role and
 www's site), then #532 → #535. #533 can follow; #534 is optional. **Before any real role run
 against the Droplet, run check mode first** (RUNBOOK §8). **#529 is open only until the next release** proves the
 pushed tag holds both platforms. **#499** (scan, SBOM, signing) needs a per-platform scan matrix
@@ -21,15 +19,16 @@ all `0.13.1` content:** #483 (the digest sent once, #494), #491 (rows read by na
 (the app factory, #502), #492 (CI compares `schema.sql` with what the migrations build, #503),
 **#489** (the services layer, #506–#519), **#513** (#514), **#493** (the docs sweep, #524),
 **#497** (root owns the image's code, #525), **#529** (multi-arch, #538), **#530**'s role (#539,
-#549; deploys nothing), **#544** (Python 3.14.10 for two critical CVEs, #545) and Dependabot
-**#522/#523**. After the deploy, `docker compose exec web python -V` should say 3.14.10 (#544's
+#549; deploys nothing), **#544** (Python 3.14.10 for two critical CVEs, #545), **#498** (web and
+worker locked down, #526) and Dependabot **#522/#523**. After the deploy, `docker compose exec web python -V` should say 3.14.10 (#544's
 second criterion). Production still sends the digest twice until
 `0.13.1` ships; cutting it is Sean's call, with no deadline. ⚠️ **`0.13.1` changes
-`docker-compose.yml`** (#490: web runs `app.wsgi:app`; #498 too if it merges first); the deploy
+`docker-compose.yml`** (#490: web runs `app.wsgi:app`; #498's lockdown); the deploy
 ships it (#433) and `db` is untouched, so the guard passes. ⚠️ **`0.13.1`'s release build takes
 minutes, not seconds** (the emulated arm64 half). **After that deploy:** `docker compose logs
 worker` shows `Scheduler running`, and `docker buildx imagetools inspect` lists linux/amd64 and
-linux/arm64 (then close #529). ⏳ **Not yet checked by Sean:** his real Discover export through the
+linux/arm64 (then close #529). Also read `docker stats --no-stream` and each container's `OOMKilled`
+against #498's new caps: the worker's margin is the thinner one. ⏳ **Not yet checked by Sean:** his real Discover export through the
 import **in production**, a real phone screenshot, a multi-page PDF, #437's device list on his
 phone, and the round-trip of `budget-buddy-env-local` through the new `bw-env.sh`. ⚠️ **The
 Droplet's login banner says `System restart required`**: a reboot takes Budget Buddy and Orbit Ops
@@ -38,6 +37,28 @@ check is **still not a required status check** (re-checked 2026-10-23). **Cross-
 (Sean's call, 2026-10-30):** an action another repo must take is a `cross-repo` issue in **that**
 repo; a shared VM/droplet change is an entry in `personal-vault/infra/CHANGES.md`. No more
 handoff notes.
+
+### The 2026-11-01 session: back to VS Code, the VM locked out, #526 merged
+
+| PR | Issue | |
+|---|---|---|
+| #557 | #556 | Docs point at VS Code and Mac-only Droplet steps; `.vscode/` ignored; #526 needs no `cap_add: [CHOWN]` |
+| #559 | #558 | The VM is deliberately locked out of the Droplet (standing decision below) |
+| #526 | #498 | The lockdown, merged after `main` was merged in and the memory check was done |
+| this PR | #565 | this record |
+
+- 🔁 **Sean weighed agent forwarding through VS Code and decided against it**, the same day. Sean
+  removed the VM's key from root's `authorized_keys`, and the user-level `permissions.ask` for
+  `ssh`/`scp`/`sftp`/`rsync` is gone too. The Mac logs in to the VM with that same key, so it stays
+  in the VM's `authorized_keys`.
+- 🛑 **`./test.sh` doesn't recreate running containers.** #526's first green run after the merge
+  had `ReadonlyRootfs=false`: the containers were started from `main`'s compose file, so it tested
+  none of the lockdown. `docker compose up -d --build --no-deps web worker`, confirm with `docker
+  inspect`, then run the suite. The second run really was locked down.
+- **`docker stats` is one moment; `/sys/fs/cgroup/memory.peak` is the high-water mark.** Over 11
+  days up on `0.13.0`, production peaked at about 300 MiB (web) and 178 MiB (worker), against caps
+  of 512m and 256m. That counts file cache, so it can read high. The figures are from `0.13.0`, so
+  re-read them after `0.13.1`.
 
 ### The 2026-10-30 second session: the VM reaches the Droplet, and #530 closes
 
@@ -137,7 +158,7 @@ the repo before anything was filed, and six of its claims needed changing:
 | #522, #523 | Dependabot | actions group; ruff 0.17.2, pydantic, pypdf, resend. Merged one at a time (strict protection) |
 | #524 | #493 | README rebuilt from `ai.py`, no counts; ~80 `v10.x` tags out of `app/` (the issue said 11); `CLAUDE.md` 474 → 367 lines; sessions before 2026-10-23 → `docs/status-archive.md` |
 | #525 | #497 | plain `COPY`, `PYTHONDONTWRITEBYTECODE`; CI fails on `find /app -writable` as the default user |
-| #526 **open** | #498 | web/worker read-only, `cap_drop: ALL`, no-new-privileges, pids 200, mem 512m/256m; redis pinned; Dependabot `docker-compose` ecosystem |
+| #526 (merged 2026-11-01) | #498 | web/worker read-only, `cap_drop: ALL`, no-new-privileges, pids 200, mem 512m/256m; redis pinned; Dependabot `docker-compose` ecosystem |
 
 - **#497 measured before changing:** `docker diff` on the old image showed the only writes under
   `/app` were `__pycache__`. The CI step was run, pulled out of `ci.yml` rather than copied,
@@ -422,8 +443,7 @@ describes the last session rather than the current tree, and it asserts rather t
   2026-10-30 through the JetBrains client's forwarded agent. Sean weighed the same thing through
   VS Code and decided against it, and the VM's key is gone from the Droplet. `Permission denied
   (publickey)` from the VM is the expected result: don't work around it or re-propose forwarding.
-  Claude sessions ask before every `ssh`/`scp`/`sftp`/`rsync`, and production changes are still
-  confirmed with Sean first. The mechanics are in the gitignored `CLAUDE.local.md` §Droplet
+  Production changes are still confirmed with Sean first. The mechanics are in the gitignored `CLAUDE.local.md` §Droplet
   access.
 - **Do not send a release notification for a release with no user-facing change** (Sean,
   2026-08-10). The only built-in lever is marking the GitHub Release as a pre-release —
