@@ -7,9 +7,10 @@
 
 ▶️ **NEXT SESSION:** **#530 is CLOSED** (2026-10-30, second session): check mode ran from the
 VM, the role was fixed to match production's Docker (#548), and the one SSH difference is recorded
-in RUNBOOK §8 (#550). **(1)** Merging **#526** (#498) once Sean has checked the Droplet's
-`docker stats --no-stream` (now runnable from the VM), **and** after it gains the dev override's
-`cap_add: [CHOWN]` for PyCharm's interpreter (noted on the PR). Then **#531** (BB's app role and
+in RUNBOOK §8 (#550). **Since 2026-11-01 the front end is VS Code again and Droplet steps run from
+a Mac terminal** (#556). **(1)** Merging **#526** (#498) once Sean has checked the Droplet's
+`docker stats --no-stream` from the Mac. It no longer needs `cap_add: [CHOWN]`: that was only for
+PyCharm's interpreter, so the note on the PR is stale. Then **#531** (BB's app role and
 www's site), then #532 → #535. #533 can follow; #534 is optional. **Before any real role run
 against the Droplet, run check mode first** (RUNBOOK §8). **#529 is open only until the next release** proves the
 pushed tag holds both platforms. **#499** (scan, SBOM, signing) needs a per-platform scan matrix
@@ -51,7 +52,8 @@ handoff notes.
   Droplet as root while JetBrains Gateway is connected; every Claude session asks before
   `ssh`/`scp`/`sftp`/`rsync` (user-level `permissions.ask`). The mechanics live in the gitignored
   `CLAUDE.local.md`. Orbit Ops (orbit-ops #357) and the landing site (seandesmet.com #41) have
-  `cross-repo` issues for their own docs.
+  `cross-repo` issues for their own docs. *(Ended 2026-11-01: with Gateway gone the VM has no
+  route, and Droplet steps run from a Mac terminal, #556.)*
 - 🛑 **#530's check mode found an engine swap.** Production runs Ubuntu's `docker.io`; the role
   installed `docker-ce`, so its first real run would have removed the engine under both apps.
   `infra/test.sh` builds from nothing and passed throughout: **a from-scratch test cannot see how
@@ -60,7 +62,8 @@ handoff notes.
 - **Public comments stay generic.** The auto-mode classifier refused a #530 comment listing
   production's exact versions and SSH settings; the detail is in the maintainer's notes.
 - **#526 (#498) will break PyCharm's interpreter** without `cap_add: [CHOWN]` in the dev override
-  (orbit-ops #354's measurement); noted on the PR.
+  (orbit-ops #354's measurement); noted on the PR. *(Void since 2026-11-01: PyCharm is
+  uninstalled, so #526 doesn't need it, #556.)*
 
 ### The 2026-10-30 session: #529 and #530, from Orbit Ops's last handoff note
 
@@ -278,9 +281,9 @@ export **in production** (the first real bank file, and the first live call on `
 banner says `System restart required`; a reboot takes Orbit Ops down too. **#36** stays
 date-parked.
 
-🛑 **THE MAC HAS NO CLONE OF THIS REPO** (2026-10-05). Every line of code lives in the VM. Until
-2026-10-30 every Droplet step also ran from the Mac; since then the VM can reach the Droplet
-(Sean's call), so a step can run next to the clone instead. From the Mac, "scp it from your
+🛑 **THE MAC HAS NO CLONE OF THIS REPO** (2026-10-05). Every line of code lives in the VM, and
+Droplet steps run from a Mac terminal (again since 2026-11-01; the VM had a route from
+2026-10-30 until then). So "scp it from your
 clone" copies whatever file is in the Mac shell's directory. A `diff` against that file is then vacuous, and at 0.12.0 it printed
 `identical` over the stale v0.11.0 compose file. #433 (shipped in `0.13.0`, proven on its first deploy) makes the
 workflows copy it themselves; as break-glass, use RUNBOOK §5's recipe:
@@ -413,10 +416,13 @@ describes the last session rather than the current tree, and it asserts rather t
 
 ### Standing decisions — settled, do not re-open
 
-- **The development VM may reach the Droplet** (Sean, 2026-10-30). This reverses the 2026-08-14
-  isolation rule. Claude sessions ask before every `ssh`/`scp`/`sftp`/`rsync`, and production
-  changes are still confirmed with Sean first. Don't re-propose locking the VM out; the
-  mechanics are in the gitignored `CLAUDE.local.md` §Droplet access.
+- **Droplet steps run from a Mac terminal** (2026-11-01). Sean allowed the VM to reach the
+  Droplet on 2026-10-30, reversing the 2026-08-14 isolation rule, but that route was the
+  JetBrains client's forwarded agent and ended with it. `Permission denied (publickey)` from the
+  VM is expected: don't work around it. Turning forwarding back on is Sean's call. Claude
+  sessions ask before every `ssh`/`scp`/`sftp`/`rsync`, and production changes are still
+  confirmed with Sean first. The mechanics are in the gitignored `CLAUDE.local.md` §Droplet
+  access.
 - **Do not send a release notification for a release with no user-facing change** (Sean,
   2026-08-10). The only built-in lever is marking the GitHub Release as a pre-release —
   `release.yml` gates the announce step on `prerelease == false` — but that also suppresses the

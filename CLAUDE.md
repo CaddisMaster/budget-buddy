@@ -325,8 +325,7 @@ and `gh issue list` at the start of every session.
   (root owns the image's code) and **#529** (the release builds amd64 + arm64; open until a
   release proves the pushed tag), **#544** (Python 3.14.10, two critical CVEs) and **#530**'s
   host role (`infra/`, nothing deploys it; **#530 closed** after check mode, with #548 matching
-  production's Docker). **#498 is PR #526, open** until Sean checks the Droplet's memory and it
-  gains the dev override's `cap_add: [CHOWN]` for PyCharm.
+  production's Docker). **#498 is PR #526, open** until Sean checks the Droplet's memory.
   Cutting it is Sean's call, with no deadline. **NEXT UP** is in `docs/status.md`
 - ✅ **Prod runs `0.13.0`, shipped 2026-10-12.** ⏳ **Not yet checked by Sean:** his real Discover
   export **in production**, a real phone screenshot, a multi-page PDF, and #437 on his phone.
@@ -335,10 +334,9 @@ and `gh issue list` at the start of every session.
 - **The open milestone is `0.13.1`.** Exactly one is open at a time; create the next one and move
   open items **before** closing it on ship day. The full rule and its traps are in
   `docs/status.md` §Milestone convention
-- ✅ **The VM can reach the Droplet** (Sean, 2026-10-30; it couldn't from 2026-08-14), while
-  the editor connection is up, and a Claude session asks before every `ssh`/`scp`. So a Droplet
-  step can run from the VM, next to the clone: copy files from `git show <tag>:<file>`, never
-  the working tree
+- 🔁 **The VM can't reach the Droplet** (since 2026-11-01; it could from 2026-10-30, through
+  Gateway). Droplet steps run from a Mac terminal, and `Permission denied (publickey)` from the
+  VM is expected
 - 🛑 **THE MAC HAS NO CLONE OF THIS REPO** (2026-10-05). For a step run from the Mac, "scp it
   from your clone" copies whatever stale file is in the Mac shell's directory. Break-glass copies
   there use RUNBOOK §5's tag-pinned, hash-checked recipe. **Before handing Sean commands for the
