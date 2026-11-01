@@ -40,9 +40,24 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
+# JetBrains (PyCharm). Per-machine project state: absolute paths, the chosen
+# interpreter, window layout. Nothing in it is shared, so all of it is ignored.
+.idea/
+
+# VS Code, the same reasoning. Settings here also outrank the remote ones, so a
+# committed copy could override a choice made per machine.
+.vscode/
+
 # macOS. Note the capital S — git patterns are case-sensitive and the file
 # Finder actually creates is ".DS_Store".
 .DS_Store
 
 # Scratch data for the scripts/ ingest pipeline
 data/*.csv
+
+# Ansible (#530). The real inventory holds the Droplet's address and this repo
+# is public; inventory.example.yml is the tracked template. The venv and the
+# installed collections are rebuilt from the pins by infra/test.sh.
+infra/ansible/inventory.yml
+infra/ansible/collections/
+infra/.venv/

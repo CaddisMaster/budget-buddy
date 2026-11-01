@@ -8,6 +8,13 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Security
+
+- **The app runs on Python 3.14.10.** The image's Python, 3.14.7, carried two
+  critical vulnerabilities with fixes available (CVE-2026-19445, fixed in
+  3.14.8, and CVE-2026-115557, fixed in 3.14.10). Orbit Ops's image scan found
+  them; this app's image is not scanned yet (#499). No visible change. (#544)
+
 ### Fixed
 
 - **The weekly digest is sent once again, not twice.** Since 0.12.0 the
@@ -16,6 +23,15 @@ this project uses the `0.x` versioning scheme described in
   a second one if it finds it. Each digest run also claims a user's week before
   writing or sending anything, so overlapping runs can never send the same
   email twice. A send that fails is still retried by the next run. (#483)
+
+### Added
+
+- **The server's host setup is written down as code.** An Ansible role in
+  `infra/` describes what was set up by hand: the deploy user, SSH, the
+  firewall, Docker, Nginx's base and Certbot. It is tested by building a
+  throwaway container from nothing and running it twice, and it leaves alone
+  everything it does not own, including the other app's site and keys. The
+  server itself is unchanged. No visible change. (#530)
 
 ### Changed
 
@@ -27,6 +43,24 @@ this project uses the `0.x` versioning scheme described in
   longer starve everything else. The database container is untouched, so this
   release does not restart it. Redis is pinned to an exact version, and
   Dependabot now watches the compose file's images. No visible change. (#498)
+- **The runbook records where the server setup code and the live server
+  differ on purpose.** The first entry covers SSH: the setup code tightens a
+  setting the server already enforces in practice, so no one's access changes.
+  No visible change. (#530)
+- **The server setup code installs Docker the way the server already has it.**
+  Checking it against the live server showed it would have replaced the
+  server's Docker engine on its first real run. It now matches what is there,
+  and the check finds nothing to change in Docker. The server is unchanged.
+  No visible change. (#548)
+- **The docs say production is reached from the Mac.** The development VM could
+  reach the server for two days through an editor that has since been replaced,
+  so the runbook and setup notes drop that route. `.vscode/` is ignored as well.
+  No visible change. (#556)
+- **Release images are built for arm64 as well as amd64.** One tag now holds
+  both, and each host pulls its own half: the server keeps running amd64, and
+  the arm64 development VM can run the real release image for testing the
+  server's setup scripts. The arm64 half is emulated, so a release build takes a
+  few minutes longer. No visible change. (#529)
 - **The app can no longer rewrite its own code.** The image copied the
   source in owned by the unprivileged user the app runs as, so a compromised
   app process could have edited the code it serves and kept that change across

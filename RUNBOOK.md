@@ -115,7 +115,10 @@ loopback.
 ## 3. Nginx
 
 Config lives at `/etc/nginx/sites-available/`, symlinked into `sites-enabled/`.
-One site is enabled: `budget-buddy` (plus the packaged `default`). The
+Three sites are enabled: `budget-buddy`, `seandesmet.com` and `learn.seandesmet.com`
+(Orbit Ops's, managed from its repo). The packaged `default` is in `sites-available` but
+**not** enabled, read from the 2026-10-29 configs backup; the host role (#530,
+`infra/`) keeps it that way and never touches any other site. The
 `mealie.seandesmet.com` and `status.seandesmet.com` files were removed with
 those services on 2026-07-27.
 
@@ -395,8 +398,11 @@ follows for the file, then re-run the failed job. The guard then passes, because
 
 Only for the scheduled db change above, or when Actions is unavailable.
 
-🛑 **There is no clone on the Mac.** Development happens in the `jupiter` VM, and the Droplet is
-unreachable from there, so the file goes VM → GitHub → Mac → Droplet. At the 0.12.0 deploy an
+This runs from a **Mac terminal**: the VM can't reach the Droplet (since 2026-11-01, when the
+editor stopped forwarding an SSH agent into it).
+
+🛑 **There is no clone on the Mac.** Development happens in the `jupiter` VM, so the file goes
+VM → GitHub → Mac → Droplet. At the 0.12.0 deploy an
 older recipe said "from a clone on the Mac": the `scp` sent whatever `docker-compose.yml` was in
 the Mac shell's directory, and the `diff` compared the Droplet with that same file and printed
 `identical`. The Droplet still held the old file, and `release.yml` step 3c caught it.
@@ -772,6 +778,16 @@ boots that pushed image and checks `/healthz`, then **waits for an approval**
 on the `production` environment before deploying over SSH as `deploy` and
 verifying the public `/healthz`. To ship, cut the Release and click approve.
 
+The pushed tag is a **multi-arch index, amd64 and arm64** (#529): the Droplet pulls
+amd64, and the `jupiter` VM (arm64) runs the same tag for the LXD-tested Ansible
+roles. The `smoke` job boots amd64 only. To check a release carries both halves:
+
+```bash
+docker buildx imagetools inspect ghcr.io/caddismaster/budget-buddy:<version>
+# lists linux/amd64 and linux/arm64; the two unknown/unknown entries are the
+# build attestations, not broken images
+```
+
 To go back to a known-good version, run the **Rollback** workflow with a
 version (e.g. `0.1.0`). It refuses versions that are not in the registry, so a
 typo fails before the running container is touched.
@@ -1084,6 +1100,19 @@ transaction is present.
     match the pre-loss state, and confirm the container runs as a non-root user
     (`docker compose exec web whoami` → `appuser`).
 13. **Re-point** the Mac backup job at the new host.
+
+### Where the host role and production differ, deliberately (#530)
+
+`infra/`'s host role describes this server, and a check-mode run against production
+(`infra/README.md`, "Checking production") compares the two. Production is never changed
+to match the role: each difference is either fixed in the role or recorded here.
+
+- **The role's SSH drop-in (`Keys only, never a password`).** Production's SSH settings
+  predate the role, and its first real run adds the role's own file under
+  `/etc/ssh/sshd_config.d/`. That file restricts root to key logins. Password and
+  keyboard-interactive logins are already off on production, so **nobody's access
+  changes**: every login that works today is a key login, and still works. Check mode
+  reports this task as `changed`, and that's expected. Checked 2026-10-30.
 
 ---
 

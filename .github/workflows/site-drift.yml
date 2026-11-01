@@ -11,9 +11,8 @@
 # Droplet, not to whichever repo supplies the HTML.
 #
 # ⚠️ This workflow needs NO secret and NO Droplet access. Every check is public
-# HTTP/TLS. That is deliberate — the Droplet is unreachable from the dev VM on
-# purpose, and a monitor that needed privileged access would become an argument
-# for weakening that boundary.
+# HTTP/TLS. That is deliberate: a monitor that needed privileged access would
+# need a Droplet key in CI, and it checks what the public actually sees.
 #
 # ⚠️ It checks out `main` and compares against THAT. So a drift report means
 # "production does not match main", which after a manual landing deploy is

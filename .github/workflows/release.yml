@@ -62,6 +62,13 @@ jobs:
           echo "tags=${tags}" >> "$GITHUB_OUTPUT"
           echo "Tags: ${tags}"
 
+      # #529 — QEMU lets this amd64 runner build the arm64 half. It must be
+      # registered BEFORE buildx creates its builder, or the builder has no
+      # arm64 emulator.
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: arm64
+
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
@@ -78,9 +85,13 @@ jobs:
         with:
           context: .
           push: true
-          # The Droplet is amd64. We deliberately do not build arm64: the local
-          # Mac staging smoke it existed for now runs in the `smoke` job below.
-          platforms: linux/amd64
+          # #529 — one tag, two architectures. The Droplet pulls amd64; the
+          # `jupiter` VM (arm64) runs the same tag in the LXD containers the
+          # Ansible roles are tested in. Each host resolves its own half of
+          # the index. The arm64 half is emulated, so a release builds in
+          # minutes, not seconds; ci.yml's PR builds stay amd64. The `smoke`
+          # job below pulls on an amd64 runner, so it boots amd64 only.
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           # #305 — bake the identity into the image itself. The deploy step
           # below asks the running container for these back, which is how a

@@ -64,6 +64,7 @@ sql/               # numbered migrations + schema.sql (clean single-file schema)
 scripts/           # migrate.py, seed_dev.py, release_prep.py, restore_check.py, check_site_drift.py, check_schema_matches.py
 .github/workflows/ # ci.yml, release.yml, rollback.yml, changelog.yml, claude-triage.yml
 docs/              # the reference detail this file points at
+infra/             # Ansible roles for the Droplet, tested in LXD on the VM (#530); infra/README.md. NOT in the image
 ```
 
 **Blueprints** (`app/blueprints/`, all registered with no `url_prefix`): `auth`, `main` (`/` IS the
@@ -320,8 +321,12 @@ and `gh issue list` at the start of every session.
 - ▶️ **On `main`, not yet deployed (`0.13.1`'s content): #483** (the digest sent twice, #494),
   **#491** (rows read by name), **#490** (the app factory: gunicorn runs `app.wsgi:app`, and the
   compose file changes with it), **#492** (CI compares `schema.sql` with what the migrations
-  build), **#489** (the `app/services/` layer) and **#513**. Cutting it is Sean's call, with no
-  deadline. **NEXT UP** is in `docs/status.md`
+  build), **#489** (the `app/services/` layer), **#513**, **#493** (the docs sweep), **#497**
+  (root owns the image's code) and **#529** (the release builds amd64 + arm64; open until a
+  release proves the pushed tag), **#544** (Python 3.14.10, two critical CVEs) and **#530**'s
+  host role (`infra/`, nothing deploys it; **#530 closed** after check mode, with #548 matching
+  production's Docker). **#498 is PR #526, open** until Sean checks the Droplet's memory.
+  Cutting it is Sean's call, with no deadline. **NEXT UP** is in `docs/status.md`
 - ✅ **Prod runs `0.13.0`, shipped 2026-10-12.** ⏳ **Not yet checked by Sean:** his real Discover
   export **in production**, a real phone screenshot, a multi-page PDF, and #437 on his phone.
   ⚠️ The Droplet's banner says `System restart required`; a reboot takes Orbit Ops down too.
@@ -329,10 +334,13 @@ and `gh issue list` at the start of every session.
 - **The open milestone is `0.13.1`.** Exactly one is open at a time; create the next one and move
   open items **before** closing it on ship day. The full rule and its traps are in
   `docs/status.md` §Milestone convention
-- 🛑 **THE MAC HAS NO CLONE OF THIS REPO** (2026-10-05). Every Droplet step runs from the Mac and
-  every line of code lives in the VM, so "scp it from your clone" copies whatever stale file is in
-  the Mac shell's directory. Break-glass copies use RUNBOOK §5's tag-pinned, hash-checked recipe.
-  **Before handing Sean commands for the Mac, check what exists there**, one command per copy box
+- 🔁 **The VM can't reach the Droplet** (since 2026-11-01; it could from 2026-10-30, through
+  Gateway). Droplet steps run from a Mac terminal, and `Permission denied (publickey)` from the
+  VM is expected
+- 🛑 **THE MAC HAS NO CLONE OF THIS REPO** (2026-10-05). For a step run from the Mac, "scp it
+  from your clone" copies whatever stale file is in the Mac shell's directory. Break-glass copies
+  there use RUNBOOK §5's tag-pinned, hash-checked recipe. **Before handing Sean commands for the
+  Mac, check what exists there**, one command per copy box
 - ⚠️ **"Issue criteria are claimed by tests" is NOT a required check** (re-checked 2026-10-23), so
   a red result doesn't block a merge. It's Sean's setting
 - 🛑 **AN ISSUE BEING OPEN IS NOT EVIDENCE THAT IT IS OPEN WORK.** A decision recorded in a

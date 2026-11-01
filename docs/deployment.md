@@ -40,7 +40,7 @@
   `git show v0.1.0:deploy.sh`.
 - **Every action and the base image are pinned (#405).** A workflow `uses:` names a full commit SHA
   with its release as a trailing comment (`actions/checkout@<40-hex> # v7.0.1`), and the
-  Dockerfile's `FROM` carries the image's **multi-arch index** digest (`python:3.14.7-slim@sha256:…`).
+  Dockerfile's `FROM` carries the image's **multi-arch index** digest (`python:3.14.10-slim@sha256:…`).
   The tag names the Python **patch** on purpose: a GitHub-side Dependabot experiment can suppress
   digest-only refreshes of an unchanged versioned tag, and a patch tag changes name at every Python
   patch, which is never suppressed. The Dockerfile comment has the detail.
@@ -49,11 +49,12 @@
   resolve the SHA from the tag yourself** (`git ls-remote --tags https://github.com/<owner>/<repo>`,
   taking the `^{}` line for an annotated tag) and the digest with `docker buildx imagetools inspect
   <image:tag>`. Never copy one from a blog post or a README. ⚠️ **Pin the INDEX digest, never a
-  platform manifest's:** the VM builds arm64 and CI and the Droplet build amd64, so a
-  platform-specific digest breaks one of them. The compose file's `redis` is pinned
-  by patch tag and index digest too (#498), bumped by Dependabot's `docker-compose` ecosystem.
-  `postgres:16` is **not** pinned, and that ecosystem ignores it on purpose: any edit to `db`
-  recreates the database container, so Postgres moves in a scheduled window (#500).
+  platform manifest's:** the VM builds arm64, CI's PR builds are amd64, and the release
+  builds both (#529), so a platform-specific digest breaks at least one of them. The compose file's
+  `redis` is pinned by patch tag and index digest too (#498), bumped by Dependabot's
+  `docker-compose` ecosystem. `postgres:16` is **not** pinned, and that ecosystem ignores it on
+  purpose: any edit to `db` recreates the database container, so Postgres moves in a scheduled
+  window (#500).
 - **Env vars:** `ANTHROPIC_API_KEY` gates every AI surface via `ai_enabled()` (optional — app runs
   fine without it). `RESEND_API_KEY` gates email (`mail_enabled()`), `ENABLE_DIGEST_SCHEDULER=1`
   switches the scheduled jobs on (since #402 they run in the compose `worker` service, and

@@ -596,14 +596,14 @@ jobs:
           fi
           echo "positive control: find reaches real files under /app ($control)"
 
-          leaked=$(docker run --rm budget-buddy:ci sh -c 'find /app \( -name "*.md" -o -name ".ruff_cache" -o -name "docs" -o -name ".claude" \) | sort')
+          leaked=$(docker run --rm budget-buddy:ci sh -c 'find /app \( -name "*.md" -o -name ".ruff_cache" -o -name "docs" -o -name ".claude" -o -path /app/infra \) | sort')
           if [ -n "$leaked" ]; then
             echo "::error::.dockerignore claims to exclude these, but they are in the image:"
             echo "$leaked"
             echo "A nested pattern has most likely stopped matching — see the comment block in .dockerignore."
             exit 1
           fi
-          echo "no markdown, docs/, .claude/ or .ruff_cache/ in the shipped image, as expected"
+          echo "no markdown, docs/, .claude/, .ruff_cache/ or infra/ in the shipped image, as expected"
 
       # Its own step because two things need it now: the boot check below and,
       # when the shipped runtime changes, the in-image suite after that.

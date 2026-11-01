@@ -5,24 +5,153 @@
 
 ## Current Status
 
-▶️ **NEXT SESSION: #493** (the docs sweep), then the container-hardening issues **#497 → #498 →
-#499**; **#500** (Postgres) is a scheduled operation and gets no milestone until Sean picks a date.
-Dependabot **#487** and **#488** have waited since 2026-10-19 (rebuild the container before testing
-#488). Prod runs **`0.13.0`** (shipped 2026-10-12). **On `main`, NOT deployed, all `0.13.1`
-content:** #483 (the digest sent once, #494), #491 (rows read by name, #501), #490 (the app
-factory, #502), #492 (CI compares `schema.sql` with what the migrations build, #503), **#489** (the
-services layer, #506–#519) and **#513** (five more positional unpacks, #514). Production still
-sends the digest twice until `0.13.1` ships; cutting it is Sean's call, with no deadline. ⚠️
-**`0.13.1` changes `docker-compose.yml`** (#490: web runs `app.wsgi:app`); the deploy ships it
-(#433) and `db` is untouched, so the guard passes. **After that deploy:** `docker compose logs
-worker` shows `Scheduler running`, and that is the whole check. #489 adds no migration, env var or
-compose change. ⏳ **Not yet checked by Sean:** his real Discover export through the import **in
-production** (the first real bank file, and the first live call on `anthropic` 1.12.1), a real
-phone screenshot, a multi-page PDF (only one page was ever timed: 5.9 s against a 12-page cap),
-and #437's device list on his phone. ⚠️ **The Droplet's login banner says `System restart
-required`**: a reboot takes Budget Buddy and Orbit Ops down together, so schedule it on its own.
-**#36** stays date-parked. ⚠️ The `Acceptance criteria` check is **still not a required status
-check** (re-checked 2026-10-23).
+▶️ **NEXT SESSION:** **#530 is CLOSED** (2026-10-30, second session): check mode ran from the
+VM, the role was fixed to match production's Docker (#548), and the one SSH difference is recorded
+in RUNBOOK §8 (#550). **Since 2026-11-01 the front end is VS Code again and Droplet steps run from
+a Mac terminal** (#556). **(1)** Merging **#526** (#498) once Sean has checked the Droplet's
+`docker stats --no-stream` from the Mac. It no longer needs `cap_add: [CHOWN]`: that was only for
+PyCharm's interpreter, so the note on the PR is stale. Then **#531** (BB's app role and
+www's site), then #532 → #535. #533 can follow; #534 is optional. **Before any real role run
+against the Droplet, run check mode first** (RUNBOOK §8). **#529 is open only until the next release** proves the
+pushed tag holds both platforms. **#499** (scan, SBOM, signing) needs a per-platform scan matrix
+now that the image is multi-arch. **#500** (Postgres) is a scheduled operation and gets no milestone
+until Sean picks a date. Prod runs **`0.13.0`** (shipped 2026-10-12). **On `main`, NOT deployed,
+all `0.13.1` content:** #483 (the digest sent once, #494), #491 (rows read by name, #501), #490
+(the app factory, #502), #492 (CI compares `schema.sql` with what the migrations build, #503),
+**#489** (the services layer, #506–#519), **#513** (#514), **#493** (the docs sweep, #524),
+**#497** (root owns the image's code, #525), **#529** (multi-arch, #538), **#530**'s role (#539,
+#549; deploys nothing), **#544** (Python 3.14.10 for two critical CVEs, #545) and Dependabot
+**#522/#523**. After the deploy, `docker compose exec web python -V` should say 3.14.10 (#544's
+second criterion). Production still sends the digest twice until
+`0.13.1` ships; cutting it is Sean's call, with no deadline. ⚠️ **`0.13.1` changes
+`docker-compose.yml`** (#490: web runs `app.wsgi:app`; #498 too if it merges first); the deploy
+ships it (#433) and `db` is untouched, so the guard passes. ⚠️ **`0.13.1`'s release build takes
+minutes, not seconds** (the emulated arm64 half). **After that deploy:** `docker compose logs
+worker` shows `Scheduler running`, and `docker buildx imagetools inspect` lists linux/amd64 and
+linux/arm64 (then close #529). ⏳ **Not yet checked by Sean:** his real Discover export through the
+import **in production**, a real phone screenshot, a multi-page PDF, #437's device list on his
+phone, and the round-trip of `budget-buddy-env-local` through the new `bw-env.sh`. ⚠️ **The
+Droplet's login banner says `System restart required`**: a reboot takes Budget Buddy and Orbit Ops
+down together, so schedule it on its own. **#36** stays date-parked. ⚠️ The `Acceptance criteria`
+check is **still not a required status check** (re-checked 2026-10-23). **Cross-project items
+(Sean's call, 2026-10-30):** an action another repo must take is a `cross-repo` issue in **that**
+repo; a shared VM/droplet change is an entry in `personal-vault/infra/CHANGES.md`. No more
+handoff notes.
+
+### The 2026-10-30 second session: the VM reaches the Droplet, and #530 closes
+
+| PR | Issue | |
+|---|---|---|
+| #545 | #544 | `python:3.14.10-slim` by index digest; two CRITICAL CPython CVEs found by Orbit Ops's Grype scan, filed here `cross-repo` |
+| #547 | #546 | Docs: the VM can reach the Droplet; VM routes first, Mac routes kept |
+| #549 | #548 | Host role installs `docker.io` + Docker's Compose plugin, `docker.list`, checksummed key |
+| #550 | (#530) | RUNBOOK §8 "Where the host role and production differ, deliberately" |
+| this PR | #551 | this record |
+
+- 🔁 **Sean reversed the VM-isolation rule** (standing decision below). The VM reaches the
+  Droplet as root while JetBrains Gateway is connected; every Claude session asks before
+  `ssh`/`scp`/`sftp`/`rsync` (user-level `permissions.ask`). The mechanics live in the gitignored
+  `CLAUDE.local.md`. Orbit Ops (orbit-ops #357) and the landing site (seandesmet.com #41) have
+  `cross-repo` issues for their own docs. *(Ended 2026-11-01: with Gateway gone the VM has no
+  route, and Droplet steps run from a Mac terminal, #556.)*
+- 🛑 **#530's check mode found an engine swap.** Production runs Ubuntu's `docker.io`; the role
+  installed `docker-ce`, so its first real run would have removed the engine under both apps.
+  `infra/test.sh` builds from nothing and passed throughout: **a from-scratch test cannot see how
+  production got where it is.** Fixed in the role (#549), and the LXD test now asserts `docker.io`.
+  Orbit Ops was told to pin `4632f78`, not `5dad811` (orbit-ops #322).
+- **Public comments stay generic.** The auto-mode classifier refused a #530 comment listing
+  production's exact versions and SSH settings; the detail is in the maintainer's notes.
+- **#526 (#498) will break PyCharm's interpreter** without `cap_add: [CHOWN]` in the dev override
+  (orbit-ops #354's measurement); noted on the PR. *(Void since 2026-11-01: PyCharm is
+  uninstalled, so #526 doesn't need it, #556.)*
+
+### The 2026-10-30 session: #529 and #530, from Orbit Ops's last handoff note
+
+| PR | Issue | |
+|---|---|---|
+| #538 | #529 | QEMU before buildx; `platforms: linux/amd64,linux/arm64`; smoke stays amd64. **Reopened** (see below) |
+| #539 | #530 | `infra/ansible/roles/droplet_host/` + `infra/test.sh`; pinned control node, `tests/test_infra_pins.py`; `infra/` kept out of the image |
+| this PR | #540 | this record |
+
+- **The handoff was checked before acting on it**, and every checkable claim held. #529's arm64
+  image was built natively on the VM and booted with `--read-only --cap-drop ALL` against a
+  throwaway Postgres: `/healthz` 200, `uname -m` `aarch64`. That was a local build, **not the
+  pushed tag**, so #529's criteria wait for a release.
+- 🛑 **#538 closed #529 by accident.** Its body said `Refs #529`, then "Close #529 by hand after
+  the next release", and GitHub read `Close #529` as a keyword. `closingIssuesReferences` showed
+  `[529]` throughout. Reopened with a comment. **Run that check on a Refs-only PR too.** The
+  criteria check reads the same field, which is why #538's was red and #539's (closing nothing)
+  was green.
+- **#530 is merged but open.** Six of its seven criteria are claimed by hand from `infra/test.sh`
+  runs (three passes in a row: first run `changed=14`, second `changed=0`). The seventh,
+  "Production already matches the role", is Sean's check-mode run against production.
+  *(Done the same day from the VM; #530 closed. See the second session above.)* Orbit Ops's three
+  answers (SHA `5dad811`, the LXD settings, the shared duties) are on #530.
+- **The role is defined by what it refuses**, because the box is shared: non-exclusive
+  `authorized_keys` (a planted Orbit Ops-shaped key survives), no Nginx site purge (a planted
+  site survives; only the packaged `default` link is removed, by name), no certificate request
+  (`acme-v02` is pointed at 127.0.0.1 in the test container). **RUNBOOK §3 was wrong**: the
+  configs backup shows `default` is *not* enabled on prod.
+- **LXD on `jupiter`** was initialised from a preseed (`dir` pool, `lxdbr0` on `10.111.0.1/24`,
+  no IPv6; `infra/README.md`). ⚠️ **Docker's `FORWARD DROP` blackholed `lxdbr0`**: two
+  `DOCKER-USER` rules, added with Sean's go-ahead after the permission classifier refused them,
+  fix it. **They don't survive a reboot**; `infra/test.sh` fails fast naming the fix. Logged in
+  `personal-vault/infra/CHANGES.md`.
+- **Three bugs found by the first real runs:** `sshd -t` needs `/run/sshd`, which a
+  socket-activated 24.04 host lacks; `sshd -T | grep -q` under `pipefail` failed **one run in
+  two** on a correct setting (SIGPIPE; the first guess, `\r` from `lxc exec`, was wrong and was
+  caught by counting bytes); an `lxc launch` hung for 14 minutes with no LXD operation running,
+  so it's now under `timeout 300`.
+- **Guesses check mode will settle** (the configs backup holds Nginx sites only): Docker's apt
+  source (`docker.sources` from `download.docker.com`), whether the sshd drop-in is new, and
+  ufw's rule spelling (`22` per §2, `OpenSSH` per §8).
+- The `bw-env.sh`/`bw-seed.sh` symlinks are in BB's root (gitignored). Their round-trip is Sean's.
+
+### The 2026-10-27 session: the IaC set filed from Orbit Ops's handoff
+
+No code changed. The handoff (vault, `Budget Buddy/reference/IaC handoff.md`) was checked against
+the repo before anything was filed, and six of its claims needed changing:
+
+| # | Issue | What the check changed |
+|---|---|---|
+| #529 | multi-arch release image | the base is already pinned to the index digest; `release.yml` has **no scan** to extend, so scanning and `--hash` are out of scope |
+| #530 | Ansible host role, `infra/ansible/roles/droplet_host/` | Orbit Ops consumes it by SHA; `deploy`'s `authorized_keys` is shared, so keys are managed non-exclusively; open decision: **the Mac has no clone** to run check mode from |
+| #531 | BB app role, plus a separate `www_site` role | `release.yml` already writes `docker-compose.yml` and `.env`'s `TAG=`, so the role **asserts, never writes** both |
+| #532 | backup units into the repo | **in neither layer of the handoff**, so a rebuilt server would take no backups. The scripts hold no secrets |
+| #533 | Terraform, imported, plan shows no changes | owns `learn`'s record; state on the backup-less Mac is accepted (re-import); notes the cutover's IP change |
+| #534 | LXD staging (optional) | — |
+| #535 | `backup-export` ships Orbit Ops's dumps | Sean chose option B (below) |
+
+- 🛑 **Orbit Ops's database had no nightly backup.** Orbit Ops's RUNBOOK §6 said to add its
+  backups dir to BB's export, which was never done: neither droplet script mentions it. Sean
+  chose **option B**: Orbit Ops owns its nightly dump (orbit-ops #324, first), and BB's
+  `backup-export` ships it (#535, blocked by #532 so the change is made once, in this repo).
+- **No IaC milestone, despite the handoff asking for one.** BB keeps exactly one open milestone,
+  and it means a release, so the set is under `0.13.1` and moves on ship day.
+
+### The 2026-10-26 session: a `/cycle` of three, two merged and one left for Sean
+
+| PR | Issue | |
+|---|---|---|
+| #522, #523 | Dependabot | actions group; ruff 0.17.2, pydantic, pypdf, resend. Merged one at a time (strict protection) |
+| #524 | #493 | README rebuilt from `ai.py`, no counts; ~80 `v10.x` tags out of `app/` (the issue said 11); `CLAUDE.md` 474 → 367 lines; sessions before 2026-10-23 → `docs/status-archive.md` |
+| #525 | #497 | plain `COPY`, `PYTHONDONTWRITEBYTECODE`; CI fails on `find /app -writable` as the default user |
+| #526 **open** | #498 | web/worker read-only, `cap_drop: ALL`, no-new-privileges, pids 200, mem 512m/256m; redis pinned; Dependabot `docker-compose` ecosystem |
+
+- **#497 measured before changing:** `docker diff` on the old image showed the only writes under
+  `/app` were `__pycache__`. The CI step was run, pulled out of `ci.yml` rather than copied,
+  against the old image (fails on ownership) and a `chmod o+w` mutant (fails on writability).
+- **#498 was run as a separate compose project** (release image, no override, a dummy AI key aimed
+  at a dead port). Backup, a 0.9 MB import through apply and a 14.7 MB upload all worked. web
+  peaked at 324 MiB. Docker's tmpfs is **`noexec`** (broke three dev tests, so dev allows `exec`),
+  and the dev suite peaks at ~1.7 GB (OOM under the cap, so dev `!reset`s it). `db`'s
+  `config --hash` is unchanged.
+- ⚠️ **A compose mutation run through `./test.sh` recreated the dev `db` container read-only.**
+  `test.sh` applies the real compose file. Restored at once with data intact; compose guards are
+  now mutated on a string.
+- **RUNBOOK §5's compose block was regenerated from the file**, not patched: it had been
+  missing #483's `SCHEDULER_IN_PROCESS` since before this session.
+- Not filed: `helpers.ai_enabled()`'s docstring still describes the "NL quick-add (v9)".
 
 ### The 2026-10-24 session: #489 finished in twelve parts, and #513 found on the way
 
@@ -152,9 +281,10 @@ export **in production** (the first real bank file, and the first live call on `
 banner says `System restart required`; a reboot takes Orbit Ops down too. **#36** stays
 date-parked.
 
-🛑 **THE MAC HAS NO CLONE OF THIS REPO** (2026-10-05). Every Droplet step runs from the Mac, and
-every line of code lives in the VM. So "scp it from your clone" copies whatever file is in the
-Mac shell's directory. A `diff` against that file is then vacuous, and at 0.12.0 it printed
+🛑 **THE MAC HAS NO CLONE OF THIS REPO** (2026-10-05). Every line of code lives in the VM, and
+Droplet steps run from a Mac terminal (again since 2026-11-01; the VM had a route from
+2026-10-30 until then). So "scp it from your
+clone" copies whatever file is in the Mac shell's directory. A `diff` against that file is then vacuous, and at 0.12.0 it printed
 `identical` over the stale v0.11.0 compose file. #433 (shipped in `0.13.0`, proven on its first deploy) makes the
 workflows copy it themselves; as break-glass, use RUNBOOK §5's recipe:
 a download pinned to a tag, checked against a hash taken from the repo at both ends. **Before
@@ -286,6 +416,13 @@ describes the last session rather than the current tree, and it asserts rather t
 
 ### Standing decisions — settled, do not re-open
 
+- **Droplet steps run from a Mac terminal** (2026-11-01). Sean allowed the VM to reach the
+  Droplet on 2026-10-30, reversing the 2026-08-14 isolation rule, but that route was the
+  JetBrains client's forwarded agent and ended with it. `Permission denied (publickey)` from the
+  VM is expected: don't work around it. Turning forwarding back on is Sean's call. Claude
+  sessions ask before every `ssh`/`scp`/`sftp`/`rsync`, and production changes are still
+  confirmed with Sean first. The mechanics are in the gitignored `CLAUDE.local.md` §Droplet
+  access.
 - **Do not send a release notification for a release with no user-facing change** (Sean,
   2026-08-10). The only built-in lever is marking the GitHub Release as a pre-release —
   `release.yml` gates the announce step on `prerelease == false` — but that also suppresses the
