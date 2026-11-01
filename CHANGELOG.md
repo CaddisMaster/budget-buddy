@@ -44,10 +44,11 @@ this project uses the `0.x` versioning scheme described in
   server's Docker engine on its first real run. It now matches what is there,
   and the check finds nothing to change in Docker. The server is unchanged.
   No visible change. (#548)
-- **The docs say production is reached from the Mac.** The development VM could
-  reach the server for two days through an editor that has since been replaced,
-  so the runbook and setup notes drop that route. `.vscode/` is ignored as well.
-  No visible change. (#556)
+- **The docs say production is reached only from the Mac.** The development VM
+  could reach the server for two days through an editor that has since been
+  replaced, and it is now deliberately locked out again, so the runbook and
+  setup notes drop that route. `.vscode/` is ignored as well. No visible change.
+  (#556, #558)
 - **Release images are built for arm64 as well as amd64.** One tag now holds
   both, and each host pulls its own half: the server keeps running amd64, and
   the arm64 development VM can run the real release image for testing the
