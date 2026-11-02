@@ -5,21 +5,21 @@
 
 ## Current Status
 
-▶️ **NEXT SESSION:** **#530 is CLOSED** (2026-10-30, second session): check mode ran from the
-VM, the role was fixed to match production's Docker (#548), and the one SSH difference is recorded
-in RUNBOOK §8 (#550). **Since 2026-11-01 the front end is VS Code again and Droplet steps are
-Mac-only** (#556, #558), so check mode now runs from the Mac (`infra/README.md`). **#526 (#498) is
-merged**, so `0.13.1` carries the lockdown. **(1)** **#531** (BB's app role and
-www's site), then #532 → #535. #533 can follow; #534 is optional. **Before any real role run
-against the Droplet, run check mode first** (RUNBOOK §8). **#529 is open only until the next release** proves the
-pushed tag holds both platforms. **#499** (scan, SBOM, signing) needs a per-platform scan matrix
-now that the image is multi-arch. **#500** (Postgres) is a scheduled operation and gets no milestone
-until Sean picks a date. Prod runs **`0.13.0`** (shipped 2026-10-12). **On `main`, NOT deployed,
+▶️ **NEXT SESSION:** **The IaC set is closed except #529** (2026-11-02): #531, #532, #533 and #535
+are done, #534 is NOT_PLANNED. **#529 stays open until a release** proves the pushed tag holds both
+platforms. orbit-ops #377 is Orbit Ops's to act on. **The 26.04 rebuild has no issue and no date:**
+the cheap first step is `infra/test.sh` against `ubuntu:26.04`, and the only real proof is a rehearsal
+on a temporary Droplet (Sean's call, it costs a little). **Before a batch of LXD runs, warn Sean:**
+the VM is on his Mac, and each run is about 5 minutes of load. **Before any real role run against the
+Droplet, run check mode first** (RUNBOOK §8); `host.yml` has never run for real. **#499** (scan, SBOM,
+signing) needs a per-platform scan matrix now that the image is multi-arch. **#500** (Postgres) is a
+scheduled operation and gets no milestone until Sean picks a date. Dependabot's #555 (Python 3.15) and
+#560 (Redis 8) look like more than routine bumps. Prod runs **`0.13.0`** (shipped 2026-10-12). **On `main`, NOT deployed,
 all `0.13.1` content:** #483 (the digest sent once, #494), #491 (rows read by name, #501), #490
 (the app factory, #502), #492 (CI compares `schema.sql` with what the migrations build, #503),
 **#489** (the services layer, #506–#519), **#513** (#514), **#493** (the docs sweep, #524),
 **#497** (root owns the image's code, #525), **#529** (multi-arch, #538), **#530**'s role (#539,
-#549; deploys nothing), **#544** (Python 3.14.10 for two critical CVEs, #545), **#498** (web and
+#549; deploys nothing), the rest of `infra/` (#531, #532, #533, #535; the image doesn't carry it), **#544** (Python 3.14.10 for two critical CVEs, #545), **#498** (web and
 worker locked down, #526) and Dependabot **#522/#523**. After the deploy, `docker compose exec web python -V` should say 3.14.10 (#544's
 second criterion). Production still sends the digest twice until
 `0.13.1` ships; cutting it is Sean's call, with no deadline. ⚠️ **`0.13.1` changes
@@ -37,6 +37,42 @@ check is **still not a required status check** (re-checked 2026-10-23). **Cross-
 (Sean's call, 2026-10-30):** an action another repo must take is a `cross-repo` issue in **that**
 repo; a shared VM/droplet change is an entry in `personal-vault/infra/CHANGES.md`. No more
 handoff notes.
+
+### The 2026-11-02 session: the IaC set closes
+
+| PR | Issue | |
+|---|---|---|
+| #568 | #553, #567 | Control node fully pinned, `--no-deps` into a clean venv + `pip check`; Dependabot on `/infra`; the Mac needs Python 3.12 |
+| #569 | #554 | Bitwarden helper links out of local image builds |
+| #570 | #531 | `budget_buddy_app` and `www_site` roles; production check `changed=0` |
+| #571 | #532 | `budget_buddy_backup` role; the scripts left `personal-vault`; production check `changed=0` |
+| #572 | #535 | `backup-export`'s `orbit-ops` command; the VM job pulls the newest dump |
+| #573 | #533 | The Droplet in Terraform, imported, `No changes`; `plan -destroy` fails on `prevent_destroy` |
+| this PR | #574 | this record |
+
+- 🛑 **"Orbit Ops finished" didn't mean BB had.** The request was to close the IaC issues because
+  Orbit Ops's side was done, but its issues mirror BB's and none of BB's work existed. Checked before
+  closing anything; Sean chose to do the work.
+- 🛑 **#533's premise was wrong against the platform.** DNS is at **Squarespace**, not DigitalOcean
+  (`dig NS`), so Terraform covers the Droplet only (Sean's call) and the records stay by hand.
+  One search found no Squarespace provider or public DNS API, which isn't conclusive. The same
+  check found the image's slug retired: Terraform must name image ID `195932981`.
+- ✅ **First real role run against production** (`app.yml`, from the Mac, at `abcafcf`): it replaced
+  `backup-export` only, `changed=1` then `changed=0`, nothing restarted. **`host.yml` has still never
+  run for real.** The VM's pull then brought `orbit-ops_2026-11-02.sql.gz` home, with no restore test.
+- 🛑 **Describe production from production.** Site files came from the nightly configs tarball (only
+  those paths extracted), modes and hashes from `stat`/`sha256sum`, and the key's options from the live
+  line. `backup-export`'s own comment and RUNBOOK §3 had both drifted; following either would have
+  shown as a change, or rewritten that line on a real run.
+- ⚠️ **The new test found a bug in a role already merged.** `www_site` lacked `flush_handlers`, so a
+  later role's refusal lost its Nginx reload, and the next run saw nothing to do. Production wasn't
+  affected, since it had never run for real.
+- ⚠️ **`lxc launch` reads config from a non-terminal stdin**, so it hangs from a Claude session: 5 of
+  5 without `</dev/null`, 5 of 5 took 2s with it. My first theory, a stalled image fetch, was wrong.
+- ⚠️ **About 15 LXD runs back to back drained Sean's battery with no warning.** #535 then showed the
+  better shape: run the script itself with `sh` in pytest, and keep one LXD run for real SSH.
+- **#534 is NOT_PLANNED** (Sean's call). BB's deploy stays rehearsed only by CI's smoke test and the
+  gate. The Terraform token was never saved: delete it and make a new Read Only one when next needed.
 
 ### The 2026-11-01 session: back to VS Code, the VM locked out, #526 merged
 
