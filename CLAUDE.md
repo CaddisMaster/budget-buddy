@@ -325,7 +325,7 @@ and `gh issue list` at the start of every session.
   (root owns the image's code), **#529** (the release builds amd64 + arm64; open until a
   release proves the pushed tag), **#544** (Python 3.14.10, two critical CVEs), and **#498** (web
   and worker locked down, #526). `infra/` (#530–#535) isn't in the image: **every IaC issue is closed
-  but #529**, and check mode and `terraform plan` from the Mac both matched production on 2026-11-02.
+  but #529**. On 2026-11-02, `app.yml`'s check mode and `terraform plan`, both from the Mac, matched production.
   Cutting it is Sean's call, with no deadline. **NEXT UP** is in `docs/status.md`
 - ✅ **Prod runs `0.13.0`, shipped 2026-10-12.** ⏳ **Not yet checked by Sean:** his real Discover
   export **in production**, a real phone screenshot, a multi-page PDF, and #437 on his phone.
