@@ -1078,7 +1078,8 @@ transaction is present.
 2. **Firewall:** `ufw allow OpenSSH && ufw allow 'Nginx Full' && ufw enable`
 3. **Install** Docker Engine with the Compose plugin, plus `nginx` and
    `certbot` + `python3-certbot-nginx`.
-4. **DNS:** point `seandesmet.com`, `www`, and `budget` at the new IP. Wait for propagation — Certbot's HTTP-01 challenge needs the name
+4. **DNS (at Squarespace, by hand; it isn't in `infra/terraform/`):** point `seandesmet.com`,
+   `www`, `budget` and `learn` at the new IP. Wait for propagation — Certbot's HTTP-01 challenge needs the name
    already resolving to this host.
 5. **Recreate `/opt/budget-buddy/`:** `docker-compose.yml` and `sql/` from this
    repository and `.env` from the configs backup. The landing page comes from its

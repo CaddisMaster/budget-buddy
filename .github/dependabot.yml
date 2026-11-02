@@ -29,6 +29,13 @@ updates:
       infra-minor-and-patch:
         update-types: ["minor", "patch"]
 
+  # The DigitalOcean provider (#533). Terraform's own version moves by hand.
+  - package-ecosystem: terraform
+    directory: "/infra/terraform"
+    schedule:
+      interval: monthly
+    labels: ["dependencies"]
+
   # Workflow actions age out and get deprecated — this is what catches it.
   - package-ecosystem: github-actions
     directory: "/"
