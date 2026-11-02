@@ -10,7 +10,10 @@ whose failure would be worst on production, in the run CI makes:
 
 `infra/` is excluded from the image, so these skip there.
 """
+import gzip
+import os
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -99,3 +102,69 @@ def test_the_ping_url_is_never_in_git():
     for path in role.rglob("*"):
         if path.is_file():
             assert "hc-ping.com/" not in path.read_text(), path
+
+
+# --- backup-export, run for real with sh (#535) -------------------------------
+#
+# The script's paths are fixed on purpose, so a copy with the one directory
+# replaced runs here. infra/test.sh drives the real file over SSH on the VM.
+
+ORBIT_DIR = "/opt/orbit-ops/backups"
+
+
+@pytest.fixture
+def export(tmp_path):
+    backups = tmp_path / "backups"
+    backups.mkdir()
+    script = tmp_path / "backup-export"
+    text = (BACKUP_FILES / "backup-export").read_text()
+    assert ORBIT_DIR in text
+    script.write_text(text.replace(ORBIT_DIR, str(backups)))
+
+    def run(command):
+        env = {"PATH": os.environ["PATH"], "SSH_ORIGINAL_COMMAND": command}
+        return subprocess.run(["sh", str(script)], env=env, capture_output=True, stdin=subprocess.DEVNULL)
+
+    run.backups = backups
+    return run
+
+
+def _dump(directory, name, body, age):
+    path = directory / name
+    path.write_bytes(gzip.compress(body))
+    stamp = 2_000_000_000 - age
+    os.utime(path, (stamp, stamp))
+
+
+@pytest.mark.criterion(535, "No Orbit Ops dump yet is not a crash")
+def test_no_dump_is_a_named_error(export):
+    result = export("orbit-ops")
+    assert result.returncode == 1
+    assert result.stdout == b""
+    assert b"no Orbit Ops dump" in result.stderr
+
+
+def test_it_serves_the_newest_finished_dump(export):
+    _dump(export.backups, "pre-deploy-1.sql.gz", b"older", age=200)
+    _dump(export.backups, "nightly-2.sql.gz", b"newest", age=100)
+    _dump(export.backups, "nightly-3.sql.gz.partial", b"unfinished", age=0)
+    result = export("orbit-ops")
+    assert result.returncode == 0, result.stderr
+    assert gzip.decompress(result.stdout) == b"newest"
+
+
+@pytest.mark.criterion(535, "The backup key can't do anything else")
+@pytest.mark.parametrize("command", [
+    "orbit-ops /etc/shadow",
+    "orbit-ops ../../etc/shadow",
+    "orbit-ops; id",
+    "ORBIT-OPS",
+    "cat /etc/shadow",
+    "",
+])
+def test_nothing_but_the_exact_command_is_served(export, command):
+    _dump(export.backups, "nightly-1.sql.gz", b"a dump", age=0)
+    result = export(command)
+    assert result.returncode == 1
+    assert result.stdout == b""
+    assert b"backup-export: refused" in result.stderr

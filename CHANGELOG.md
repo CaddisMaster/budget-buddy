@@ -26,6 +26,11 @@ this project uses the `0.x` versioning scheme described in
 
 ### Added
 
+- **Orbit Ops's database backups can leave the server.** The restricted backup key
+  gains one fixed command that hands over Orbit Ops's newest finished dump, for
+  the VM's nightly pull. It takes no argument. Live once installed on the server.
+  (#535)
+
 - **The server's backups are written down as code.** A rebuilt server would have
   run with no backups, because the scripts existed only by hand on the box and in
   a private copy. Both scripts, the timer and the VM's restricted pull key are now

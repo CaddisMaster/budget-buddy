@@ -885,7 +885,9 @@ The runner connects as **`DB_USER`**, never `DB_APP_USER` — the least-privileg
 06:00 UTC, writing to `/var/backups/budget-buddy/`, 14 copies per target. The VM pulls a second
 copy through `backup-export` whenever it's on, so item 1's Mac job below is history. Both scripts
 and the units are in `infra/ansible/roles/budget_buddy_backup/` (#532), which installs them. **On
-a rebuild the role refuses to run until the ping URL is in place,** because it never writes it:
+a rebuild the role refuses to run until the ping URL is in place,** because it never writes it.
+**`backup-export`'s `orbit-ops` command (#535)** hands the VM Orbit Ops's newest finished dump
+from `/opt/orbit-ops/backups`; Orbit Ops makes those dumps itself. The ping URL's steps:
 
 ```bash
 install -d -m 755 /etc/backup-export
