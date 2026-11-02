@@ -35,6 +35,9 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **A local image build no longer copies the Bitwarden helper links.** `bw-env.sh`
+  and `bw-seed.sh` are now in `.dockerignore`. Released images never had them. (#554)
+
 - **The web and worker containers run locked down.** Each now has a read-only
   filesystem apart from a temporary `/tmp`, no Linux capabilities, no way to
   gain privileges, and limits on processes and memory (512 MB for web, 256 MB
