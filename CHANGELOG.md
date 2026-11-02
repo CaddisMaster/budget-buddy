@@ -41,6 +41,8 @@ this project uses the `0.x` versioning scheme described in
   `/infra`. The production check in `infra/README.md` does the same on the Mac,
   with Homebrew's Python 3.12, because ansible-core 2.21 needs it. No change to
   the app. (#553, #567)
+- **A local image build no longer copies the Bitwarden helper links.** `bw-env.sh`
+  and `bw-seed.sh` are now in `.dockerignore`. Released images never had them. (#554)
 
 - **The web and worker containers run locked down.** Each now has a read-only
   filesystem apart from a temporary `/tmp`, no Linux capabilities, no way to
