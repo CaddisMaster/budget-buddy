@@ -17,6 +17,18 @@ updates:
       minor-and-patch:
         update-types: ["minor", "patch"]
 
+  # The Ansible control node (#553), pinned the same way. The collections in
+  # infra/ansible/requirements.yml have no ecosystem here: they move by hand.
+  - package-ecosystem: pip
+    directory: "/infra"
+    schedule:
+      interval: weekly
+      day: monday
+    labels: ["dependencies"]
+    groups:
+      infra-minor-and-patch:
+        update-types: ["minor", "patch"]
+
   # Workflow actions age out and get deprecated — this is what catches it.
   - package-ecosystem: github-actions
     directory: "/"

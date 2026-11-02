@@ -35,6 +35,13 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The Ansible control node is fully pinned.** `infra/requirements-infra.txt`
+  now lists ansible-core's dependencies too, `infra/test.sh` installs them with
+  `--no-deps` into a clean venv and runs `pip check`, and Dependabot covers
+  `/infra`. The production check in `infra/README.md` does the same on the Mac,
+  with Homebrew's Python 3.12, because ansible-core 2.21 needs it. No change to
+  the app. (#553, #567)
+
 - **The web and worker containers run locked down.** Each now has a read-only
   filesystem apart from a temporary `/tmp`, no Linux capabilities, no way to
   gain privileges, and limits on processes and memory (512 MB for web, 256 MB
