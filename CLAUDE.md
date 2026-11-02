@@ -64,7 +64,7 @@ sql/               # numbered migrations + schema.sql (clean single-file schema)
 scripts/           # migrate.py, seed_dev.py, release_prep.py, restore_check.py, check_site_drift.py, check_schema_matches.py
 .github/workflows/ # ci.yml, release.yml, rollback.yml, changelog.yml, claude-triage.yml
 docs/              # the reference detail this file points at
-infra/             # Ansible roles for the Droplet, tested in LXD on the VM (#530); infra/README.md. NOT in the image
+infra/             # the Droplet as code: Ansible roles tested in LXD on the VM, Terraform (droplet only, DNS is at Squarespace); infra/README.md. NOT in the image
 ```
 
 **Blueprints** (`app/blueprints/`, all registered with no `url_prefix`): `auth`, `main` (`/` IS the
@@ -323,9 +323,9 @@ and `gh issue list` at the start of every session.
   compose file changes with it), **#492** (CI compares `schema.sql` with what the migrations
   build), **#489** (the `app/services/` layer), **#513**, **#493** (the docs sweep), **#497**
   (root owns the image's code), **#529** (the release builds amd64 + arm64; open until a
-  release proves the pushed tag), **#544** (Python 3.14.10, two critical CVEs) and **#530**'s
-  host role (`infra/`, nothing deploys it; **#530 closed** after check mode, with #548 matching
-  production's Docker), and **#498** (web and worker locked down, #526).
+  release proves the pushed tag), **#544** (Python 3.14.10, two critical CVEs), and **#498** (web
+  and worker locked down, #526). `infra/` (#530–#535) isn't in the image: **every IaC issue is closed
+  but #529**, and check mode and `terraform plan` from the Mac both matched production on 2026-11-02.
   Cutting it is Sean's call, with no deadline. **NEXT UP** is in `docs/status.md`
 - ✅ **Prod runs `0.13.0`, shipped 2026-10-12.** ⏳ **Not yet checked by Sean:** his real Discover
   export **in production**, a real phone screenshot, a multi-page PDF, and #437 on his phone.
