@@ -1,0 +1,5 @@
+# RUNBOOK §1, §3 and §5, described. Values are production's.
+budget_buddy_dir: /opt/budget-buddy
+budget_buddy_user: deploy
+budget_buddy_site: budget-buddy
+budget_buddy_domain: budget.seandesmet.com

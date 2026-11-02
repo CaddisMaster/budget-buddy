@@ -1,0 +1,6 @@
+# seandesmet.com's Nginx site (#299). The page itself, its landing-deploy key and
+# its headers snippet belong to CaddisMaster/seandesmet.com (SETUP.md).
+www_site_name: seandesmet.com
+www_site_root: /var/www/seandesmet.com
+www_site_user: deploy
+www_site_snippet: /etc/nginx/snippets/seandesmet-security-headers.conf

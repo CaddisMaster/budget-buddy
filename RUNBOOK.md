@@ -128,6 +128,10 @@ and is deployed from its own repo. They were one file with two server blocks unt
 config mistake in either could take both down — splitting them was the point.
 Certbot has rewritten both, adding the TLS directives and the HTTP→HTTPS redirect blocks.
 
+✅ **The exact files are in `infra/ansible/roles/`** (#531): `budget_buddy_app/files/budget-buddy`
+and `www_site/files/seandesmet.com`, taken byte for byte from production's 2026-11-02 configs
+backup. The block below explains them and has drifted in layout, so a rebuild uses those files.
+
 ```nginx
 # /etc/nginx/sites-available/seandesmet.com   (its own file since #299)
 
@@ -1069,8 +1073,9 @@ transaction is present.
    backup taken before that pin existed has no such line, and step 8 will fail
    naming `TAG` rather than starting an arbitrary image — which is the designed
    behaviour, not a fault. Add `TAG=<the version you mean to run>`.
-6. **Nginx:** write the site files from §3, symlink into `sites-enabled`,
-   `nginx -t`, reload.
+6. **Nginx:** write the site files from `infra/ansible/roles/` (§3), symlink into
+   `sites-enabled`, `nginx -t`, reload. `infra/ansible/app.yml` does this and refuses to run
+   until `.env`, `docker-compose.yml`, the certificates and www's headers snippet exist.
 7. **TLS:** `certbot --nginx -d ...` per domain. Re-read the §4 warning about
    lineage names before copying any `ssl_certificate` path verbatim.
 8. **Start:** `docker compose up -d`. The empty volume triggers `schema.sql`, so
