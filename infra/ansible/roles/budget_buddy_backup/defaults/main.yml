@@ -1,0 +1,15 @@
+# The Droplet's backups (#532), RUNBOOK §7. Values are production's, read on
+# 2026-11-02. The scripts and units in files/ are production's byte for byte.
+budget_buddy_backup_user: deploy
+budget_buddy_backup_root: /var/backups/budget-buddy
+budget_buddy_backup_url_file: /etc/backup-export/healthchecks-url
+
+# The VM's pull key. Only the public half is here, bound to the forced command,
+# which is the whole of what the key can do. The options must match the Droplet's
+# line exactly, in this order, or check mode reports a change. Managed
+# non-exclusively: every other line in the file is left as it is.
+budget_buddy_backup_key: >-
+  ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINQG70U/S+9uqDbKNc6CQ7D+ymZ0RVD4884fTDUutbrb
+  jupiter-backup
+budget_buddy_backup_key_options: >-
+  command="/usr/local/bin/backup-export",restrict,no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty

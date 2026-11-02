@@ -48,3 +48,8 @@
     dest: /etc/nginx/sites-enabled/{{ www_site_name }}
     state: link
   notify: www site changed
+
+# Now, not at the end of the play: a later role's refusal would otherwise leave a
+# changed file unreloaded, and the next run would see no change to act on.
+- name: Apply a www site change before the next role
+  ansible.builtin.meta: flush_handlers

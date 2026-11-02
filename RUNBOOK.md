@@ -881,6 +881,18 @@ The runner connects as **`DB_USER`**, never `DB_APP_USER` — the least-privileg
 
 ### What exists
 
+✅ **Since 2026-08-14 the primary backup runs on the Droplet itself:** `budget-buddy-backup.timer`,
+06:00 UTC, writing to `/var/backups/budget-buddy/`, 14 copies per target. The VM pulls a second
+copy through `backup-export` whenever it's on, so item 1's Mac job below is history. Both scripts
+and the units are in `infra/ansible/roles/budget_buddy_backup/` (#532), which installs them. **On
+a rebuild the role refuses to run until the ping URL is in place,** because it never writes it:
+
+```bash
+install -d -m 755 /etc/backup-export
+install -m 640 -o root -g deploy /dev/null /etc/backup-export/healthchecks-url
+# then put the healthchecks.io URL in that file
+```
+
 1. **Nightly automated pull** — a launchd job on the maintainer's Mac (daily
    08:00; launchd rather than cron so a missed run fires on wake) SSHes in and
    streams down a gzipped `pg_dump` of Budget Buddy, plus a tarball of configs.

@@ -1,0 +1,12 @@
+[Unit]
+Description=Budget Buddy nightly backup (pg_dump + configs) to local disk
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=deploy
+Group=deploy
+ExecStart=/usr/local/bin/budget-buddy-backup
+# Exits with the failure COUNT and pings healthchecks.io itself, so a non-zero
+# status here is a real backup failure rather than a monitoring blip.

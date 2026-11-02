@@ -1,0 +1,86 @@
+# A server rebuilt without this runs, passes every check, and takes no backups.
+# The ping URL is a secret: it is only checked, never written or read here.
+
+- name: The backup directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ budget_buddy_backup_user }}"
+    group: "{{ budget_buddy_backup_user }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ budget_buddy_backup_root }}", mode: "0750" }
+    - { path: "{{ budget_buddy_backup_root }}/budget-buddy", mode: "0755" }
+    - { path: "{{ budget_buddy_backup_root }}/configs", mode: "0755" }
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: The directory the ping URL lives in
+  ansible.builtin.file:
+    path: "{{ budget_buddy_backup_url_file | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# stat reads the inode, never the contents, so the URL passes through nothing here.
+- name: Look at the ping URL file
+  ansible.builtin.stat:
+    path: "{{ budget_buddy_backup_url_file }}"
+    get_checksum: false
+  register: budget_buddy_backup_url
+
+- name: The ping URL file exists, mode 640, root:deploy
+  ansible.builtin.assert:
+    that:
+      - budget_buddy_backup_url.stat.exists
+      - budget_buddy_backup_url.stat.isreg
+      - budget_buddy_backup_url.stat.mode == '0640'
+      - budget_buddy_backup_url.stat.pw_name == 'root'
+      - budget_buddy_backup_url.stat.gr_name == budget_buddy_backup_user
+    fail_msg: >-
+      {{ budget_buddy_backup_url_file }} must exist as a regular file, mode 640,
+      root:{{ budget_buddy_backup_user }}. This role never writes it: put the
+      healthchecks.io URL there (RUNBOOK §7), then run again.
+    quiet: true
+
+- name: The backup scripts
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: /usr/local/bin/{{ item }}
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - budget-buddy-backup
+    - backup-export
+
+- name: The VM's pull key, bound to its forced command
+  ansible.posix.authorized_key:
+    user: "{{ budget_buddy_backup_user }}"
+    key: "{{ budget_buddy_backup_key }}"
+    key_options: "{{ budget_buddy_backup_key_options }}"
+    exclusive: false
+
+- name: The backup units
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: /etc/systemd/system/{{ item }}
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - budget-buddy-backup.service
+    - budget-buddy-backup.timer
+  register: budget_buddy_backup_units
+
+- name: Reload systemd after a unit changed
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: budget_buddy_backup_units is changed
+
+- name: The backup timer runs and starts at boot
+  ansible.builtin.systemd_service:
+    name: budget-buddy-backup.timer
+    state: started
+    enabled: true

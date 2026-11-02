@@ -26,6 +26,12 @@ this project uses the `0.x` versioning scheme described in
 
 ### Added
 
+- **The server's backups are written down as code.** A rebuilt server would have
+  run with no backups, because the scripts existed only by hand on the box and in
+  a private copy. Both scripts, the timer and the VM's restricted pull key are now
+  an Ansible role. The monitoring URL stays off GitHub. Nothing deploys the role,
+  so no change to the running backups. (#532)
+
 - **Budget Buddy's and the landing page's server setup are written down as code.**
   Two more Ansible roles in `infra/` describe `/opt/budget-buddy` and both Nginx
   sites. They never write `.env` or `docker-compose.yml`, which the deploy owns,
