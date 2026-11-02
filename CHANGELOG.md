@@ -26,6 +26,11 @@ this project uses the `0.x` versioning scheme described in
 
 ### Added
 
+- **The server itself is described in Terraform.** It's imported, with `plan` as the
+  check and nothing that applies it, and it can't be destroyed by accident. DNS
+  isn't included, because it's managed at Squarespace. No change to the running
+  site. (#533)
+
 - **Orbit Ops's database backups can leave the server.** The restricted backup key
   gains one fixed command that hands over Orbit Ops's newest finished dump, for
   the VM's nightly pull. It takes no argument. Live once installed on the server.
