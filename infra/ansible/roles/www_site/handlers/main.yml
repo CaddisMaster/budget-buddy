@@ -1,0 +1,10 @@
+- name: Test the nginx config for www
+  ansible.builtin.command: nginx -t
+  changed_when: false
+  listen: www site changed
+
+- name: Reload nginx for www
+  ansible.builtin.service:
+    name: nginx
+    state: reloaded
+  listen: www site changed

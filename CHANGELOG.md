@@ -26,6 +26,12 @@ this project uses the `0.x` versioning scheme described in
 
 ### Added
 
+- **Budget Buddy's and the landing page's server setup are written down as code.**
+  Two more Ansible roles in `infra/` describe `/opt/budget-buddy` and both Nginx
+  sites. They never write `.env` or `docker-compose.yml`, which the deploy owns,
+  and they don't request certificates. Nothing deploys them, so no change to the
+  running site. (#531)
+
 - **The server's host setup is written down as code.** An Ansible role in
   `infra/` describes what was set up by hand: the deploy user, SSH, the
   firewall, Docker, Nginx's base and Certbot. It is tested by building a
