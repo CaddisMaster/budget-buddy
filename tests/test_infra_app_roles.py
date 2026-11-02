@@ -6,6 +6,7 @@ whose failure would be worst on production, in the run CI makes:
 - release.yml owns `.env` and `docker-compose.yml`. A role writing either would show
   every release as drift, and a real run would put production back on its copy.
 - the site file's upload limit is what lets a phone screenshot reach the app (#447).
+- the ping URL is a secret, and the two backup scripts' path lists must agree (#532).
 
 `infra/` is excluded from the image, so these skip there.
 """
@@ -15,13 +16,13 @@ from pathlib import Path
 import pytest
 
 ROLES = Path(__file__).resolve().parent.parent / "infra/ansible/roles"
-APP_ROLES = ("budget_buddy_app", "www_site")
+APP_ROLES = ("budget_buddy_app", "www_site", "budget_buddy_backup")
 _NOT_IN_IMAGE = "not present in the shipped image — .dockerignore excludes infra/"
 
 pytestmark = pytest.mark.skipif(not ROLES.exists(), reason=_NOT_IN_IMAGE)
 
 _WRITE_TARGET = re.compile(r"^\s*(?:dest|path):\s*(?P<target>.+)$", re.M)
-_FORBIDDEN = re.compile(r"\.env\b|docker-compose\.yml")
+_FORBIDDEN = re.compile(r"\.env\b|docker-compose\.yml|_url_file\s*}}\s*\"?$|healthchecks-url")
 
 
 def written_paths(text):
@@ -59,3 +60,42 @@ def test_the_budget_site_keeps_the_upload_limit_on_the_import_route_alone():
     site = (ROLES / "budget_buddy_app/files/budget-buddy").read_text()
     assert site.count("client_max_body_size") == 1
     assert re.search(r"location = /transactions/import \{\s*client_max_body_size 16m;", site)
+
+
+BACKUP_FILES = ROLES / "budget_buddy_backup/files"
+
+
+def _tar_paths(text):
+    """The absolute paths a script's `tar czf` is given, one per continued line."""
+    return re.findall(r"^\s+(/(?:opt|etc)/\S+?)(?:\s+\\|\s+2>>\S+;\s+then)?\s*$", text, flags=re.M)
+
+
+def test_both_backup_scripts_archive_the_same_paths():
+    # Dropping one is invisible: the tarball still builds and passes gzip -t.
+    export = _tar_paths((BACKUP_FILES / "backup-export").read_text())
+    backup = _tar_paths((BACKUP_FILES / "budget-buddy-backup").read_text())
+    assert "/etc/nginx/sites-enabled" in export
+    assert export == backup
+
+
+def test_a_path_missing_from_one_script_is_noticed():
+    a = "tar czf - \\\n  /opt/x/.env \\\n  /etc/nginx/y\n"
+    b = "tar czf - \\\n  /opt/x/.env\n"
+    assert _tar_paths(a) != _tar_paths(b)
+
+
+def test_the_forced_command_is_bound_to_the_pull_key():
+    defaults = (ROLES / "budget_buddy_backup/defaults/main.yml").read_text()
+    assert 'command="/usr/local/bin/backup-export",restrict,' in defaults
+    assert "jupiter-backup" in defaults
+
+
+@pytest.mark.criterion(532, "The ping URL is never in git")
+def test_the_ping_url_is_never_in_git():
+    role = ROLES / "budget_buddy_backup"
+    tasks = (role / "tasks/main.yml").read_text()
+    assert forbidden_targets(tasks) == []
+    assert "budget_buddy_backup_url.stat.exists" in tasks
+    for path in role.rglob("*"):
+        if path.is_file():
+            assert "hc-ping.com/" not in path.read_text(), path
