@@ -25,6 +25,9 @@ this project uses the `0.x` versioning scheme described in
   name every service except the database, the same way rollbacks already did.
   Both also stop if they can't list the services, since an empty list would have
   started everything. No visible change. (#580)
+- **Picking up a settings change by hand can't reach the database either.** The
+  runbook's command for restarting the web and worker containers after editing
+  `.env` now leaves the database out of its plan. No visible change. (#584)
 
 ## [0.13.1] - 2026-11-03
 

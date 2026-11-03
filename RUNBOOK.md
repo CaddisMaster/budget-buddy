@@ -648,7 +648,7 @@ in the repository, so this list is the operative one for the server.
 After editing `.env`:
 
 ```bash
-docker compose up -d --force-recreate web worker
+docker compose up -d --no-deps --force-recreate web worker
 ```
 
 There are also two dead variables, `APP_USERNAME` and `APP_PASSWORD`, read by no
@@ -706,7 +706,7 @@ docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" \
 #    Nothing has changed for the app until this step, so you can pause here.
 echo 'DB_APP_USER=budget_app'            >> .env
 echo 'DB_APP_PASSWORD=the-same-password' >> .env
-docker compose up -d --force-recreate web worker
+docker compose up -d --no-deps --force-recreate web worker
 
 # 5. Verify.
 curl -s localhost:5001/healthz     # {"database":"ok","status":"ok"}
@@ -761,7 +761,7 @@ If it names anything new, set it on the Droplet **before** approving the deploy:
 # on the Droplet, as deploy
 cd /opt/budget-buddy
 vi .env                                   # add the variable
-docker compose up -d --force-recreate web worker
+docker compose up -d --no-deps --force-recreate web worker
 ```
 
 ⚠️ **Order matters.** The deploy job's `up -d` will *not* pick up an `.env` edit
@@ -1113,7 +1113,7 @@ transaction is present.
     cd /opt/budget-buddy
     docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" \
       -c "ALTER ROLE budget_app PASSWORD 'the-value-of-DB_APP_PASSWORD-in-.env';"
-    docker compose up -d --force-recreate web worker
+    docker compose up -d --no-deps --force-recreate web worker
     ```
 
     Use the password already in the restored `.env` rather than generating a new
