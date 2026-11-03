@@ -112,12 +112,12 @@ def test_an_unknown_mode_is_refused(droplet):
     assert _live(droplet) == OLD
 
 
-def test_a_release_that_would_recreate_db_is_refused(droplet):
+def test_a_release_that_changes_db_is_refused(droplet):
     """The guard chosen for #433: a db change is a scheduled operation, never
     a side effect of a release, so the old file stays and nothing swaps."""
     result = _install(droplet, db_id="abc123", want="new-db-hash", have="old-db-hash")
     assert result.returncode == 1
-    assert "recreate the database container" in result.stdout
+    assert "changes the db service" in result.stdout
     assert _live(droplet) == OLD
     assert not _staged_left(droplet)
 
@@ -160,7 +160,6 @@ def test_release_installs_the_file_before_its_first_compose_command():
     assert "< docker-compose.yml" in text
     assert install < text.index("docker compose"), \
         "a compose command runs before the release's compose file is in place"
-    assert "docker compose up -d --remove-orphans" in text
 
 
 @pytest.mark.criterion(433, "A rollback brings the rolled-back version's compose file")
@@ -179,6 +178,84 @@ def test_rollback_never_recreates_db_and_removes_orphans():
     text = ROLLBACK_WF.read_text()
     assert "grep -vx db" in text
     assert "docker compose up -d --no-deps --remove-orphans \\$SERVICES" in text
+
+
+def _swap_commands(workflow):
+    """The shell that picks the services and swaps them, exactly as shipped.
+
+    Both live inside a double-quoted ssh argument, so this undoes that one layer
+    of escaping and hands over what the Droplet's shell would receive.
+    """
+    lines = workflow.read_text().splitlines()
+    start = next(i for i, line in enumerate(lines) if 'SERVICES=\\"' in line)
+    end = next(i for i in range(start, len(lines)) if "docker compose up -d" in lines[i])
+    shell = "\n".join(line.strip() for line in lines[start:end + 1])
+    return (shell.replace('\\"', '"').replace("\\$", "$").replace("\\\\n", "\\n")
+            .replace("${VERSION}", "1.2.3"))
+
+
+# Records every compose call, and answers `config --services` from the environment.
+STUB_COMPOSE = """#!/bin/sh
+echo "$*" >> "$STUB_LOG"
+case "$*" in
+  *"config --services")
+    [ -n "$STUB_CONFIG_FAILS" ] && { echo "bad compose file" >&2; exit 15; }
+    printf 'db\\nredis\\nweb\\nworker\\n' ;;
+esac
+"""
+
+
+def _run_swap(tmp_path, workflow, config_fails=False):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    stub = bin_dir / "docker"
+    stub.write_text(STUB_COMPOSE)
+    stub.chmod(0o755)
+    log = tmp_path / "calls.log"
+    log.touch()
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "STUB_LOG": str(log),
+           "STUB_CONFIG_FAILS": "1" if config_fails else ""}
+    result = subprocess.run(["sh", "-ec", _swap_commands(workflow)], cwd=tmp_path, env=env,
+                            capture_output=True, text=True)
+    return result, [c for c in log.read_text().splitlines() if " up " in f" {c} "]
+
+
+@pytest.mark.parametrize("workflow", [RELEASE_WF, ROLLBACK_WF], ids=["release", "rollback"])
+@pytest.mark.criterion(580, "A release cannot recreate an unchanged db")
+def test_the_swap_names_every_service_but_db(tmp_path, workflow):
+    """#580: a Compose upgrade changed the image label `up -d` compares, so 0.13.1
+    recreated a db whose definition and image had not changed. A swap that never
+    names db cannot do that, whatever Compose decides to compare next."""
+    result, ups = _run_swap(tmp_path, workflow)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert ups == ["compose up -d --no-deps --remove-orphans redis web worker"]
+
+
+@pytest.mark.parametrize("workflow", [RELEASE_WF, ROLLBACK_WF], ids=["release", "rollback"])
+def test_an_empty_service_list_stops_before_the_swap(tmp_path, workflow):
+    """`config | grep | tr` reports tr's status, so a failed config comes back as an
+    empty list, and `up -d --no-deps` with no names starts everything, db included."""
+    result, ups = _run_swap(tmp_path, workflow, config_fails=True)
+    assert result.returncode != 0
+    assert "::error::" in result.stdout
+    assert ups == []
+
+
+@pytest.mark.criterion(580, "A release cannot recreate an unchanged db")
+def test_no_compose_up_in_the_release_can_reach_db():
+    """The check above reads one command, so also refuse a second one added later."""
+    commands = [line.strip() for line in RELEASE_WF.read_text().splitlines()
+                if "docker compose up" in line and not line.strip().startswith("#")]
+    assert commands, "the release has no compose up at all, so this checks nothing"
+    assert all("--no-deps" in c and "$SERVICES" in c for c in commands), commands
+
+
+def test_the_release_stops_on_a_box_with_no_running_db():
+    """Leaving db out of the swap is only safe because a box with no running db
+    never gets there: the pg_dump before it runs through `exec db`, and fails."""
+    text = RELEASE_WF.read_text()
+    dump = text.index("docker compose exec -T db pg_dump")
+    assert dump < text.index('SERVICES=\\"')
 
 
 def _step(text, name):

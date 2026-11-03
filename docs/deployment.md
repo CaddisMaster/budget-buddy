@@ -140,8 +140,9 @@
   (`landing/` was here until #299 moved the page to its own repo and its own web root under
   `/var/www`.) To change compose or add a migration, `scp` it up — `git pull` doesn't work there.
   ✅ **Since #433 `release.yml` and `rollback.yml` ship `docker-compose.yml` themselves**, hash-checked
-  by `scripts/install_compose.sh`, before their first compose command. A release whose file would
-  **recreate the `db` container fails before the swap** (RUNBOOK §5 has the guard and what to do).
+  by `scripts/install_compose.sh`, before their first compose command. A release whose file
+  **changes the `db` service fails before the swap**, and neither deploy's `up` names `db` (#580;
+  RUNBOOK §5 has the guard and what to do).
   Hand copies are break-glass only. ⚠️ **The Mac has no clone**, so a hand copy uses RUNBOOK §5's
   tag-pinned, hash-checked recipe (#432).
   It is owned by an unprivileged **`deploy`** user (docker group, no sudo) that CI authenticates

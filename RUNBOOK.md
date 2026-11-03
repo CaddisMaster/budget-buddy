@@ -383,12 +383,16 @@ image. Both stream it to `.docker-compose.yml.new` and pipe in `scripts/install_
 which:
 
 1. refuses the file unless its sha256 equals the runner's (`hash mismatch`), and installs nothing;
-2. **refuses a release that would recreate the `db` container**: it compares the config hash
-   compose would compute for `db` under the new file with the `com.docker.compose.config-hash`
-   label on the running container. That label is the exact thing `up -d` compares, so a mismatch
-   there means a recreate here. A rollback only **warns**, and its `up` skips `db`
-   (`--no-deps`, every service but `db`);
+2. **refuses a release that changes the `db` service**: it compares the config hash compose
+   would compute for `db` under the new file with the `com.docker.compose.config-hash` label on
+   the running container. A rollback only **warns**;
 3. renames it over `docker-compose.yml`, so a dropped connection leaves only a stray `.new`.
+
+**Neither deploy's `up` names `db`** (`--no-deps`, every service but `db`, #580). The hash check
+above can't promise that on its own: `up -d` also compares the image label, networks and volumes.
+At `0.13.1` the guard passed and `up -d` still recreated an unchanged `db`, down about 12 seconds
+with no data lost, because a Compose upgrade had changed the image label. Since the release's `up`
+no longer starts `db`, a box where it isn't running fails earlier, at the pre-deploy `pg_dump`.
 
 Both deploys also pass `--remove-orphans`. A service dropped from the file (rolling back past
 #402 drops `worker`) would otherwise keep its container running. Verified 2026-10-05.
@@ -541,8 +545,10 @@ At that rate the disk is never the problem — the cap exists for a **fault loop
 crash-looping container or a repeating Postgres error writing gigabytes in days, which
 gives no warning because `/healthz` stays green until Postgres cannot write.
 
-⚠️ **Any edit to the `db` service definition makes the next `docker compose up -d`
-recreate the database container.** That is the one sanctioned exception to the
+⚠️ **Any edit to the `db` service definition makes the next bare `docker compose up -d`
+recreate the database container**, and so can a Compose upgrade with no edit at all (#580). To
+see what a bare `up -d` would do first, run `docker compose --dry-run up -d --no-deps db`:
+`Running` is safe, `Recreate` is not. The edit is the one sanctioned exception to the
 `pull web` rule and it is a scheduled operation, never a side effect of a release:
 
 ```bash
@@ -801,7 +807,8 @@ Manual fallback, if Actions is unavailable — run it as `deploy`, not `root`:
 cd /opt/budget-buddy
 # `pull web`, never a bare `pull` — that also fetches postgres:16 and the
 # following `up -d` then recreates the database container (issue #22).
-TAG=0.1.0 docker compose pull web && TAG=0.1.0 docker compose up -d
+# --no-deps with named services: a bare `up -d` can recreate db (#580).
+TAG=0.1.0 docker compose pull web && TAG=0.1.0 docker compose up -d --no-deps --remove-orphans redis web worker
 
 # Then pin it, exactly as the workflows do, so the box records what it runs
 # and a later bare `up -d` cannot change it (#190):

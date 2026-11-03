@@ -8,6 +8,15 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Fixed
+
+- **A deploy can no longer restart the database.** The `0.13.1` deploy recreated
+  the database container even though nothing about it had changed, because a
+  Compose upgrade on the server had changed what Compose compares. Deploys now
+  name every service except the database, the same way rollbacks already did.
+  Both also stop if they can't list the services, since an empty list would have
+  started everything. No visible change. (#580)
+
 ## [0.13.1] - 2026-11-03
 
 ### Security

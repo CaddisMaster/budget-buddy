@@ -130,6 +130,10 @@ jobs:
                # orphaned new-image worker left running would schedule every job
                # alongside the old image's in-process scheduler.
                SERVICES=\"\$(TAG='${VERSION}' docker compose config --services | grep -vx db | tr '\\n' ' ')\"
+               if [ -z \"\$SERVICES\" ]; then
+                 echo \"::error::Could not list the compose services, so nothing was swapped. A bare up -d here would start every service, db included.\"
+                 exit 1
+               fi
                TAG='${VERSION}' docker compose up -d --no-deps --remove-orphans \$SERVICES
 
                # #305 — confirm the container that came up IS the version asked

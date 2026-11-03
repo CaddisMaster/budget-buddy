@@ -299,8 +299,22 @@ jobs:
                # 3. Only now swap the application.
                #    --remove-orphans: a service gone from the new file would
                #    otherwise keep running its old container (#433).
+               #
+               #    Every service but db, with --no-deps (#580). A plain up -d
+               #    recreates a container on more than a changed definition: the
+               #    0.13.1 deploy recreated an unchanged db because a Compose
+               #    upgrade had changed the image label it compares. A swap that
+               #    never names db cannot do that. Step 1's pg_dump has already
+               #    failed the deploy if db is not running, so nothing here needs
+               #    to start it. A pipeline reports only its last status, and up
+               #    with no names starts everything, hence the empty check.
                TAG='${VERSION}' docker compose pull web
-               TAG='${VERSION}' docker compose up -d --remove-orphans
+               SERVICES=\"\$(TAG='${VERSION}' docker compose config --services | grep -vx db | tr '\\n' ' ')\"
+               if [ -z \"\$SERVICES\" ]; then
+                 echo \"::error::Could not list the compose services, so nothing was swapped. A bare up -d here would start every service, db included.\"
+                 exit 1
+               fi
+               TAG='${VERSION}' docker compose up -d --no-deps --remove-orphans \$SERVICES
 
                # 3b. Assert the container that came up IS this release, before
                #    anything irreversible happens below (#305). Ordering is
