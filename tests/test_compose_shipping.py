@@ -275,3 +275,18 @@ def test_the_ship_step_is_unconditional(workflow, name):
     step = _step(workflow.read_text(), name)
     assert "install_compose.sh" in step
     assert "\n        if:" not in step
+
+
+RUNBOOK = REPO_ROOT / "RUNBOOK.md"
+HAND_RUN_DOCS = (RUNBOOK, REPO_ROOT / "docs/deployment.md")
+
+
+@pytest.mark.skipif(not RUNBOOK.exists(), reason="not in the shipped image: .dockerignore strips *.md")
+@pytest.mark.criterion(584, "A hand-run recreate leaves db out of its plan")
+def test_a_hand_run_recreate_leaves_db_out_of_its_plan():
+    """`up -d --force-recreate web worker` still plans web's and worker's dependencies, and
+    a dependency that looks different gets recreated, which is #580 run by hand."""
+    commands = [line for doc in HAND_RUN_DOCS for line in doc.read_text().splitlines()
+                if "docker compose up -d" in line and "--force-recreate" in line]
+    assert commands, "found no hand-run recreate at all, so this checks nothing"
+    assert [c for c in commands if "--no-deps" not in c] == []
