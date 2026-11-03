@@ -4,7 +4,7 @@
 # the suite on the Python that actually ships.
 #
 # Not in requirements.txt on purpose — none of this belongs in production.
-pytest==9.1.1
+pytest==9.2.0
 # Parallel test runs. Safe only because tests/conftest.py derives its TEST_PREFIX
 # from PYTEST_XDIST_WORKER — every worker owns its own database rows. Read the
 # note there before changing how test users are named.
@@ -22,4 +22,4 @@ behave==1.3.3
 # tests/test_lint_local.py fails if a second copy appears anywhere. So a
 # Dependabot bump of this line is the whole change. Keep it a bare `ruff==X.Y.Z`
 # line: that is the form both the action and the CI check parse.
-ruff==0.17.2
+ruff==0.17.3
