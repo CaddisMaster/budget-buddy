@@ -61,6 +61,7 @@ data/*.csv
 infra/ansible/inventory.yml
 infra/ansible/collections/
 infra/.venv/
+infra/ansible/vendor/
 
 # Terraform (#533): state holds the Droplet's address. The lock file IS committed.
 *.tfstate
