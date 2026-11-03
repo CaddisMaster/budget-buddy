@@ -5,38 +5,78 @@
 
 ## Current Status
 
-▶️ **NEXT SESSION:** **The IaC set is closed except #529** (2026-11-02): #531, #532, #533 and #535
-are done, #534 is NOT_PLANNED. **#529 stays open until a release** proves the pushed tag holds both
-platforms. orbit-ops #377 is Orbit Ops's to act on. **The 26.04 rebuild has no issue and no date:**
-the cheap first step is `infra/test.sh` against `ubuntu:26.04`, and the only real proof is a rehearsal
-on a temporary Droplet (Sean's call, it costs a little). **Before a batch of LXD runs, warn Sean:**
-the VM is on his Mac, and each run is about 5 minutes of load. **Before any real role run against the
-Droplet, run check mode first** (RUNBOOK §8); `host.yml` has never run for real. **#499** (scan, SBOM,
-signing) needs a per-platform scan matrix now that the image is multi-arch. **#500** (Postgres) is a
-scheduled operation and gets no milestone until Sean picks a date. Dependabot's #555 (Python 3.15) and
-#560 (Redis 8) look like more than routine bumps. Prod runs **`0.13.0`** (shipped 2026-10-12). **On `main`, NOT deployed,
-all `0.13.1` content:** #483 (the digest sent once, #494), #491 (rows read by name, #501), #490
-(the app factory, #502), #492 (CI compares `schema.sql` with what the migrations build, #503),
-**#489** (the services layer, #506–#519), **#513** (#514), **#493** (the docs sweep, #524),
-**#497** (root owns the image's code, #525), **#529** (multi-arch, #538), **#530**'s role (#539,
-#549; deploys nothing), the rest of `infra/` (#531, #532, #533, #535; the image doesn't carry it), **#544** (Python 3.14.10 for two critical CVEs, #545), **#498** (web and
-worker locked down, #526) and Dependabot **#522/#523**. After the deploy, `docker compose exec web python -V` should say 3.14.10 (#544's
-second criterion). Production still sends the digest twice until
-`0.13.1` ships; cutting it is Sean's call, with no deadline. ⚠️ **`0.13.1` changes
-`docker-compose.yml`** (#490: web runs `app.wsgi:app`; #498's lockdown); the deploy
-ships it (#433) and `db` is untouched, so the guard passes. ⚠️ **`0.13.1`'s release build takes
-minutes, not seconds** (the emulated arm64 half). **After that deploy:** `docker compose logs
-worker` shows `Scheduler running`, and `docker buildx imagetools inspect` lists linux/amd64 and
-linux/arm64 (then close #529). Also read `docker stats --no-stream` and each container's `OOMKilled`
-against #498's new caps: the worker's margin is the thinner one. ⏳ **Not yet checked by Sean:** his real Discover export through the
-import **in production**, a real phone screenshot, a multi-page PDF, #437's device list on his
-phone, and the round-trip of `budget-buddy-env-local` through the new `bw-env.sh`. ⚠️ **The
-Droplet's login banner says `System restart required`**: a reboot takes Budget Buddy and Orbit Ops
-down together, so schedule it on its own. **#36** stays date-parked. ⚠️ The `Acceptance criteria`
-check is **still not a required status check** (re-checked 2026-10-23). **Cross-project items
-(Sean's call, 2026-10-30):** an action another repo must take is a `cross-repo` issue in **that**
-repo; a shared VM/droplet change is an entry in `personal-vault/infra/CHANGES.md`. No more
-handoff notes.
+▶️ **NEXT SESSION:** Prod runs **`0.13.1`** (shipped 2026-11-03). **On `main`, NOT deployed, all
+`0.14.0` content so far:** #580 (the release's `up` leaves `db` out), and #577 and #584, which change
+no image. **Check at the next release:** the deploy log has no `budget-buddy-db-1 Recreate` line.
+That's #580's first real run. **No issue is ready to pick up:** #499 (scan, SBOM, signing) needs a
+per-platform scan matrix, #500 (Postgres) waits for Sean to pick a date, and **#36** stays date-parked.
+Dependabot's six open PRs need sorting: #561 and #562 look routine, while #555 (Python 3.15), #560
+(Redis 8), #563 (dateutil 3) and #564 (anthropic 2) are majors that each need a read. The 26.04 rebuild
+has no issue and no date, and its base now belongs to `droplet-infra`.
+
+⏳ **Still to observe, nothing to build:** **Sunday 2026-11-08's digest arrives once**, which is #483's
+real test. Re-read `/sys/fs/cgroup/memory.peak` for web and worker after a few days (at 2026-11-03,
+132 of 512 MiB and 55 of 256 MiB, moments after the restart, so it says little). ⏳ **Not yet checked
+by Sean:** his real Discover export through the import **in production**, a real phone screenshot, a
+multi-page PDF, #437's device list on his phone, and the round-trip of `budget-buddy-env-local`
+through the new `bw-env.sh`. **Sean's open call:** whether the Droplet's Compose plugin keeps upgrading
+unattended (the recommendation is yes). Orbit Ops left it, and the plugin is `droplet-infra`'s now.
+⚠️ **The Droplet's login banner says `System restart required`**: a reboot takes Budget Buddy and Orbit
+Ops down together, so schedule it on its own. ⚠️ The `Acceptance criteria` check is **still not a
+required status check** (re-checked 2026-10-23). **Before a batch of LXD runs, warn Sean:** the VM is
+on his Mac, and each run is about 5 minutes of load. **Cross-project items (Sean's call, 2026-10-30):**
+an action another repo must take is a `cross-repo` issue in **that** repo; a shared VM/droplet change
+is an entry in `personal-vault/infra/CHANGES.md`. No more handoff notes.
+
+### The 2026-11-03 session: 0.13.1 shipped, `db` recreated, and the server gets its own repo
+
+| PR | Issue | |
+|---|---|---|
+| #579 | #578 | Cut `0.13.1`: the changelog, and a one-line What's-new strip |
+| #581 | (#580) | Corrected `0.13.1`'s changelog: the deploy did recreate `db` |
+| #582 | #580 | The release's `up` names every service but `db`; both deploys stop on an empty service list |
+| `droplet-infra` | #576 | The new public repo, built with its history: `droplet_host`, `droplet_export`, Terraform |
+| #583 | #577 | Budget Buddy becomes a tenant: copies deleted, host layer pinned at `d9805e7` |
+| #585 | #584 | `--no-deps` on the runbook's hand-run recreate, found by Orbit Ops |
+| this PR | #586 | this record |
+
+- 🛑 **The `0.13.1` deploy recreated the production `db`, after I told Sean it wouldn't.** No harm done:
+  a clean shutdown, about 12 seconds down, the same Postgres, and the live row counts matched the
+  pre-deploy dump. **Cause, reproduced on the VM:** the Compose plugin upgraded itself from 5.3.1 to
+  5.6.1 on 2026-10-21, and between those versions `com.docker.compose.image` went from the index digest
+  to the platform manifest's. The first `up -d` afterwards saw a different label for the same image.
+  The guard compares only the config hash, which matched, and its comment wrongly called that everything
+  `up -d` compares. **Nothing flagged it:** I found it reading the deploy log by hand, so that log line is
+  now a thing to check at every release.
+- 🛑 **Proof beat theory twice.** My first theory, that `postgres:16` had moved, was wrong: the image was 3
+  months old with no predecessor left. The release notes then suggested the real cause, and only a
+  throwaway project under both binaries proved it. The same project then proved the fix: the old
+  command's dry run said `db Recreate`, and the new one left the same container running.
+- **The empty-list check is a hole that was already in `rollback.yml`.** `config | grep | tr` reports
+  `tr`'s status, so a failed `config` gives an empty list, and `up -d --no-deps` with no names starts
+  everything, `db` included.
+- **The What's-new strip got a block on a patch (Sean's call).** Patch fixes aren't normally blocks, but
+  every release now pushes "Check out what's new in the app!" and the tap lands on the strip (#115, #131).
+  `release_prep.py` moves only the version, which would have put 0.13.0's feature list under a 0.13.1
+  heading, so check this at the next patch too.
+- **`0.13.1` despite an `### Added` section.** The `release-prep` agent reads any `### Added` as a MINOR.
+  Those entries were `infra/` code, not in the image, and `VERSIONING.md`'s test is "no new surface".
+- 🛑 **Splitting history: a clone brings the tags.** After `filter-branch`, `main` was clean, but 16 tags
+  still pointed at the whole of Budget Buddy, and a push would have defeated the split. The scan caught
+  it because it used `--all`. Commit messages were rewritten from `#530` to `BB-530`, so they can't link
+  to the wrong issue in a new repo. The classifier refused to create the public repo, so Sean ran that.
+- ⚠️ **A check moved out of CI.** `budget-buddy-backup` and `backup-export`'s `configs` must archive the
+  same paths, and only `infra/test.sh` has both files now, since CI doesn't fetch the host layer.
+- ⚠️ **I merged #583 past a red check without reading it**, by chaining the merge after the watch. It
+  turned out to be the stale run from before the PR's hand-claims, and the rerun passed. That was luck,
+  because the check isn't required, so nothing else would have stopped it. Read the rollup before merging.
+- **Copying commands to the Mac took several tries.** Prose between commands opened a quote in zsh, Sean
+  couldn't copy from a long box, and `vi` was the wrong thing to hand him. What worked: one file in the
+  repo root, listed in `.git/info/exclude`, opened in the editor, holding one paste with an inline heredoc
+  instead of an editing step. The file holds the Droplet's address, so delete it afterwards.
+- **Two other sessions finished their halves the same morning.** orbit-ops #383 also found a gap here
+  (#584), and filed its own #384 for #580. seandesmet.com #44 took the snippet and `landing-deploy` too,
+  then shipped a real site change, so `app.yml` from `main` would have undone it until #577 merged.
 
 ### The 2026-11-02 session: the IaC set closes
 
@@ -370,7 +410,7 @@ ported from the app layer into SQL keeps its shape and loses its meaning. `docs/
 the rule; `docs/status.md` carries the session.
 
 
-⚠️ **The open milestone is `0.13.1`** (#483). ✅ **`0.13.0` was closed on ship day** (2026-10-12, 42/42). ✅ **`0.12.0` was closed on ship day** (2026-10-05, 24/24). ✅ **`0.10.0` was closed ON SHIP DAY** (2026-09-11) at
+⚠️ **The open milestone is `0.14.0`.** ✅ **`0.13.1` was closed on ship day** (2026-11-03, 49/49, #576 and #577 moved first). ✅ **`0.13.0` was closed on ship day** (2026-10-12, 42/42). ✅ **`0.12.0` was closed on ship day** (2026-10-05, 24/24). ✅ **`0.10.0` was closed ON SHIP DAY** (2026-09-11) at
 `open=0, closed=25`, with its nine open items moved to `0.11.0` first — the corrective landing, and
 the shape every milestone but `0.9.0`'s has closed at. `0.9.0` was closed 2026-09-03, late: it
 shipped on 2026-09-02 but was left open to hold a backlog, so **seven commits landed after the

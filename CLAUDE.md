@@ -318,22 +318,21 @@ standing decisions are in [`docs/status.md`](docs/status.md) (older sessions in
 `docs/status-archive.md`). ⚠️ **It lags `main` by construction** — reconcile against `git log`
 and `gh issue list` at the start of every session.
 
-- ▶️ **On `main`, not yet deployed (`0.13.1`'s content): #483** (the digest sent twice, #494),
-  **#491** (rows read by name), **#490** (the app factory: gunicorn runs `app.wsgi:app`, and the
-  compose file changes with it), **#492** (CI compares `schema.sql` with what the migrations
-  build), **#489** (the `app/services/` layer), **#513**, **#493** (the docs sweep), **#497**
-  (root owns the image's code), **#529** (the release builds amd64 + arm64; open until a
-  release proves the pushed tag), **#544** (Python 3.14.10, two critical CVEs), and **#498** (web
-  and worker locked down, #526). `infra/` (#530–#535) isn't in the image: **every IaC issue is closed
-  but #529**. On 2026-11-02, `app.yml`'s check mode and `terraform plan`, both from the Mac, matched production.
-  Cutting it is Sean's call, with no deadline. **NEXT UP** is in `docs/status.md`
-- ✅ **Prod runs `0.13.0`, shipped 2026-10-12.** ⏳ **Not yet checked by Sean:** his real Discover
+- ▶️ **On `main`, not yet deployed (`0.14.0`'s content):** **#580** (the release's `up` leaves `db`
+  out; check at the next release that the log has no `budget-buddy-db-1 Recreate` line), and #577 and
+  #584, which change no image. Cutting it is Sean's call, with no deadline. **NEXT UP** is in `docs/status.md`
+- ✅ **Prod runs `0.13.1`, shipped 2026-11-03.** ⏳ **Not yet checked by Sean:** his real Discover
   export **in production**, a real phone screenshot, a multi-page PDF, and #437 on his phone.
+  ⏳ Sunday 2026-11-08's digest should arrive once (#483).
   ⚠️ The Droplet's banner says `System restart required`; a reboot takes Orbit Ops down too.
   **#36** stays date-parked
-- **The open milestone is `0.13.1`.** Exactly one is open at a time; create the next one and move
+- **The open milestone is `0.14.0`.** Exactly one is open at a time; create the next one and move
   open items **before** closing it on ship day. The full rule and its traps are in
   `docs/status.md` §Milestone convention
+- 🖥️ **The server's shared layer is in `CaddisMaster/droplet-infra`** (#576): the host role, Terraform,
+  `backup-export`. Budget Buddy, Orbit Ops and `seandesmet.com` are tenants, each pinning it by commit
+  for testing. A change to any of those goes there, and `tests/test_infra_pins.py` fails if a moved
+  path comes back here
 - 🛑 **The VM is deliberately locked out of the Droplet** (Sean, 2026-11-01; it had a route from
   2026-10-30, through Gateway). Droplet steps are Mac-only, and `Permission denied (publickey)`
   from the VM is the expected result: don't work around it
