@@ -1,10 +1,9 @@
-# Budget Buddy's layer of the shared Droplet (#531), its backups (#532) and www's
-# site, on top of the host layer (host.yml). Separate roles: www's content is another repo's, so
-# its role can move there later without changing Budget Buddy's.
-- name: Budget Buddy and www on the Droplet
+# Budget Buddy's layer of the shared Droplet (#531) and its backups (#532), on top of
+# droplet-infra's host layer. www's site is seandesmet.com's, and the host layer and
+# backup-export are droplet-infra's (#576, #577).
+- name: Budget Buddy on the Droplet
   hosts: droplet
   become: true
   roles:
     - budget_buddy_app
-    - www_site
     - budget_buddy_backup

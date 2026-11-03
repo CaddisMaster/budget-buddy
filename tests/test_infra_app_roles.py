@@ -6,20 +6,20 @@ whose failure would be worst on production, in the run CI makes:
 - release.yml owns `.env` and `docker-compose.yml`. A role writing either would show
   every release as drift, and a real run would put production back on its copy.
 - the site file's upload limit is what lets a phone screenshot reach the app (#447).
-- the ping URL is a secret, and the two backup scripts' path lists must agree (#532).
+- the ping URL is a secret (#532).
+
+`backup-export` and its key moved to droplet-infra (#576). `infra/test.sh` compares
+its `configs` list with the backup script's, because only there are both files present.
 
 `infra/` is excluded from the image, so these skip there.
 """
-import gzip
-import os
 import re
-import subprocess
 from pathlib import Path
 
 import pytest
 
 ROLES = Path(__file__).resolve().parent.parent / "infra/ansible/roles"
-APP_ROLES = ("budget_buddy_app", "www_site", "budget_buddy_backup")
+APP_ROLES = ("budget_buddy_app", "budget_buddy_backup")
 _NOT_IN_IMAGE = "not present in the shipped image — .dockerignore excludes infra/"
 
 pytestmark = pytest.mark.skipif(not ROLES.exists(), reason=_NOT_IN_IMAGE)
@@ -65,34 +65,6 @@ def test_the_budget_site_keeps_the_upload_limit_on_the_import_route_alone():
     assert re.search(r"location = /transactions/import \{\s*client_max_body_size 16m;", site)
 
 
-BACKUP_FILES = ROLES / "budget_buddy_backup/files"
-
-
-def _tar_paths(text):
-    """The absolute paths a script's `tar czf` is given, one per continued line."""
-    return re.findall(r"^\s+(/(?:opt|etc)/\S+?)(?:\s+\\|\s+2>>\S+;\s+then)?\s*$", text, flags=re.M)
-
-
-def test_both_backup_scripts_archive_the_same_paths():
-    # Dropping one is invisible: the tarball still builds and passes gzip -t.
-    export = _tar_paths((BACKUP_FILES / "backup-export").read_text())
-    backup = _tar_paths((BACKUP_FILES / "budget-buddy-backup").read_text())
-    assert "/etc/nginx/sites-enabled" in export
-    assert export == backup
-
-
-def test_a_path_missing_from_one_script_is_noticed():
-    a = "tar czf - \\\n  /opt/x/.env \\\n  /etc/nginx/y\n"
-    b = "tar czf - \\\n  /opt/x/.env\n"
-    assert _tar_paths(a) != _tar_paths(b)
-
-
-def test_the_forced_command_is_bound_to_the_pull_key():
-    defaults = (ROLES / "budget_buddy_backup/defaults/main.yml").read_text()
-    assert 'command="/usr/local/bin/backup-export",restrict,' in defaults
-    assert "jupiter-backup" in defaults
-
-
 @pytest.mark.criterion(532, "The ping URL is never in git")
 def test_the_ping_url_is_never_in_git():
     role = ROLES / "budget_buddy_backup"
@@ -102,69 +74,3 @@ def test_the_ping_url_is_never_in_git():
     for path in role.rglob("*"):
         if path.is_file():
             assert "hc-ping.com/" not in path.read_text(), path
-
-
-# --- backup-export, run for real with sh (#535) -------------------------------
-#
-# The script's paths are fixed on purpose, so a copy with the one directory
-# replaced runs here. infra/test.sh drives the real file over SSH on the VM.
-
-ORBIT_DIR = "/opt/orbit-ops/backups"
-
-
-@pytest.fixture
-def export(tmp_path):
-    backups = tmp_path / "backups"
-    backups.mkdir()
-    script = tmp_path / "backup-export"
-    text = (BACKUP_FILES / "backup-export").read_text()
-    assert ORBIT_DIR in text
-    script.write_text(text.replace(ORBIT_DIR, str(backups)))
-
-    def run(command):
-        env = {"PATH": os.environ["PATH"], "SSH_ORIGINAL_COMMAND": command}
-        return subprocess.run(["sh", str(script)], env=env, capture_output=True, stdin=subprocess.DEVNULL)
-
-    run.backups = backups
-    return run
-
-
-def _dump(directory, name, body, age):
-    path = directory / name
-    path.write_bytes(gzip.compress(body))
-    stamp = 2_000_000_000 - age
-    os.utime(path, (stamp, stamp))
-
-
-@pytest.mark.criterion(535, "No Orbit Ops dump yet is not a crash")
-def test_no_dump_is_a_named_error(export):
-    result = export("orbit-ops")
-    assert result.returncode == 1
-    assert result.stdout == b""
-    assert b"no Orbit Ops dump" in result.stderr
-
-
-def test_it_serves_the_newest_finished_dump(export):
-    _dump(export.backups, "pre-deploy-1.sql.gz", b"older", age=200)
-    _dump(export.backups, "nightly-2.sql.gz", b"newest", age=100)
-    _dump(export.backups, "nightly-3.sql.gz.partial", b"unfinished", age=0)
-    result = export("orbit-ops")
-    assert result.returncode == 0, result.stderr
-    assert gzip.decompress(result.stdout) == b"newest"
-
-
-@pytest.mark.criterion(535, "The backup key can't do anything else")
-@pytest.mark.parametrize("command", [
-    "orbit-ops /etc/shadow",
-    "orbit-ops ../../etc/shadow",
-    "orbit-ops; id",
-    "ORBIT-OPS",
-    "cat /etc/shadow",
-    "",
-])
-def test_nothing_but_the_exact_command_is_served(export, command):
-    _dump(export.backups, "nightly-1.sql.gz", b"a dump", age=0)
-    result = export(command)
-    assert result.returncode == 1
-    assert result.stdout == b""
-    assert b"backup-export: refused" in result.stderr

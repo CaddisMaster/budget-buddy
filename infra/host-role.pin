@@ -1,0 +1,6 @@
+# droplet-infra's host layer, which this repo's roles are tested on top of (#577).
+# A commit SHA, never a branch: the role's path and droplet_host_* variables are
+# the interface. For testing only: this repo never runs host.yml on production.
+# Bump it in its own PR, after reading droplet-infra's diff.
+repo=https://github.com/CaddisMaster/droplet-infra.git
+sha=d9805e7db77a9f482463841ca7bb0c8cffef37e5

@@ -44,23 +44,13 @@
       healthchecks.io URL there (RUNBOOK §7), then run again.
     quiet: true
 
-- name: The backup scripts
+- name: The backup script
   ansible.builtin.copy:
-    src: "{{ item }}"
-    dest: /usr/local/bin/{{ item }}
+    src: budget-buddy-backup
+    dest: /usr/local/bin/budget-buddy-backup
     owner: root
     group: root
     mode: "0755"
-  loop:
-    - budget-buddy-backup
-    - backup-export
-
-- name: The VM's pull key, bound to its forced command
-  ansible.posix.authorized_key:
-    user: "{{ budget_buddy_backup_user }}"
-    key: "{{ budget_buddy_backup_key }}"
-    key_options: "{{ budget_buddy_backup_key_options }}"
-    exclusive: false
 
 - name: The backup units
   ansible.builtin.copy:

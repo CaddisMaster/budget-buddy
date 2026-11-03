@@ -117,8 +117,8 @@ loopback.
 Config lives at `/etc/nginx/sites-available/`, symlinked into `sites-enabled/`.
 Three sites are enabled: `budget-buddy`, `seandesmet.com` and `learn.seandesmet.com`
 (Orbit Ops's, managed from its repo). The packaged `default` is in `sites-available` but
-**not** enabled, read from the 2026-10-29 configs backup; the host role (#530,
-`infra/`) keeps it that way and never touches any other site. The
+**not** enabled, read from the 2026-10-29 configs backup; `droplet-infra`'s host role
+keeps it that way and never touches any other site. The
 `mealie.seandesmet.com` and `status.seandesmet.com` files were removed with
 those services on 2026-07-27.
 
@@ -128,9 +128,10 @@ and is deployed from its own repo. They were one file with two server blocks unt
 config mistake in either could take both down — splitting them was the point.
 Certbot has rewritten both, adding the TLS directives and the HTTP→HTTPS redirect blocks.
 
-✅ **The exact files are in `infra/ansible/roles/`** (#531): `budget_buddy_app/files/budget-buddy`
-and `www_site/files/seandesmet.com`, taken byte for byte from production's 2026-11-02 configs
-backup. The block below explains them and has drifted in layout, so a rebuild uses those files.
+✅ **The exact files are in the roles** (#531): `infra/ansible/roles/budget_buddy_app/files/budget-buddy`
+here, and `seandesmet.com` in its own repo's `infra/` (seandesmet.com #44). Both started byte for
+byte from production's 2026-11-02 configs backup. The block below explains them and has drifted in
+layout, so a rebuild uses those files.
 
 ```nginx
 # /etc/nginx/sites-available/seandesmet.com   (its own file since #299)
@@ -890,8 +891,9 @@ The runner connects as **`DB_USER`**, never `DB_APP_USER` — the least-privileg
 
 ✅ **Since 2026-08-14 the primary backup runs on the Droplet itself:** `budget-buddy-backup.timer`,
 06:00 UTC, writing to `/var/backups/budget-buddy/`, 14 copies per target. The VM pulls a second
-copy through `backup-export` whenever it's on, so item 1's Mac job below is history. Both scripts
-and the units are in `infra/ansible/roles/budget_buddy_backup/` (#532), which installs them. **On
+copy through `backup-export` whenever it's on, so item 1's Mac job below is history. The dump script
+and the units are in `infra/ansible/roles/budget_buddy_backup/` (#532), which installs them.
+`backup-export` and the VM's pull key are in `droplet-infra`'s `droplet_export` role (#576). **On
 a rebuild the role refuses to run until the ping URL is in place,** because it never writes it.
 **`backup-export`'s `orbit-ops` command (#535)** hands the VM Orbit Ops's newest finished dump
 from `/opt/orbit-ops/backups`; Orbit Ops makes those dumps itself. The ping URL's steps:
@@ -1085,7 +1087,7 @@ transaction is present.
 2. **Firewall:** `ufw allow OpenSSH && ufw allow 'Nginx Full' && ufw enable`
 3. **Install** Docker Engine with the Compose plugin, plus `nginx` and
    `certbot` + `python3-certbot-nginx`.
-4. **DNS (at Squarespace, by hand; it isn't in `infra/terraform/`):** point `seandesmet.com`,
+4. **DNS (at Squarespace, by hand; it isn't in `droplet-infra`'s Terraform):** point `seandesmet.com`,
    `www`, `budget` and `learn` at the new IP. Wait for propagation — Certbot's HTTP-01 challenge needs the name
    already resolving to this host.
 5. **Recreate `/opt/budget-buddy/`:** `docker-compose.yml` and `sql/` from this
@@ -1095,9 +1097,9 @@ transaction is present.
    backup taken before that pin existed has no such line, and step 8 will fail
    naming `TAG` rather than starting an arbitrary image — which is the designed
    behaviour, not a fault. Add `TAG=<the version you mean to run>`.
-6. **Nginx:** write the site files from `infra/ansible/roles/` (§3), symlink into
+6. **Nginx:** write the site file from `infra/ansible/roles/` (§3), symlink it into
    `sites-enabled`, `nginx -t`, reload. `infra/ansible/app.yml` does this and refuses to run
-   until `.env`, `docker-compose.yml`, the certificates and www's headers snippet exist.
+   until `.env`, `docker-compose.yml` and the certificate exist.
 7. **TLS:** `certbot --nginx -d ...` per domain. Re-read the §4 warning about
    lineage names before copying any `ssl_certificate` path verbatim.
 8. **Start:** `docker compose up -d`. The empty volume triggers `schema.sql`, so
@@ -1127,18 +1129,11 @@ transaction is present.
     (`docker compose exec web whoami` → `appuser`).
 13. **Re-point** the Mac backup job at the new host.
 
-### Where the host role and production differ, deliberately (#530)
+### Where the host role and production differ
 
-`infra/`'s host role describes this server, and a check-mode run against production
-(`infra/README.md`, "Checking production") compares the two. Production is never changed
-to match the role: each difference is either fixed in the role or recorded here.
-
-- **The role's SSH drop-in (`Keys only, never a password`).** Production's SSH settings
-  predate the role, and its first real run adds the role's own file under
-  `/etc/ssh/sshd_config.d/`. That file restricts root to key logins. Password and
-  keyboard-interactive logins are already off on production, so **nobody's access
-  changes**: every login that works today is a key login, and still works. Check mode
-  reports this task as `changed`, and that's expected. Checked 2026-10-30.
+`droplet-infra`'s README records it, along with how to check production against the host role
+(#576). Production is never changed to match a role: each difference is either fixed in the role
+or recorded there.
 
 ---
 

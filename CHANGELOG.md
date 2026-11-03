@@ -8,6 +8,15 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Changed
+
+- **The server's shared setup now lives in its own repo.** The host setup, the
+  Terraform description, the backup export and the landing page's site moved out
+  (to `droplet-infra` and `seandesmet.com`), because no one app should own a server
+  several apps share. This repo keeps only its own layer, tests it on a pinned copy
+  of the shared one, and a test fails if a moved file comes back. Nothing changes
+  on the server. No visible change. (#577)
+
 ### Fixed
 
 - **A deploy can no longer restart the database.** The `0.13.1` deploy recreated
