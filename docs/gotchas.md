@@ -223,6 +223,12 @@
   a *second* time to confirm the ID is then unchanged (that is what proves future releases are
   safe). Verified both locally and in prod on 2026-08-10; the named volume re-attaches and data
   survives. Both services carry `json-file` at `max-size 10m` × `max-file 3`.
+- ⚠️ **A Compose upgrade alone can recreate an unchanged container** (#580). `up -d` compares more
+  than the config hash: the image label, networks and volumes too. Between 5.3.1 and 5.4.0 the
+  image label went from the index digest to the platform manifest's, so the first `up -d` after the
+  upgrade replaced `db` at `0.13.1`, with the image and config hash unchanged. Reproduced on the VM.
+  **A matching `config --hash` doesn't mean "no recreate"**, so the deploys keep `db` out of their
+  `up`. `docker compose --dry-run up -d --no-deps db` shows what a bare `up -d` would do.
 - ⚠️ **A `pg_dump` from this database needs TWO roles to already exist** (#153): `OWNER TO admin`
   *and* ~33 `GRANT ... TO budget_app` lines, and it creates neither. Restoring with only the owner
   fails at the grants — which are the **LAST** thing in a dump, so every row is already loaded

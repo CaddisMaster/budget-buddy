@@ -307,8 +307,8 @@ server itself — **read it before touching anything on the Droplet.**
   rather than a thing the pipeline handles
 - **Droplet access** is maintainer-only and lives in the gitignored `CLAUDE.local.md`.
   `/opt/budget-buddy` is a **pure deploy dir — no git, no source**; `scp` changes up.
-  ✅ **The deploy and rollback workflows ship `docker-compose.yml` themselves** (#433), and a
-  release that would recreate the `db` container fails before the swap. ⚠️ **The Mac has no
+  ✅ **The deploy and rollback workflows ship `docker-compose.yml` themselves** (#433). A
+  release that changes the `db` service fails before the swap, and neither deploy's `up` names `db` (#580). ⚠️ **The Mac has no
   clone**, so a break-glass hand copy uses RUNBOOK §5's tag-pinned, hash-checked recipe (#432)
 
 ## Current status
