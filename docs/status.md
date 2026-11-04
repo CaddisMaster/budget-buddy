@@ -67,7 +67,7 @@ is an entry in `personal-vault/infra/CHANGES.md`. No more handoff notes.
   about 4. It adds AGPLv3 to the licence options. Its image now loads modules such as `timeseries`.
 - **Not from 3.15:** `Control server error: Read-only file system: '/home/appuser/.gunicorn'` logs at every web
   start, and on 3.14 too. It comes from #498's lockdown (see below).
-- **Sean approved each merge.** One compound command with a merge was refused with no reason given, and the
+- **Sean approved the merges** (the set, then #594 on its own). One compound command with a merge was refused with no reason given, and the
   bare merge then went through. Dependabot security alerts are disabled on this repo, and the `gh` token can't
   read them.
 
