@@ -103,7 +103,7 @@ unresolved, with no autocomplete and no go-to-definition.
 Create a local virtual environment for it to read:
 
 ```bash
-python3.14 -m venv .venv          # on macOS: brew install python@3.14 first
+python3.15 -m venv .venv          # on macOS: brew install python@3.15 first
 .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 ```
 
@@ -114,7 +114,7 @@ to configure — and **no editor settings of any kind are committed here**.
 in containers. It exists purely so the language server has real code to read,
 and it is gitignored and excluded from the image.
 
-Prefer **3.14**, matching production. The floor is a Python that can evaluate
+Prefer **3.15**, matching production. The floor is a Python that can evaluate
 the `str | None` annotations in `app/ai.py`: macOS ships 3.9.6, which cannot,
 and reports working code as broken. Ubuntu 24.04's system 3.12 is already fine.
 

@@ -10,6 +10,8 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The app runs on Python 3.15.** The image, CI's test jobs and the lint target all
+  moved from 3.14 together. No visible change. (#555, #591)
 - **The server's shared setup now lives in its own repo.** The host setup, the
   Terraform description, the backup export and the landing page's site moved out
   (to `droplet-infra` and `seandesmet.com`), because no one app should own a server

@@ -360,7 +360,7 @@ services:
         max-size: "10m"
         max-file: "3"
   redis:
-    image: redis:7.4.11-alpine@sha256:d9436322172a5b482c187bf1f363d3c4fea086fcca6b9c8a94de8f0f39ed3193
+    image: redis:8.10.3-alpine@sha256:21090af93f8324db2f0f0f4f38a7c60369d47d917e000c3423d89d2ae2883537
     restart: always
     logging:
       driver: json-file

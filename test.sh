@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Run the behave scenarios and the pytest suite against the dev Postgres, on
-# the same Python 3.14 as production. Nothing is installed on your machine.
+# the same Python 3.15 as the image. Nothing is installed on your machine.
 #
 # Usage:
 #   ./test.sh                       # run the whole suite (parallel)
