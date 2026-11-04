@@ -64,7 +64,7 @@
   `FEEDBACK_GITHUB_TOKEN` gates in-app feedback (`feedback_enabled()`, #64) — Droplet-only, a
   **fine-grained PAT scoped to this repo with `issues: write` and nothing else**, so a leak means
   issue spam rather than code access. ⚠️ Deliberately NOT named `GITHUB_TOKEN` — that is a magic
-  name in GitHub Actions. After editing `.env`, `docker compose up -d --force-recreate web worker` (the worker reads it too, #402).
+  name in GitHub Actions. After editing `.env`, `docker compose up -d --no-deps --force-recreate web worker` (the worker reads it too, #402).
   `.env` is gitignored + never baked into the image. ⚠️ **A missing env var is the one deploy
   failure with NO signal** — nothing in `release.yml` writes or validates `.env`, and a gated
   feature whose variable is unset is indistinguishable from that feature working as designed.
