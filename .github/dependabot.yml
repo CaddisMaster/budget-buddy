@@ -11,6 +11,12 @@ updates:
       day: monday
     open-pull-requests-limit: 5
     labels: ["dependencies"]
+    # #588: pytest 9.2 silently breaks xdist 3.8.0's --dist loadgroup, and the
+    # sweep tests then fail at random. Remove once an xdist release after 3.8.0
+    # is in; tests/test_xdist_grouping.py proves the pair works.
+    ignore:
+      - dependency-name: pytest
+        versions: [">=9.2"]
     groups:
       # Minor and patch bumps arrive as one PR so the suite gates them together
       # rather than trickling in ten near-identical runs.
