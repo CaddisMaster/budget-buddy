@@ -326,7 +326,7 @@ gets a pty on stdin but no controlling tty, and docker's attach waits forever at
 place. The retired script and its full write-up are in `personal-vault/infra/vm/tmux/ws-test`.
 This is a property of `test.sh`, not of tmux, so it will bite the same way under any front end.
 
-It runs in a throwaway `web` container on prod's Python 3.14 — no local venv;
+It runs in a throwaway `web` container on the image's Python 3.15 — no local venv;
 `requirements-dev.txt` adds `pytest`, `pytest-xdist` and `ruff`. Needs the dev `db` container up: the suite
 runs in a **`budget_test` database inside it** (#400, see below), never the dev database itself. Also runs in **GitHub Actions CI** on every push/PR (`.github/workflows/ci.yml`,
 `postgres:16` service + `schema.sql`) — but **only when the diff can affect behaviour** (the
