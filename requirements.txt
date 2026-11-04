@@ -1,4 +1,4 @@
-anthropic==1.12.1
+anthropic==2.3.0
 APScheduler==3.11.3
 blinker==1.9.0
 click==8.5.0
