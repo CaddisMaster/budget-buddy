@@ -36,6 +36,11 @@ this project uses the `0.x` versioning scheme described in
   runner's fix is released, and a new test fails if the grouping stops working.
   No visible change. (#588)
 
+### Security
+
+- **The app runs on Python 3.15.2**, not 3.15.0, which still carried CVE-2026-115557
+  and CVE-2026-114583. No visible change. (#593)
+
 ## [0.13.1] - 2026-11-03
 
 ### Security
