@@ -28,6 +28,11 @@ this project uses the `0.x` versioning scheme described in
 - **Picking up a settings change by hand can't reach the database either.** The
   runbook's command for restarting the web and worker containers after editing
   `.env` now leaves the database out of its plan. No visible change. (#584)
+- **The test suite's safety grouping can't fail silently any more.** A new pytest
+  release stopped the parallel runner keeping the scheduled-job tests together,
+  which made them fail at random. pytest stays on the previous version until the
+  runner's fix is released, and a new test fails if the grouping stops working.
+  No visible change. (#588)
 
 ## [0.13.1] - 2026-11-03
 

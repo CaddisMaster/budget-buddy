@@ -4,6 +4,9 @@
 # the suite on the Python that actually ships.
 #
 # Not in requirements.txt on purpose — none of this belongs in production.
+# ⚠️ Held at 9.1.1 (#588): 9.2.0 silently breaks xdist 3.8.0's --dist loadgroup.
+# Lift it, and the ignore in .github/dependabot.yml, once an xdist release after
+# 3.8.0 is in. tests/test_xdist_grouping.py fails if grouping stops working.
 pytest==9.1.1
 # Parallel test runs. Safe only because tests/conftest.py derives its TEST_PREFIX
 # from PYTEST_XDIST_WORKER — every worker owns its own database rows. Read the
@@ -22,4 +25,4 @@ behave==1.3.3
 # tests/test_lint_local.py fails if a second copy appears anywhere. So a
 # Dependabot bump of this line is the whole change. Keep it a bare `ruff==X.Y.Z`
 # line: that is the form both the action and the CI check parse.
-ruff==0.17.2
+ruff==0.17.3

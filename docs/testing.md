@@ -414,6 +414,11 @@ and this is contention over a global *operation*. FIVE files drive such a sweep
 (`test_push_reminders.py`, `test_job_runs.py`, `test_digest.py`, `test_money_agent.py`,
 `test_variable_bills.py`) plus the broadcast in `test_release_announce.py`; all carry the group.
 
+🛑 **pytest 9.2.0 with xdist 3.8.0 silently stops grouping (#588).** The sweep tests then land on
+every worker and fail at random, with a different set each run, so it looks like a flake. pytest
+is held at 9.1.1 until an xdist release after 3.8.0, in `requirements-dev.txt` and
+`.github/dependabot.yml`. `test_xdist_grouping.py` runs a real `-n 2` session and fails on this.
+
 🛑 **The group serializes sweeps against EACH OTHER, not against the rest of the suite (#411).**
 `materialize_all_users()` posts every due schedule of every user, against the real clock, and
 nothing stopped it posting a schedule that an *ungrouped* test in another worker had just made.
