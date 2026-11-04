@@ -10,7 +10,7 @@
 # controls it decides what the next build runs. The digest is the multi-arch
 # INDEX, so one line serves the arm64 VM and the amd64 CI/Droplet alike.
 #
-# ⚠️ The tag names the Python PATCH (3.15.0), not 3.15, on purpose. Read in
+# ⚠️ The tag names the Python PATCH (3.15.2), not 3.15, on purpose. Read in
 # Dependabot's docker updater source (not assumed): it rewrites a pinned
 # digest in place, but a GitHub-side experiment
 # (`docker_digest_only_update_suppression`) can skip a digest-only refresh
@@ -19,7 +19,7 @@
 # with no Debian security rebuilds, until 3.16 existed, and nothing would
 # say so. A patch tag changes name at every Python patch, and a tag change
 # is never suppressed.
-FROM python:3.15.0-slim@sha256:f5b92f2a669a4c347044f29367f31983280b648250ca94dea66f98c53bc87e58 AS base
+FROM python:3.15.2-slim@sha256:8c13a3f37a6a5b71498228e902c4b9f51c1f7900d49fabf71f9a650c6120e0d0 AS base
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
