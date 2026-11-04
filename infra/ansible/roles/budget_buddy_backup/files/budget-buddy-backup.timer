@@ -1,0 +1,13 @@
+[Unit]
+Description=Run the Budget Buddy backup daily
+
+[Timer]
+# 06:00 UTC = 02:00 America/New_York. The host stays on UTC deliberately —
+# changing it would shift every log timestamp on the box. Staggered away from
+# the VM job (08:00 local) so the two never dump simultaneously.
+OnCalendar=*-*-* 06:00:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

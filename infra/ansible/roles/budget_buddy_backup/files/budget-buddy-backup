@@ -1,0 +1,145 @@
+#!/bin/bash
+# /usr/local/bin/budget-buddy-backup — the PRIMARY backup, run on the Droplet itself.
+#
+# Added 2026-08-14. Development moved into a VM that is only powered on while
+# Sean is actually developing, so the previous arrangement — a job on the Mac,
+# then briefly a job in the VM — made the backup schedule depend on a machine
+# nobody guarantees is running. This one runs where the data already is.
+#
+# ⚠️ KNOWN AND ACCEPTED: this copy lives on the same host as the database it
+# protects. It covers the LIKELY failures — a bad migration, an accidental
+# delete, a botched restore — and does nothing for the Droplet being destroyed.
+# That trade was made deliberately (Sean, 2026-08-14). The hedge, if it is ever
+# wanted, is DigitalOcean's own droplet backups, which need nothing of ours
+# running.
+#
+# The VM keeps its own job as an OPPORTUNISTIC second copy whenever it happens
+# to be on. This script owns the healthchecks.io ping precisely because it is
+# the one that always runs; the VM's pings are disabled so a powered-off VM
+# cannot fire a false alarm.
+#
+# Runs as `deploy` (docker group, no sudo). Deliberately NOT root: it needs
+# `docker exec` and read access to /opt/budget-buddy and /etc/nginx, and it has
+# all three without it.
+
+# No `set -e`, on purpose and matching the script this descends from: a
+# monitoring outage or one failed target must not abort the rest of the run.
+set -uo pipefail
+
+ROOT=/var/backups/budget-buddy
+LOG="$ROOT/backup.log"
+KEEP=14          # copies kept per target. NOT "14 days" — see below.
+MIN_BYTES=1024   # a gzipped dump smaller than this is treated as a failure
+STAMP=$(date +%F)
+FAILURES=0
+
+# ⚠️ KEEP is a COUNT, not an age, and that is deliberate. Pruning by age would
+# delete every remaining dump on the first successful run after a long outage —
+# exactly when the stale ones are the only thing you have. A count degrades
+# safely: you always hold 14 of something. On this host the two coincide anyway,
+# because the timer fires daily.
+
+HC_FILE=/etc/backup-export/healthchecks-url
+HC_URL=""
+[ -r "$HC_FILE" ] && HC_URL=$(tr -d '[:space:]' < "$HC_FILE")
+
+RUNLOG=$(mktemp -t bb-backup-run.XXXXXX)
+trap 'rm -f "$RUNLOG"' EXIT
+
+log() {
+  local line
+  line="$(date '+%F %T') $*"
+  echo "$line" >> "$LOG"
+  echo "$line" >> "$RUNLOG"
+}
+
+# hc_ping [/start|/fail] — never allowed to affect the backup.
+# No fallback path here, unlike the VM's copy: that existed because a laptop
+# roams between networks and some block healthchecks.io outright. This host has
+# one network and reaches it fine. If the ping fails the check receives nothing
+# and alerts on absence, which is what a dead-man's switch is for.
+hc_ping() {
+  [ -n "$HC_URL" ] || return 0
+  tail -c 10000 "$RUNLOG" 2>/dev/null \
+    | curl -fsS -m 10 --retry 2 --data-binary @- "${HC_URL}${1:-}" >/dev/null 2>>"$LOG" \
+    || log "ping: send failed (${1:-success}) — the check will alert on absence"
+  return 0
+}
+
+# Writes to a temp file and only promotes it after the pipeline exits 0, gzip
+# integrity passes, and the size clears MIN_BYTES — so a dead container or a
+# truncated stream never leaves a file that rotation could later mistake for a
+# good backup.
+verify_and_promote() {
+  local tmp=$1 out=$2 name=$3
+  if gzip -t "$tmp" 2>>"$LOG" && [ "$(stat -c %s "$tmp")" -ge "$MIN_BYTES" ]; then
+    mv "$tmp" "$out"
+    log "OK   $name -> $(basename "$out") ($(stat -c %s "$out") bytes)"
+  else
+    rm -f "$tmp"
+    log "FAIL $name — did not complete/verify"
+    FAILURES=$((FAILURES + 1))
+  fi
+}
+
+dump_db() {
+  local container=$1 user=$2 db=$3
+  local out="$ROOT/budget-buddy/${db}_${STAMP}.sql.gz"
+  local tmp="$out.tmp"
+  if docker exec "$container" pg_dump -U "$user" "$db" 2>>"$LOG" | gzip > "$tmp"; then
+    verify_and_promote "$tmp" "$out" "budget-buddy"
+  else
+    rm -f "$tmp"
+    log "FAIL budget-buddy — pg_dump did not complete"
+    FAILURES=$((FAILURES + 1))
+  fi
+}
+
+dump_configs() {
+  local out="$ROOT/configs/configs_${STAMP}.tar.gz"
+  local tmp="$out.tmp"
+  # tar strips the leading / and warns on stderr; harmless. The .env files are
+  # included deliberately — they are runtime-only secrets nothing else holds.
+  # ⚠️ Keep this list in step with backup-export's `configs` verb. Dropping a
+  # path is invisible: the tarball still builds, still passes gzip -t, still
+  # clears MIN_BYTES. You would find out while rebuilding a server.
+  if tar czf "$tmp" \
+        /opt/budget-buddy/.env \
+        /opt/budget-buddy/docker-compose.yml \
+        /opt/budget-buddy/sql \
+        /etc/nginx/sites-available \
+        /etc/nginx/sites-enabled 2>>"$LOG"; then
+    verify_and_promote "$tmp" "$out" "configs"
+  else
+    rm -f "$tmp"
+    log "FAIL configs — tar did not complete"
+    FAILURES=$((FAILURES + 1))
+  fi
+}
+
+prune() {
+  local dir=$1 f
+  # Newest first, drop everything past KEEP. Never touches .tmp files.
+  ls -1t "$dir"/*.gz 2>/dev/null | tail -n +$((KEEP + 1)) | while read -r f; do
+    rm -f "$f" && log "PRUNE $f"
+  done
+}
+
+mkdir -p "$ROOT/budget-buddy" "$ROOT/configs"
+
+log "=== run start ==="
+[ -n "$HC_URL" ] || log "note: healthchecks.io not configured ($HC_FILE unreadable) — pings skipped"
+hc_ping /start
+
+dump_db "budget-buddy-db-1" "admin" "budget"
+dump_configs
+prune "$ROOT/budget-buddy"
+prune "$ROOT/configs"
+
+log "=== run end ($FAILURES failure(s)) ==="
+
+# Signal explicitly rather than letting the check time out: a real failure
+# alerts in seconds instead of waiting out the grace period.
+if [ "$FAILURES" -eq 0 ]; then hc_ping; else hc_ping /fail; fi
+
+exit "$FAILURES"
