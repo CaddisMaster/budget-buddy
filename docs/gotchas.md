@@ -223,6 +223,12 @@
   a *second* time to confirm the ID is then unchanged (that is what proves future releases are
   safe). Verified both locally and in prod on 2026-08-10; the named volume re-attaches and data
   survives. Both services carry `json-file` at `max-size 10m` × `max-file 3`.
+- ⚠️ **A Compose upgrade alone can recreate an unchanged container** (#580). `up -d` compares more
+  than the config hash: the image label, networks and volumes too. Between 5.3.1 and 5.4.0 the
+  image label went from the index digest to the platform manifest's, so the first `up -d` after the
+  upgrade replaced `db` at `0.13.1`, with the image and config hash unchanged. Reproduced on the VM.
+  **A matching `config --hash` doesn't mean "no recreate"**, so the deploys keep `db` out of their
+  `up`. `docker compose --dry-run up -d --no-deps db` shows what a bare `up -d` would do.
 - ⚠️ **A `pg_dump` from this database needs TWO roles to already exist** (#153): `OWNER TO admin`
   *and* ~33 `GRANT ... TO budget_app` lines, and it creates neither. Restoring with only the owner
   fails at the grants — which are the **LAST** thing in a dump, so every row is already loaded
@@ -322,19 +328,20 @@
 - ⚠️ **On Linux, bind-mounted file ownership is LITERAL — `.env` at mode 600 crash-loops the app.** Docker Desktop translates UIDs across its file sharing on macOS, so a secrets file owned by your host user "just works" there. A Linux bind mount does no such thing: the host user is typically uid `1000` and the image's `appuser` is uid **`10001`**, so the container cannot read its own config and gunicorn dies at import with `PermissionError: [Errno 13] Permission denied: '/app/.env'`. The obvious fix — `chmod 644` — makes a file holding `ANTHROPIC_API_KEY` world-readable. Grant exactly the one uid instead: `setfacl -m u:10001:r .env` (needs the `acl` package; check with `getfacl -p .env`). ⚠️ This applies to **any** new secret file mounted into a container, not just `.env`
 - ⚠️ **There is deliberately NO dev container** (#80, removed 2026-07-28). One was added in #76 and removed two PRs later: it shipped broken twice, needed `git`/`procps`/`curl` in the image's `dev` stage purely for the editor, and split the workflow because it has no Docker inside it. The `.venv` fixes the editor on its own with no maintenance. **Do not re-add one** without a reason that the venv does not already cover. ⚠️ **The trap this bullet carries is LIVE again as of 2026-08-17** (it was briefly moot while there was no editor at all): VS Code resolves **workspace** settings above **remote** ones, which is what bit #78 — a setting you believe you set on the remote can be silently overridden by one committed or cached in the workspace. Check which scope a setting actually resolved in before concluding the remote is misconfigured
 - ⚠️ **The dev front end is VS Code on the Mac, driving the isolated Linux VM over Remote-SSH**
-  (re-confirmed 2026-08-26). Development still happens **in the VM** — the Mac is a thin client
+  (re-confirmed 2026-11-01). Development still happens **in the VM** — the Mac is a thin client
   and the repo, the containers and the agents all live on the far side of the SSH link. What
-  changed is only the front end. ⚠️ **This re-arms one isolation risk**: VS Code's
-  `remote.SSH.enableAgentForwarding` **defaults to `true`**, which would forward the Mac's SSH
-  agent into the VM — and that agent holds the key that opens production, which the VM is
-  deliberately not allowed to reach. Set it to `false`. Verified holding on 2026-08-26
-  (`SSH_AUTH_SOCK` unset in the VM; the Droplet answers `Permission denied (publickey)`).
-  See `CLAUDE.local.md` for the isolation rule it protects.
+  changed is only the front end. ⚠️ **The client decides whether the VM reaches production**:
+  VS Code's `remote.SSH.enableAgentForwarding` **defaults to `true`**, which would forward the
+  Mac's SSH agent into the VM, and that agent holds the key that opens production. Droplet steps
+  run from a Mac terminal, so set it to `false`. Verified holding on 2026-11-01 (`SSH_AUTH_SOCK`
+  unset in the VM; the Droplet answers `Permission denied (publickey)`, which is expected and
+  not a fault to work around). See `CLAUDE.local.md` §Droplet access.
   ⚠️ **This bullet has been true, false and true again — do not read its date as "unchanged
-  since".** The front end has swapped **four times**: VS Code → Ghostty + tmux (2026-08-14) →
-  VS Code (2026-08-17) → Ghostty + tmux (2026-08-25) → **VS Code (2026-08-26)**. The two swaps
-  in between never reached this file, so between 2026-08-25 and 2026-08-26 it asserted a front
-  end that was not running. **Check `tmux ls` and your own process ancestry before trusting
+  since".** The front end has swapped **six times**: VS Code → Ghostty + tmux (2026-08-14) →
+  VS Code (2026-08-17) → Ghostty + tmux (2026-08-25) → VS Code (2026-08-26) → PyCharm through
+  JetBrains Gateway (2026-10-30) → **VS Code (2026-11-01)**. Two of those swaps never reached this
+  file, so between 2026-08-25 and 2026-08-26 it asserted a front end that was not running.
+  **Check `tmux ls` and your own process ancestry before trusting
   any claim here about the workspace**, and if you change front ends, edit this bullet and the
   next one together — they are the pair that goes stale.
 - ⚠️ **NOTHING SURVIVES A DROPPED CONNECTION** (true again as of 2026-08-26; briefly false

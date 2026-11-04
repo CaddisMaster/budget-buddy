@@ -1,97 +1,73 @@
-# infra/: the Droplet as code
+# infra/: Budget Buddy's layer of the shared Droplet
 
-The shared Droplet was built by hand from `RUNBOOK.md` §1–4. These roles describe it so it
-can be rebuilt (the 26.04 upgrade is a rebuild, not an in-place upgrade) and checked.
+One server runs several apps, and no app owns it. The server itself is in
+[`CaddisMaster/droplet-infra`](https://github.com/CaddisMaster/droplet-infra): the host role,
+Terraform, `backup-export` and the VM's pull key, how to set up LXD, and the recorded differences
+from production. Budget Buddy is a tenant, and this directory holds only what is its own.
 
 | Role | Layer | Issue |
 |---|---|---|
-| `ansible/roles/droplet_host/` | the host: `deploy` user, sshd, ufw, Docker + Compose, Nginx base, Certbot, UTC | #530 |
-| *(next)* | Budget Buddy's app layer, and www's site | #531 |
+| `ansible/roles/budget_buddy_app/` | `/opt/budget-buddy` and its Nginx site | #531 |
+| `ansible/roles/budget_buddy_backup/` | The dump script, its unit and timer. The ping URL is only checked, never written | #532 |
 
-⚠️ **`droplet_host`'s path and its `droplet_host_*` variables are an interface.** Orbit Ops
-pins this role by commit SHA (orbit-ops #322) and runs its own app role on top. A rename
-needs a pin bump there, so a PR that renames one says so.
+`seandesmet.com`'s site is in [its own repo](https://github.com/CaddisMaster/seandesmet.com).
 
-What the host role will **never** do, because the box is shared:
+⚠️ **A change to the host layer or to `backup-export` is made in `droplet-infra`.**
+`tests/test_infra_pins.py` fails if a moved path comes back here, because two copies is the failure
+this split exists to end.
 
-- **Remove an Nginx site it didn't create.** It never lists or purges `sites-available` or
-  `sites-enabled`. The one exception is the packaged `default` link, by that name only, which
-  production has disabled.
-- **Rewrite `deploy`'s `authorized_keys`.** It adds the keys it declares (`exclusive: false`).
-  Orbit Ops's deploy key and the `backup-export` key are other lines and stay as they are.
-- **Request a certificate.** Certbot and its timer are installed, but issuing a certificate is
-  per site, so it belongs to the app roles.
-- **Write `.env` or `docker-compose.yml`.** `release.yml` owns both.
+## The pin
+
+`host-role.pin` names `droplet-infra` by full commit SHA, and `fetch_host_role.sh` puts that commit
+in `ansible/vendor/droplet-infra/` (gitignored). The pin is **for testing only**: this repo never
+runs `host.yml` on production. Bump it in its own PR, after reading `droplet-infra`'s diff.
+
+`backup-export`'s `budget` and `configs` commands name this app's database and paths.
+`budget-buddy-backup` archives the same paths as `configs`, and `infra/test.sh` compares the two
+lists, since only there are both files present. If you change one, change the other in the same
+sitting and bump the pin.
 
 ## Testing in LXD (on the `jupiter` VM)
 
 ```bash
-infra/test.sh           # launch → run → run again (changed=0) → verify → delete
+infra/test.sh           # launch → host layer → refusals → run → run again (changed=0) → a real dump → delete
 KEEP=1 infra/test.sh    # leave the container up to poke at
 ```
 
-It builds the control node from the pins (`requirements-infra.txt` and
-`ansible/requirements.yml`, both checked by `tests/test_infra_pins.py`) into `infra/.venv`.
-It creates and deletes **only** containers named `bb-*`, and uses containers, never `--vm`,
-because the VM has no `/dev/kvm`.
+⚠️ **Warn Sean before a run.** The VM is on his Mac, and each run is about 5 minutes of load.
 
-### LXD on the VM (initialised 2026-10-30)
-
-Orbit Ops's tests reuse this setup. It was made with a preseed, so it can be rebuilt exactly:
-
-```yaml
-# lxd init --preseed < this
-networks:
-- name: lxdbr0
-  type: bridge
-  config: {ipv4.address: 10.111.0.1/24, ipv4.nat: "true", ipv6.address: none}
-storage_pools:
-- name: default
-  driver: dir
-profiles:
-- name: default
-  devices:
-    root: {path: /, pool: default, type: disk}
-    eth0: {name: eth0, network: lxdbr0, type: nic}
-```
-
-`dir` storage needs no loop file to size. `10.111.0.0/24` is clear of Docker's `172.x`
-bridges. Each test container sets `security.nesting=true`, so Docker runs inside it.
-
-### Docker and LXD on one host
-
-⚠️ **Docker sets the VM's iptables `FORWARD` policy to `DROP`, which blackholes `lxdbr0`.** A
-container gets an address and then cannot reach anything (verified 2026-10-30: `curl` to
-the Ubuntu archive timed out). `infra/test.sh` checks for this first and stops with a
-pointer here. The fix is two rules in Docker's `DOCKER-USER` chain, which Docker leaves alone:
-
-```bash
-sudo iptables -I DOCKER-USER -i lxdbr0 -j ACCEPT
-sudo iptables -I DOCKER-USER -o lxdbr0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-```
-
-They don't survive a reboot. Making them persistent is a VM setting, not this repo's. A
-oneshot systemd unit ordered `After=docker.service` belongs in `personal-vault/infra/vm/`.
+It builds the control node from the pins (`requirements-infra.txt` and `ansible/requirements.yml`,
+both checked by `tests/test_infra_pins.py`) into `infra/.venv`. It creates and deletes **only**
+containers named `bb-*`. LXD's setup, and the `DOCKER-USER` rules a VM reboot clears, are in
+`droplet-infra`'s README.
 
 ## Checking production
 
-Check mode only, never a real run (#530's scope). Since 2026-10-30 the VM can reach production
-(while the editor connection is up), so the check can run from this clone, checked out at the
-reviewed commit. The recipe below is the **Mac** route: the Mac keeps **no clone** of this
-repo, and Sean's decision on #530 (2026-10-29) was **a throwaway clone pinned to the reviewed
-commit, deleted afterwards.**
+**Check mode first, always.** A real run is a separate decision for Sean, on a diff he has read.
+`app.yml` has run for real once (2026-11-02, #535: `backup-export` only, which this repo no longer
+installs). This runs from a **Mac terminal**: the VM can't reach production (since 2026-11-01). The
+Mac keeps **no clone** of this repo, and Sean's decision on #530 (2026-10-29) was **a throwaway clone
+pinned to the reviewed commit, deleted afterwards.**
+
+Run these one at a time. `app.yml` needs no vendored host layer, and `#` isn't a comment in an
+interactive zsh, so these boxes hold none. ansible-core needs Python 3.12 or newer, and the Mac's
+default `python3` is older.
 
 ```bash
 SHA=<the reviewed commit on main>
 tmp=$(mktemp -d) && git -C "$tmp" init -q \
   && git -C "$tmp" fetch -q --depth 1 https://github.com/CaddisMaster/budget-buddy.git "$SHA" \
   && git -C "$tmp" checkout -q FETCH_HEAD && cd "$tmp/infra/ansible"
-python3 -m venv ../.venv && ../.venv/bin/pip install -q -r ../requirements-infra.txt
+brew install python@3.12
+"$(brew --prefix python@3.12)/bin/python3.12" -m venv ../.venv \
+  && ../.venv/bin/pip install -q --no-deps -r ../requirements-infra.txt && ../.venv/bin/pip check
 ../.venv/bin/ansible-galaxy collection install -r requirements.yml -p ./collections
-cp inventory.example.yml inventory.yml   # then fill in the address and the real public keys
-../.venv/bin/ansible-playbook host.yml --check --diff
+cp inventory.example.yml inventory.yml
+nano inventory.yml
+../.venv/bin/ansible-playbook app.yml --check --diff
 cd ~ && rm -rf "$tmp"
 ```
 
-Every difference it reports gets one of two outcomes: **fix the role**, or **record it in
-RUNBOOK as deliberate** (RUNBOOK §8, "Where the host role and production differ"). Production is never changed to match the role.
+In `nano`, the one thing to fill in is the Droplet's address. Every difference it reports gets one
+of two outcomes: **fix the role**, or **record it as deliberate**. Production is never changed just
+to match a role.

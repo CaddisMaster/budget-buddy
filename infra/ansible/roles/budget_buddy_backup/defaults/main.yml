@@ -1,0 +1,5 @@
+# The Droplet's backups (#532), RUNBOOK §7. Values are production's, read on
+# 2026-11-02. The scripts and units in files/ are production's byte for byte.
+budget_buddy_backup_user: deploy
+budget_buddy_backup_root: /var/backups/budget-buddy
+budget_buddy_backup_url_file: /etc/backup-export/healthchecks-url

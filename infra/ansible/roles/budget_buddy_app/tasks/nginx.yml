@@ -1,0 +1,48 @@
+# The site file is production's, byte for byte, as Certbot left it. A template
+# that differed would show as drift on every check and undo Certbot's edit on a
+# real run. It carries the 16m limit on /transactions/import (#447).
+#
+# The certificate is Certbot's, never this role's, so a missing file stops the run
+# here, before Nginx is handed a site it can't load.
+- name: Look at the certificate files the budget site names
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    get_checksum: false
+  loop:
+    - /etc/letsencrypt/live/{{ budget_buddy_domain }}/fullchain.pem
+    - /etc/letsencrypt/live/{{ budget_buddy_domain }}/privkey.pem
+    - /etc/letsencrypt/options-ssl-nginx.conf
+    - /etc/letsencrypt/ssl-dhparams.pem
+  register: budget_buddy_tls_files
+
+- name: The budget site's certificate files exist
+  ansible.builtin.assert:
+    that: item.stat.exists
+    fail_msg: >-
+      {{ item.item }} is missing. This role never requests a certificate: get one
+      for {{ budget_buddy_domain }} with Certbot (RUNBOOK §4), then run again.
+    quiet: true
+  loop: "{{ budget_buddy_tls_files.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: The budget site
+  ansible.builtin.copy:
+    src: "{{ budget_buddy_site }}"
+    dest: /etc/nginx/sites-available/{{ budget_buddy_site }}
+    owner: root
+    group: root
+    mode: "0644"
+  notify: budget site changed
+
+- name: The budget site is enabled
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/{{ budget_buddy_site }}
+    dest: /etc/nginx/sites-enabled/{{ budget_buddy_site }}
+    state: link
+  notify: budget site changed
+
+# Now, not at the end of the play: a later role's refusal would otherwise leave a
+# changed file unreloaded, and the next run would see no change to act on.
+- name: Apply a budget site change before the next role
+  ansible.builtin.meta: flush_handlers

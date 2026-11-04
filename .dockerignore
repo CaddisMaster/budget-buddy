@@ -47,3 +47,8 @@ docker-compose*.yml
 test.sh
 # The Ansible roles describe the HOST (#530); nothing in the image runs them.
 infra/
+
+# Bitwarden's helpers: gitignored symlinks into personal-vault on the VM, so a
+# local build would copy them and CI's would not. `.env.*` doesn't catch them (#554).
+bw-env.sh
+bw-seed.sh

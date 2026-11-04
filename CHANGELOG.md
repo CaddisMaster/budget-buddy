@@ -8,6 +8,34 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Changed
+
+- **The server's shared setup now lives in its own repo.** The host setup, the
+  Terraform description, the backup export and the landing page's site moved out
+  (to `droplet-infra` and `seandesmet.com`), because no one app should own a server
+  several apps share. This repo keeps only its own layer, tests it on a pinned copy
+  of the shared one, and a test fails if a moved file comes back. Nothing changes
+  on the server. No visible change. (#577)
+
+### Fixed
+
+- **A deploy can no longer restart the database.** The `0.13.1` deploy recreated
+  the database container even though nothing about it had changed, because a
+  Compose upgrade on the server had changed what Compose compares. Deploys now
+  name every service except the database, the same way rollbacks already did.
+  Both also stop if they can't list the services, since an empty list would have
+  started everything. No visible change. (#580)
+- **Picking up a settings change by hand can't reach the database either.** The
+  runbook's command for restarting the web and worker containers after editing
+  `.env` now leaves the database out of its plan. No visible change. (#584)
+- **The test suite's safety grouping can't fail silently any more.** A new pytest
+  release stopped the parallel runner keeping the scheduled-job tests together,
+  which made them fail at random. pytest stays on the previous version until the
+  runner's fix is released, and a new test fails if the grouping stops working.
+  No visible change. (#588)
+
+## [0.13.1] - 2026-11-03
+
 ### Security
 
 - **The app runs on Python 3.14.10.** The image's Python, 3.14.7, carried two
@@ -26,6 +54,28 @@ this project uses the `0.x` versioning scheme described in
 
 ### Added
 
+- **The server itself is described in Terraform.** It's imported, with `plan` as the
+  check and nothing that applies it, and it can't be destroyed by accident. DNS
+  isn't included, because it's managed at Squarespace. No change to the running
+  site. (#533)
+
+- **Orbit Ops's database backups can leave the server.** The restricted backup key
+  gains one fixed command that hands over Orbit Ops's newest finished dump, for
+  the VM's nightly pull. It takes no argument. Live once installed on the server.
+  (#535)
+
+- **The server's backups are written down as code.** A rebuilt server would have
+  run with no backups, because the scripts existed only by hand on the box and in
+  a private copy. Both scripts, the timer and the VM's restricted pull key are now
+  an Ansible role. The monitoring URL stays off GitHub. Nothing deploys the role,
+  so no change to the running backups. (#532)
+
+- **Budget Buddy's and the landing page's server setup are written down as code.**
+  Two more Ansible roles in `infra/` describe `/opt/budget-buddy` and both Nginx
+  sites. They never write `.env` or `docker-compose.yml`, which the deploy owns,
+  and they don't request certificates. Nothing deploys them, so no change to the
+  running site. (#531)
+
 - **The server's host setup is written down as code.** An Ansible role in
   `infra/` describes what was set up by hand: the deploy user, SSH, the
   firewall, Docker, Nginx's base and Certbot. It is tested by building a
@@ -35,6 +85,24 @@ this project uses the `0.x` versioning scheme described in
 
 ### Changed
 
+- **The Ansible control node is fully pinned.** `infra/requirements-infra.txt`
+  now lists ansible-core's dependencies too, `infra/test.sh` installs them with
+  `--no-deps` into a clean venv and runs `pip check`, and Dependabot covers
+  `/infra`. The production check in `infra/README.md` does the same on the Mac,
+  with Homebrew's Python 3.12, because ansible-core 2.21 needs it. No change to
+  the app. (#553, #567)
+- **A local image build no longer copies the Bitwarden helper links.** `bw-env.sh`
+  and `bw-seed.sh` are now in `.dockerignore`. Released images never had them. (#554)
+
+- **The web and worker containers run locked down.** Each now has a read-only
+  filesystem apart from a temporary `/tmp`, no Linux capabilities, no way to
+  gain privileges, and limits on processes and memory (512 MB for web, 256 MB
+  for the worker, sized from measurements under the largest upload the app
+  accepts). On a server shared with another app, a runaway container can no
+  longer starve everything else. The database's settings are unchanged, but this
+  deploy still recreated its container once, down for about 12 seconds with no
+  data lost (#580). Redis is pinned to an exact version, and
+  Dependabot now watches the compose file's images. No visible change. (#498)
 - **The runbook records where the server setup code and the live server
   differ on purpose.** The first entry covers SSH: the setup code tightens a
   setting the server already enforces in practice, so no one's access changes.
@@ -44,10 +112,11 @@ this project uses the `0.x` versioning scheme described in
   server's Docker engine on its first real run. It now matches what is there,
   and the check finds nothing to change in Docker. The server is unchanged.
   No visible change. (#548)
-- **The docs no longer say production can only be reached from the Mac.**
-  The development VM can reach the server now, by the maintainer's choice, so
-  the runbook and setup notes give the VM route first and keep the Mac route
-  beside it. No visible change. (#546)
+- **The docs say production is reached only from the Mac.** The development VM
+  could reach the server for two days through an editor that has since been
+  replaced, and it is now deliberately locked out again, so the runbook and
+  setup notes drop that route. `.vscode/` is ignored as well. No visible change.
+  (#556, #558)
 - **Release images are built for arm64 as well as amd64.** One tag now holds
   both, and each host pulls its own half: the server keeps running amd64, and
   the arm64 development VM can run the real release image for testing the
@@ -1987,7 +2056,8 @@ lineage, most recent first:
 - **v9.0** — conversational transaction entry (first AI feature)
 - **v1–v8** — core CRUD and deployment, UI overhaul, multi-user authentication, blueprints and pytest, ownership guards, transfers and goals, smart budgets, HTMX inline CRUD and CI
 
-[Unreleased]: https://github.com/CaddisMaster/budget-buddy/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/CaddisMaster/budget-buddy/compare/v0.13.1...HEAD
+[0.13.1]: https://github.com/CaddisMaster/budget-buddy/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.10.0...v0.11.0

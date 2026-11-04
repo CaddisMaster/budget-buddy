@@ -1,0 +1,9 @@
+# Budget Buddy's layer of the shared Droplet (#531) and its backups (#532), on top of
+# droplet-infra's host layer. www's site is seandesmet.com's, and the host layer and
+# backup-export are droplet-infra's (#576, #577).
+- name: Budget Buddy on the Droplet
+  hosts: droplet
+  become: true
+  roles:
+    - budget_buddy_app
+    - budget_buddy_backup

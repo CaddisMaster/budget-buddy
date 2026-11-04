@@ -50,8 +50,11 @@
   taking the `^{}` line for an annotated tag) and the digest with `docker buildx imagetools inspect
   <image:tag>`. Never copy one from a blog post or a README. ⚠️ **Pin the INDEX digest, never a
   platform manifest's:** the VM builds arm64, CI's PR builds are amd64, and the release
-  builds both (#529), so a platform-specific digest breaks at least one of them. The compose files' `postgres:16` and
-  `redis:7-alpine` are **not** pinned. They were outside #405, and the Droplet's copy only changes by scp.
+  builds both (#529), so a platform-specific digest breaks at least one of them. The compose file's
+  `redis` is pinned by patch tag and index digest too (#498), bumped by Dependabot's
+  `docker-compose` ecosystem. `postgres:16` is **not** pinned, and that ecosystem ignores it on
+  purpose: any edit to `db` recreates the database container, so Postgres moves in a scheduled
+  window (#500).
 - **Env vars:** `ANTHROPIC_API_KEY` gates every AI surface via `ai_enabled()` (optional — app runs
   fine without it). `RESEND_API_KEY` gates email (`mail_enabled()`), `ENABLE_DIGEST_SCHEDULER=1`
   switches the scheduled jobs on (since #402 they run in the compose `worker` service, and
@@ -61,7 +64,7 @@
   `FEEDBACK_GITHUB_TOKEN` gates in-app feedback (`feedback_enabled()`, #64) — Droplet-only, a
   **fine-grained PAT scoped to this repo with `issues: write` and nothing else**, so a leak means
   issue spam rather than code access. ⚠️ Deliberately NOT named `GITHUB_TOKEN` — that is a magic
-  name in GitHub Actions. After editing `.env`, `docker compose up -d --force-recreate web worker` (the worker reads it too, #402).
+  name in GitHub Actions. After editing `.env`, `docker compose up -d --no-deps --force-recreate web worker` (the worker reads it too, #402).
   `.env` is gitignored + never baked into the image. ⚠️ **A missing env var is the one deploy
   failure with NO signal** — nothing in `release.yml` writes or validates `.env`, and a gated
   feature whose variable is unset is indistinguishable from that feature working as designed.
@@ -137,8 +140,9 @@
   (`landing/` was here until #299 moved the page to its own repo and its own web root under
   `/var/www`.) To change compose or add a migration, `scp` it up — `git pull` doesn't work there.
   ✅ **Since #433 `release.yml` and `rollback.yml` ship `docker-compose.yml` themselves**, hash-checked
-  by `scripts/install_compose.sh`, before their first compose command. A release whose file would
-  **recreate the `db` container fails before the swap** (RUNBOOK §5 has the guard and what to do).
+  by `scripts/install_compose.sh`, before their first compose command. A release whose file
+  **changes the `db` service fails before the swap**, and neither deploy's `up` names `db` (#580;
+  RUNBOOK §5 has the guard and what to do).
   Hand copies are break-glass only. ⚠️ **The Mac has no clone**, so a hand copy uses RUNBOOK §5's
   tag-pinned, hash-checked recipe (#432).
   It is owned by an unprivileged **`deploy`** user (docker group, no sudo) that CI authenticates

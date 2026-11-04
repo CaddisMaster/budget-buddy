@@ -1,0 +1,13 @@
+# Both listen on one topic and run in this order: nginx -t first, so a broken
+# file fails the run by name before any reload, and the box's other sites keep
+# serving the config already loaded.
+- name: Test the nginx config for budget
+  ansible.builtin.command: nginx -t
+  changed_when: false
+  listen: budget site changed
+
+- name: Reload nginx for budget
+  ansible.builtin.service:
+    name: nginx
+    state: reloaded
+  listen: budget site changed

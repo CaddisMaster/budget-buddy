@@ -1,0 +1,66 @@
+# What this role never does, because release.yml owns the app:
+#   - write .env or docker-compose.yml. release.yml ships compose and rewrites
+#     .env's TAG= on every deploy, so a template here would show every release as
+#     drift, and a real run would put production back on the role's copy.
+#   - request a certificate, or touch another site.
+
+- name: The host layer is there
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ budget_buddy_user }}"
+
+# Modes read from production on 2026-11-02.
+- name: The deploy directory and its sql
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ budget_buddy_user }}"
+    group: "{{ budget_buddy_user }}"
+    mode: "0755"
+  loop:
+    - "{{ budget_buddy_dir }}"
+    - "{{ budget_buddy_dir }}/sql"
+
+# The dumps are plaintext SQL of every transaction.
+- name: The backups directory
+  ansible.builtin.file:
+    path: "{{ budget_buddy_dir }}/backups"
+    state: directory
+    owner: "{{ budget_buddy_user }}"
+    group: "{{ budget_buddy_user }}"
+    mode: "0700"
+
+# stat reads the inode, never the contents, so no secret passes through here.
+- name: Look at .env and docker-compose.yml
+  ansible.builtin.stat:
+    path: "{{ budget_buddy_dir }}/{{ item }}"
+    get_checksum: false
+  loop:
+    - .env
+    - docker-compose.yml
+  register: budget_buddy_deploy_files
+
+- name: .env exists, mode 600, owned by the deploy user
+  ansible.builtin.assert:
+    that:
+      - budget_buddy_deploy_files.results[0].stat.exists
+      - budget_buddy_deploy_files.results[0].stat.isreg
+      - budget_buddy_deploy_files.results[0].stat.mode == '0600'
+      - budget_buddy_deploy_files.results[0].stat.pw_name == budget_buddy_user
+      - budget_buddy_deploy_files.results[0].stat.gr_name == budget_buddy_user
+    fail_msg: >-
+      {{ budget_buddy_dir }}/.env must exist as a regular file, mode 600,
+      {{ budget_buddy_user }}:{{ budget_buddy_user }}. This role never writes it:
+      restore it (RUNBOOK §8), then run again.
+    quiet: true
+
+- name: docker-compose.yml exists
+  ansible.builtin.assert:
+    that: budget_buddy_deploy_files.results[1].stat.exists
+    fail_msg: >-
+      {{ budget_buddy_dir }}/docker-compose.yml is missing. This role never writes
+      it: release.yml ships it, and a rebuild copies it first (RUNBOOK §5, §8).
+    quiet: true
+
+- name: Nginx site
+  ansible.builtin.import_tasks: nginx.yml

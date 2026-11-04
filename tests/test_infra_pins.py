@@ -1,9 +1,9 @@
-"""#530 — the Ansible control node is pinned exactly, and in one place.
+"""#530 — the Ansible control node is pinned exactly, and in one place. #577 — this
+repo is a tenant of droplet-infra, and holds no copy of what moved there.
 
 `infra/requirements-infra.txt` pins ansible-core and `infra/ansible/requirements.yml`
-pins the collections. Orbit Ops pins this repo's host role by commit SHA
-(orbit-ops #322), so a floating version here would make that SHA mean different
-things on different days.
+pins the collections, so a floating version would make the host layer's pinned SHA
+mean different things on different days.
 
 The same "one pin only" rule ruff follows (tests/test_lint_local.py): a second
 ansible-core pin anywhere in the repo is a second answer to "which version?".
@@ -73,18 +73,65 @@ def test_ansible_core_is_pinned_in_one_file_only():
     for path in REPO_ROOT.rglob("*"):
         if not path.is_file() or path.suffix not in {".txt", ".toml", ".cfg", ".yml", ".yaml", ".in"}:
             continue
-        if any(part in {".git", ".venv", "venv", "collections", "node_modules"} for part in path.parts):
+        if any(part in {".git", ".venv", "venv", "collections", "node_modules", "vendor"} for part in path.parts):
             continue
         if _ANY_ANSIBLE_PIN.search(path.read_text(errors="ignore")):
             hits.append(path.relative_to(REPO_ROOT).as_posix())
     assert hits == ["infra/requirements-infra.txt"]
 
 
-# --- the detectors themselves can fail ---------------------------------------
+def _names(text):
+    return {line.split("==")[0].lower() for line in _requirement_lines(text)}
+
+
+def _pip_entry_directories(text):
+    """The `directory:` of each pip block in a dependabot.yml, read as text."""
+    blocks = re.split(r"^\s*-\s*package-ecosystem:\s*", text, flags=re.M)[1:]
+    return [
+        re.search(r'directory:\s*"([^"]+)"', block).group(1)
+        for block in blocks
+        if block.startswith("pip")
+    ]
+
+
+@pytest.mark.criterion(553, "The control node installs only pinned packages")
+def test_the_control_node_installs_only_pinned_packages():
+    # ansible-core's own requirements, so they cannot float underneath it.
+    assert {"jinja2", "pyyaml", "cryptography", "packaging", "resolvelib"} <= _names(REQS.read_text())
+
+    script = (INFRA / "test.sh").read_text()
+    assert 'pip" install -q --no-deps -r' in script
+    assert 'pip" check' in script
+    # Over an old venv, a leftover package would satisfy pip check.
+    assert "-m venv --clear" in script
+
+
+@pytest.mark.criterion(553, "Dependabot proposes bumps for the control node")
+def test_dependabot_proposes_bumps_for_the_control_node():
+    config = (REPO_ROOT / ".github/dependabot.yml").read_text()
+    assert "/infra" in _pip_entry_directories(config)
+
+
+def test_the_production_check_names_a_python_ansible_core_can_run_on():
+    # #567: the Mac's default python3 is too old for ansible-core 2.21.
+    readme = (INFRA / "README.md").read_text()
+    assert "python3 -m venv" not in readme
+    assert "python3.12\" -m venv" in readme
+    assert "--no-deps -r ../requirements-infra.txt && ../.venv/bin/pip check" in readme
+
 
 @pytest.mark.parametrize("line", ["ansible-core>=2.21", "ansible-core", "ansible-core~=2.21.0"])
 def test_a_loose_requirement_is_caught(line):
     assert unpinned_requirements(line + "\n") == [line]
+
+
+def test_a_pip_entry_for_another_directory_is_not_mistaken_for_infra():
+    text = (
+        "updates:\n"
+        '  - package-ecosystem: pip\n    directory: "/"\n'
+        '  - package-ecosystem: docker\n    directory: "/infra"\n'
+    )
+    assert _pip_entry_directories(text) == ["/"]
 
 
 def test_a_collection_without_an_exact_version_is_caught():
@@ -95,3 +142,59 @@ def test_a_collection_without_an_exact_version_is_caught():
         '    version: ">=2.0.0"\n'
     )
     assert collection_versions(text) == {"community.general": None, "ansible.posix": ">=2.0.0"}
+
+
+# --- a tenant of droplet-infra (#577) -------------------------------------------
+
+MOVED = (
+    "ansible/roles/droplet_host",
+    "ansible/roles/droplet_export",
+    "ansible/roles/www_site",
+    "ansible/roles/budget_buddy_backup/files/backup-export",
+    "ansible/host.yml",
+    "terraform",
+)
+PIN = INFRA / "host-role.pin"
+
+
+@pytest.mark.criterion(577, "Budget Buddy holds no copy of the shared layer")
+@pytest.mark.parametrize("path", MOVED)
+def test_a_moved_path_stays_gone(path):
+    """Two copies is the failure this move exists to end. The host layer lives in
+    droplet-infra, and www's role in seandesmet.com, which has already changed its copy."""
+    assert not (INFRA / path).exists(), f"infra/{path} moved out in #576; change it there"
+
+
+def test_backup_export_is_nowhere_in_this_repos_roles():
+    # A copy under another path would pass the check above.
+    assert [p for p in (INFRA / "ansible/roles").rglob("backup-export") if p.is_file()] == []
+
+
+def test_host_role_is_pinned_to_droplet_infra_by_full_sha():
+    text = PIN.read_text()
+    assert re.search(r"^repo=https://github\.com/CaddisMaster/droplet-infra\.git$", text, re.M)
+    assert re.search(r"^sha=[0-9a-f]{40}$", text, re.M)
+
+
+def test_the_roles_path_reaches_the_pinned_host_layer():
+    cfg = (INFRA / "ansible/ansible.cfg").read_text()
+    assert "roles_path = ./roles:./vendor/droplet-infra/infra/ansible/roles" in cfg
+    assert "infra/ansible/vendor/" in (REPO_ROOT / ".gitignore").read_text().splitlines()
+
+
+def test_the_vendored_copy_is_kept_out_of_the_image():
+    # It's fetched next to the roles, so a local build would otherwise carry it.
+    assert "infra/" in (REPO_ROOT / ".dockerignore").read_text().splitlines()
+
+
+def test_the_app_playbook_never_runs_the_host_layer():
+    # #576: tenants pin the host layer for testing only.
+    play = (INFRA / "ansible/app.yml").read_text()
+    for role in ("droplet_host", "droplet_export", "www_site"):
+        assert role not in play
+
+
+def test_the_app_roles_never_manage_the_pull_key():
+    tasks = (INFRA / "ansible/roles/budget_buddy_backup/tasks/main.yml").read_text()
+    assert "authorized_key" not in tasks
+    assert "backup-export" not in tasks.replace("budget_buddy_backup_url_file", "")
