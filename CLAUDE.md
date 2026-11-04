@@ -319,8 +319,10 @@ standing decisions are in [`docs/status.md`](docs/status.md) (older sessions in
 and `gh issue list` at the start of every session.
 
 - ▶️ **On `main`, not yet deployed (`0.14.0`'s content):** **#580** (the release's `up` leaves `db`
-  out; check at the next release that the log has no `budget-buddy-db-1 Recreate` line), and #577 and
-  #584, which change no image. Cutting it is Sean's call, with no deadline. **NEXT UP** is in `docs/status.md`
+  out; check at the next release that the log has no `budget-buddy-db-1 Recreate` line), #577, #584, and
+  **Python 3.15.2, Redis 8, `anthropic` 2.3 and `python-dateutil` 4** (try Ask or a month read after that
+  deploy). ⚠️ **pytest is held at 9.1.1 (#588)** until an xdist release after 3.8.0. Cutting it is Sean's
+  call, with no deadline. **NEXT UP** is in `docs/status.md`
 - ✅ **Prod runs `0.13.1`, shipped 2026-11-03.** ⏳ **Not yet checked by Sean:** his real Discover
   export **in production**, a real phone screenshot, a multi-page PDF, and #437 on his phone.
   ⏳ Sunday 2026-11-08's digest should arrive once (#483).

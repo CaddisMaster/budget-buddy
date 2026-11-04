@@ -6,13 +6,16 @@
 ## Current Status
 
 ▶️ **NEXT SESSION:** Prod runs **`0.13.1`** (shipped 2026-11-03). **On `main`, NOT deployed, all
-`0.14.0` content so far:** #580 (the release's `up` leaves `db` out), and #577 and #584, which change
-no image. **Check at the next release:** the deploy log has no `budget-buddy-db-1 Recreate` line.
-That's #580's first real run. **No issue is ready to pick up:** #499 (scan, SBOM, signing) needs a
-per-platform scan matrix, #500 (Postgres) waits for Sean to pick a date, and **#36** stays date-parked.
-Dependabot's six open PRs need sorting: #561 and #562 look routine, while #555 (Python 3.15), #560
-(Redis 8), #563 (dateutil 3) and #564 (anthropic 2) are majors that each need a read. The 26.04 rebuild
-has no issue and no date, and its base now belongs to `droplet-infra`.
+`0.14.0` content so far:** #580 (the release's `up` leaves `db` out), #577, #584, and this session's
+runtime moves: **Python 3.15.2, Redis 8.10.3, `anthropic` 2.3 (API version `2026-10-21`), `python-dateutil`
+4.0.0**. **At the next release, check:** the deploy log has no `budget-buddy-db-1 Recreate` line (#580's
+first real run), and Ask or a month read works in production, since the new SDK has had one direct test
+request and no real feature run. **No issue is ready to pick up:** #499 (scan, SBOM, signing) needs a
+per-platform scan matrix, and its comment's gate on fixable CRITICALs is now also this session's lesson;
+#500 (Postgres) waits for Sean to pick a date, and **#36** stays date-parked. **No Dependabot PRs are open.**
+⚠️ **pytest is held at 9.1.1 (#588)** until an xdist release after 3.8.0: then remove the pin's comment and
+the ignore in `.github/dependabot.yml`, and let `test_xdist_grouping.py` decide. The 26.04 rebuild has no
+issue and no date, and its base now belongs to `droplet-infra`.
 
 ⏳ **Still to observe, nothing to build:** **Sunday 2026-11-08's digest arrives once**, which is #483's
 real test. Re-read `/sys/fs/cgroup/memory.peak` for web and worker after a few days (at 2026-11-03,
@@ -27,6 +30,46 @@ required status check** (re-checked 2026-10-23). **Before a batch of LXD runs, w
 on his Mac, and each run is about 5 minutes of load. **Cross-project items (Sean's call, 2026-10-30):**
 an action another repo must take is a `cross-repo` issue in **that** repo; a shared VM/droplet change
 is an entry in `personal-vault/infra/CHANGES.md`. No more handoff notes.
+
+### The 2026-11-04 session: all six Dependabot PRs, and a CVE I nearly walked back in
+
+| PR | Issue | |
+|---|---|---|
+| #561 | (Dependabot) | `claude-code-action` 1.0.266 |
+| #589 | #588 | Replaces #562: pytest held at 9.1.1, the other four bumps, `test_xdist_grouping.py` |
+| #590 | (Dependabot) | `python-dateutil` 4.0.0, replacing #563 |
+| #564 | (Dependabot) | `anthropic` 2.3, API version `2026-10-21` |
+| #560 | (Dependabot) | Redis 8.10.3 |
+| #555 | (Dependabot) | Python 3.15.0 |
+| #592 | #591 | CI's test jobs, ruff's target and the docs to 3.15; the runbook's Redis line |
+| #594 | #593 | Python 3.15.2 |
+| this PR | #595 | this record |
+
+- 🛑 **I recommended Python 3.15 without checking the patch it landed on.** #555 pinned 3.15.0, and
+  3.15.1 and 3.15.2 (2026-10-25) were already out as expedited security releases. 3.15.2 lists
+  CVE-2026-115557 as fixed, one of the two #544 removed, so `main` was briefly behind production on it.
+  **Nothing flagged it:** all checks were green, and I found it only because CI's `setup-python` printed
+  3.15.2 next to the image's 3.15.0. Nothing deployed. Read a runtime bump's release list, not just its tag.
+- 🛑 **pytest 9.2.0 with xdist 3.8.0 silently stops `--dist loadgroup`.** #562 looked routine in this file
+  and failed 5 of 5 full runs here, with a different set each time, which reads as a flake. The cause
+  is in pytest's `nodes.py`: `nodeid` now comes from `_id`, and xdist writes `_nodeid`. Upstream fixed it on
+  2026-10-07 but hasn't released it. The new test runs a real two-worker session rather than reading the
+  `@group` suffix, because the upstream fix changes how the group travels.
+- ⚠️ **My first pytest comparison was false.** `pip install` into the running container did nothing, and the
+  "9.1.1" runs were still 9.2.0. `--version` printed it right there. A rebuild gave the real result.
+- ⚠️ **`@dependabot rebase` can replace a PR with a newer version.** #563 became #590, going from dateutil
+  3.0.0 to 4.0.0, which needed its own read. The app has no `yearday`, `isoparse` or `dateutil.tz`, and the
+  suite passed. A conflict came from #589's `pypdf` line sitting next to dateutil's.
+- ✅ **`anthropic` 2.x checked three ways:** the migration guide's Python section against the code, a local
+  stub showing the headers and body, and one real Haiku request (`req_011Cgi6sfT1XoMfBuxtFQH7f`). Note
+  `with_raw_response` has no `parse`. The SDK's licence moved from MIT to Apache 2.0.
+- **Redis 8** enforces limits the same as 7.4 under both limiter strategies, and idles at about 6 MiB against
+  about 4. It adds AGPLv3 to the licence options. Its image now loads modules such as `timeseries`.
+- **Not from 3.15:** `Control server error: Read-only file system: '/home/appuser/.gunicorn'` logs at every web
+  start, and on 3.14 too. It comes from #498's lockdown (see below).
+- **Sean approved each merge.** One compound command with a merge was refused with no reason given, and the
+  bare merge then went through. Dependabot security alerts are disabled on this repo, and the `gh` token can't
+  read them.
 
 ### The 2026-11-03 session: 0.13.1 shipped, `db` recreated, and the server gets its own repo
 
