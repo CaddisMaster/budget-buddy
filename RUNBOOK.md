@@ -559,6 +559,8 @@ see what a bare `up -d` would do first, run `docker compose --dry-run up -d --no
 # 1. Verify a dump you could actually fall back to (§7), then take a fresh one.
 python3 scripts/restore_check.py <backup-dir>            # must be green
 cd /opt/budget-buddy
+source ./.env
+set -o pipefail
 docker compose exec -T db pg_dump -U "$DB_USER" "$DB_NAME" | gzip \
   > "backups/pre-change-$(date +%Y%m%d-%H%M).sql.gz"
 #    pull that file down and restore_check.py IT — the dump that matters is the
@@ -691,6 +693,8 @@ Rolling it out on an existing deployment:
 
 ```bash
 cd /opt/budget-buddy
+source ./.env
+set -o pipefail
 
 # 1. Back up first — always, before anything touching the database.
 docker compose exec -T db pg_dump -U "$DB_USER" "$DB_NAME" | gzip \
@@ -1012,9 +1016,17 @@ boot, and storing the key on the same disk defeats the purpose.
 
 ```bash
 cd /opt/budget-buddy
+source ./.env
+set -o pipefail
 docker compose exec -T db pg_dump -U "$DB_USER" "$DB_NAME" | gzip \
   > "backups/pre-change-$(date +%Y%m%d-%H%M).sql.gz"
+ls -l backups/ | tail -1
 ```
+
+⚠️ **A failed dump can still look like a backup (#601).** Without `pipefail`, the pipeline
+reports only `gzip`'s status, so a failed `pg_dump` exits 0 and leaves a valid gzip of about 20
+bytes that passes `gzip -t`. Unset `DB_USER` and `DB_NAME` cause exactly that. The two lines
+above prevent it, and a file that small always means the dump failed.
 
 ### Checking that a dump actually restores
 
