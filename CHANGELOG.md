@@ -15,6 +15,9 @@ this project uses the `0.x` versioning scheme described in
   file, printed `backup ok`, and the deploy carried on with no usable backup. The
   runbook's hand-run dumps had the same gap and also relied on settings nothing had
   loaded. No deploy is known to have hit this. No visible change. (#601)
+- **The pre-deploy dump must also prove it finished.** The deploy now requires the
+  line `pg_dump` writes at the end of a complete dump, so one that ends early with
+  no error stops the deploy too. No visible change. (#603)
 - **The runbook's restore and rebuild steps now match the scripts and roles.** The
   restore stops the worker as well as the web container, since a connection left
   open makes the database drop fail, and it loads the settings its commands read.

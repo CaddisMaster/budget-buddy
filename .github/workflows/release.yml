@@ -290,6 +290,12 @@ jobs:
                #    In a subshell, so the script's other pipelines behave as before.
                ( set -o pipefail; docker compose exec -T db pg_dump -U \"\$DB_USER\" \"\$DB_NAME\" | gzip > \"\$DUMP\" )
                gzip -t \"\$DUMP\"
+               #    A valid gzip does not prove the dump finished, so require the line
+               #    pg_dump ends with. 20 lines: a restrict line follows it (#603).
+               if ! gzip -dc \"\$DUMP\" | tail -n 20 | grep -q 'PostgreSQL database dump complete'; then
+                 echo \"::error::\$DUMP has no completion line, so the dump did not finish. Nothing was changed.\"
+                 exit 1
+               fi
                echo \"backup ok: \$DUMP (\$(stat -c%s \"\$DUMP\") bytes)\"
 
                # 2. Apply the ADDITIVE migrations, using the image being
