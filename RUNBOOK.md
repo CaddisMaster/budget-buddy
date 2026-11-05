@@ -240,6 +240,9 @@ Issuing a certificate for a new subdomain:
 certbot --nginx -d newsub.seandesmet.com
 ```
 
+That needs a server block for the name, or a default one, to install into. A rebuilt box has
+neither, so §8 uses `certonly`.
+
 ### ⚠️ Duplicate certificate lineages — the failure mode, and how to check for it
 
 **Certbot creates a new `-000N` lineage rather than replacing an existing one**
@@ -677,7 +680,7 @@ need the owner.
 deliberately omit one and the role cannot log in until you set one yourself. On
 a rebuild that step is not optional: the `.env` you restore from the configs
 backup already carries `DB_APP_USER=budget_app`, so without it the web container
-starts and cannot connect. See §8 step 9.
+starts and cannot connect. See §8 step 8.
 
 Before #160 `schema.sql` carried no role block at all, which meant a fresh
 database plus `scripts/migrate.py --baseline` recorded `30_app_role.sql` as
@@ -1068,12 +1071,19 @@ To restore over a live database, drop and recreate it first so you are not
 merging into existing rows:
 
 ```bash
-docker compose stop web                 # stop writes
+cd /opt/budget-buddy
+source ./.env                           # DB_USER and DB_NAME come from here
+docker compose stop web worker          # stop writes, and free their connections
 docker compose exec -T db psql -U "$DB_USER" -d postgres \
   -c "DROP DATABASE \"$DB_NAME\";" -c "CREATE DATABASE \"$DB_NAME\";"
 gunzip -c backup.sql.gz | docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME"
-docker compose start web
+docker compose start web worker
 ```
+
+⚠️ **Stop `worker` too (#599).** This used to stop only `web`. Any connection still
+open makes the drop fail with `database "…" is being accessed by other users`, and
+the worker keeps pooled connections after a scheduled job, as well as writing on its
+own schedule.
 
 Then confirm: log in, check the dashboard totals, and check that the most recent
 transaction is present.
@@ -1082,35 +1092,47 @@ transaction is present.
 
 ## 8. Rebuilding the server from nothing
 
+⚠️ **These steps have never been run end to end (#599).** They were checked against the
+scripts and roles by reading them, and the §7 restore in a throwaway Postgres. `host.yml`
+has only run in LXD, and step 5's Certbot command comes from reading Certbot's source. Expect
+to find something missing.
+
 1. **Provision** an Ubuntu 24.04 Droplet. Add the SSH key. Do not enable password
    authentication.
-2. **Firewall:** `ufw allow OpenSSH && ufw allow 'Nginx Full' && ufw enable`
-3. **Install** Docker Engine with the Compose plugin, plus `nginx` and
-   `certbot` + `python3-certbot-nginx`.
-4. **DNS (at Squarespace, by hand; it isn't in `droplet-infra`'s Terraform):** point `seandesmet.com`,
+2. **DNS (at Squarespace, by hand; it isn't in `droplet-infra`'s Terraform):** point `seandesmet.com`,
    `www`, `budget` and `learn` at the new IP. Wait for propagation — Certbot's HTTP-01 challenge needs the name
    already resolving to this host.
-5. **Recreate `/opt/budget-buddy/`:** `docker-compose.yml` and `sql/` from this
-   repository and `.env` from the configs backup. The landing page comes from its
+3. **Host layer:** run `host.yml` from `droplet-infra`, following its README. It sets up the
+   firewall, SSH, the `deploy` user, Docker, Nginx, Certbot and `backup-export`, and it
+   removes Nginx's default site. By hand, the firewall is
+   `ufw allow OpenSSH && ufw allow 'Nginx Full' && ufw enable`.
+4. **Recreate `/opt/budget-buddy/`:** `docker-compose.yml` and `sql/` from the **release
+   tag you mean to run**, by §5's break-glass recipe, since the Mac has no clone. Not from the
+   configs backup, whose `sql/` is out of date. `.env` does come from the configs backup: mode
+   600, owned by `deploy`. The landing page comes from its
    own repo — clone `CaddisMaster/seandesmet.com` and follow its `SETUP.md`.
    **Then check `.env` names a version:** `grep '^TAG=' .env` (#190). A configs
-   backup taken before that pin existed has no such line, and step 8 will fail
+   backup taken before that pin existed has no such line, and step 7 will fail
    naming `TAG` rather than starting an arbitrary image — which is the designed
    behaviour, not a fault. Add `TAG=<the version you mean to run>`.
-6. **Nginx:** write the site file from `infra/ansible/roles/` (§3), symlink it into
-   `sites-enabled`, `nginx -t`, reload. `infra/ansible/app.yml` does this and refuses to run
-   until `.env`, `docker-compose.yml` and the certificate exist.
-7. **TLS:** `certbot --nginx -d ...` per domain. Re-read the §4 warning about
-   lineage names before copying any `ssl_certificate` path verbatim.
-8. **Start:** `docker compose up -d`. The empty volume triggers `schema.sql`, so
+5. **TLS, before the site exists:** `certbot certonly --nginx -d budget.seandesmet.com`.
+   Use `certonly`, not §4's `certbot --nginx`: that one installs into a server block, and
+   this box has none yet. The other sites' certificates belong to their own repos.
+   Confirm the lineage is named `budget.seandesmet.com` with no suffix, because the
+   site file names that path (§4 has the warning).
+6. **Nginx and the backup timer:** put the ping URL in place (§7's steps), then run
+   `infra/ansible/app.yml`, following `infra/README.md`. It refuses to run until `.env`,
+   `docker-compose.yml`, the certificate and the ping URL file exist.
+7. **Start:** `docker compose up -d`. The empty volume triggers `schema.sql`, so
    you get the current schema directly — no migration replay needed.
-9. **Give the app role a password.** `schema.sql` creates `budget_app` but
+8. **Give the app role a password.** `schema.sql` creates `budget_app` but
    deliberately sets no password (this repository is public), while the `.env`
-   you restored in step 5 already points the app at it. Until you do this, the
+   you restored in step 4 already points the app at it. Until you do this, the
    web container starts and cannot connect:
 
     ```bash
     cd /opt/budget-buddy
+    source ./.env
     docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" \
       -c "ALTER ROLE budget_app PASSWORD 'the-value-of-DB_APP_PASSWORD-in-.env';"
     docker compose up -d --no-deps --force-recreate web worker
@@ -1120,14 +1142,28 @@ transaction is present.
     one — then `.env` needs no edit. If you would rather rotate it, change both
     together.
 
-10. **Restore** the most recent dump (§7).
-11. **Baseline the migration tracker:** `python scripts/migrate.py --baseline`.
-    `schema.sql` is current, so every numbered migration is genuinely already
-    applied and none should be executed.
-12. **Verify:** load the site over HTTPS, log in, confirm the dashboard figures
+9. **Restore** the most recent dump (§7). The role's password survives this, because a
+   role belongs to the server rather than to the database, and dumps carry none.
+10. **Check the migration tracker. Do NOT `--baseline` after a restore:** the dump
+    carries `schema_migrations`, so `--baseline` refuses (#599). See what the dump is
+    missing, which is anything newer than the dump, and apply it:
+
+    ```bash
+    docker compose run --rm --no-deps -T -e DB_HOST=db web python scripts/migrate.py --status
+    docker compose run --rm --no-deps -T -e DB_HOST=db web python scripts/migrate.py
+    ```
+
+    Only with **no dump to restore** does `--baseline` apply: `schema.sql` is current, so
+    every numbered migration is genuinely already applied and none should be executed.
+11. **Verify:** load the site over HTTPS, log in, confirm the dashboard figures
     match the pre-loss state, and confirm the container runs as a non-root user
     (`docker compose exec web whoami` → `appuser`).
-13. **Re-point** the Mac backup job at the new host.
+12. **Re-point what names the old server:**
+    - the `DROPLET_HOST` and `DROPLET_KNOWN_HOSTS` secrets in GitHub's `production`
+      Environment, or the next deploy can't connect;
+    - the VM's backup pull: the host in `droplet-backup.sh`, plus a `known_hosts` entry for
+      the new server, since it runs in batch mode and won't accept a new key by itself.
+13. **The other tenants:** Orbit Ops and `seandesmet.com` each follow their own repo's docs.
 
 ### Where the host role and production differ
 

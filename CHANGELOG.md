@@ -8,6 +8,17 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+### Fixed
+
+- **The runbook's restore and rebuild steps now match the scripts and roles.** The
+  restore stops the worker as well as the web container, since a connection left
+  open makes the database drop fail, and it loads the settings its commands read.
+  The rebuild gets the certificate before the Nginx step, which refuses to run
+  without it, and uses a Certbot command that works with no site in place. It no
+  longer runs `--baseline` after a restore, which refuses, and it names what has to
+  be re-pointed at the new server. The steps still haven't been run end to end, and
+  the runbook now says so. No visible change. (#599)
+
 ## [0.14.0] - 2026-11-05
 
 ### Changed
