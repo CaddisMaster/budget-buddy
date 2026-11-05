@@ -8,10 +8,21 @@ this project uses the `0.x` versioning scheme described in
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-05
+
 ### Changed
 
-- **The app runs on Python 3.15.** The image, CI's test jobs and the lint target all
-  moved from 3.14 together. No visible change. (#555, #591)
+- **The app runs on Python 3.15.2**, up from 3.14.10. The image, CI's test jobs and
+  the lint target moved together. `main` held 3.15.0 briefly, which never shipped and
+  still carried CVE-2026-115557 and CVE-2026-114583. No visible change.
+  (#555, #591, #593)
+- **Rate-limit counters run on Redis 8.10.3**, up from 7.4.11. Recreating it resets
+  every limit, which is harmless. No visible change. (#560)
+- **The Anthropic SDK moved to `2.3.0`** (from `1.12.1`), a major version, with API
+  version `2026-10-21`. It has had one direct test request and no real feature run,
+  so try Ask or a month read after this deploy. No visible change. (#564)
+- **`python-dateutil` moved to `4.0.0`** (from `2.9.0.post0`), a major version, and
+  `pydantic`, `pypdf` and `resend` took patch bumps. No visible change. (#588, #590)
 - **The server's shared setup now lives in its own repo.** The host setup, the
   Terraform description, the backup export and the landing page's site moved out
   (to `droplet-infra` and `seandesmet.com`), because no one app should own a server
@@ -35,11 +46,6 @@ this project uses the `0.x` versioning scheme described in
   which made them fail at random. pytest stays on the previous version until the
   runner's fix is released, and a new test fails if the grouping stops working.
   No visible change. (#588)
-
-### Security
-
-- **The app runs on Python 3.15.2**, not 3.15.0, which still carried CVE-2026-115557
-  and CVE-2026-114583. No visible change. (#593)
 
 ## [0.13.1] - 2026-11-03
 
@@ -2063,7 +2069,8 @@ lineage, most recent first:
 - **v9.0** — conversational transaction entry (first AI feature)
 - **v1–v8** — core CRUD and deployment, UI overhaul, multi-user authentication, blueprints and pytest, ownership guards, transfers and goals, smart budgets, HTMX inline CRUD and CI
 
-[Unreleased]: https://github.com/CaddisMaster/budget-buddy/compare/v0.13.1...HEAD
+[Unreleased]: https://github.com/CaddisMaster/budget-buddy/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/CaddisMaster/budget-buddy/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/CaddisMaster/budget-buddy/compare/v0.11.0...v0.12.0
