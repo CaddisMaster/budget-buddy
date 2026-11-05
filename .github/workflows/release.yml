@@ -285,7 +285,10 @@ jobs:
                source ./.env
                DUMP=\"backups/pre-deploy-\$(date +%Y%m%d-%H%M%S).sql.gz\"
                mkdir -p backups
-               docker compose exec -T db pg_dump -U \"\$DB_USER\" \"\$DB_NAME\" | gzip > \"\$DUMP\"
+               #    pipefail, because this pipeline otherwise reports only gzip: a
+               #    failed pg_dump left a small valid gzip and said backup ok (#601).
+               #    In a subshell, so the script's other pipelines behave as before.
+               ( set -o pipefail; docker compose exec -T db pg_dump -U \"\$DB_USER\" \"\$DB_NAME\" | gzip > \"\$DUMP\" )
                gzip -t \"\$DUMP\"
                echo \"backup ok: \$DUMP (\$(stat -c%s \"\$DUMP\") bytes)\"
 

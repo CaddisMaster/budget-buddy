@@ -10,6 +10,11 @@ this project uses the `0.x` versioning scheme described in
 
 ### Fixed
 
+- **A failed database dump now stops the deploy.** The dump taken before each deploy
+  reported only whether compressing it worked, so a failed dump left a tiny valid
+  file, printed `backup ok`, and the deploy carried on with no usable backup. The
+  runbook's hand-run dumps had the same gap and also relied on settings nothing had
+  loaded. No deploy is known to have hit this. No visible change. (#601)
 - **The runbook's restore and rebuild steps now match the scripts and roles.** The
   restore stops the worker as well as the web container, since a connection left
   open makes the database drop fail, and it loads the settings its commands read.
