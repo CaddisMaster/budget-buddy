@@ -318,17 +318,17 @@ standing decisions are in [`docs/status.md`](docs/status.md) (older sessions in
 `docs/status-archive.md`). ⚠️ **It lags `main` by construction** — reconcile against `git log`
 and `gh issue list` at the start of every session.
 
-- ▶️ **On `main`, not yet deployed (`0.14.0`'s content):** **#580** (the release's `up` leaves `db`
-  out; check at the next release that the log has no `budget-buddy-db-1 Recreate` line), #577, #584, and
-  **Python 3.15.2, Redis 8, `anthropic` 2.3 and `python-dateutil` 4** (try Ask or a month read after that
-  deploy). ⚠️ **pytest is held at 9.1.1 (#588)** until an xdist release after 3.8.0. Cutting it is Sean's
-  call, with no deadline. **NEXT UP** is in `docs/status.md`
-- ✅ **Prod runs `0.13.1`, shipped 2026-11-03.** ⏳ **Not yet checked by Sean:** his real Discover
+- ▶️ **On `main`, not yet deployed:** #599 (runbook only), and **#601 and #603** (a failed or unfinished
+  pre-deploy dump stops the deploy; check the next release's log still shows `backup ok` at about 50 KB).
+  ⚠️ **pytest is held at 9.1.1 (#588)** until an xdist release after 3.8.0. Cutting the next release
+  is Sean's call, with no deadline. **NEXT UP** is in `docs/status.md`
+- ✅ **Prod runs `0.14.0`, shipped 2026-11-05.** ⏳ **Not yet checked by Sean:** Ask or a month read in
+  production (`anthropic` 2.3's first real run there), his real Discover
   export **in production**, a real phone screenshot, a multi-page PDF, and #437 on his phone.
   ⏳ Sunday 2026-11-08's digest should arrive once (#483).
   ⚠️ The Droplet's banner says `System restart required`; a reboot takes Orbit Ops down too.
-  **#36** stays date-parked
-- **The open milestone is `0.14.0`.** Exactly one is open at a time; create the next one and move
+  **#36** stays date-parked. **DigitalOcean's backups and the rebuild rehearsal are deferred** (Sean, 2026-11-05)
+- **The open milestone is `0.15.0`.** Exactly one is open at a time; create the next one and move
   open items **before** closing it on ship day. The full rule and its traps are in
   `docs/status.md` §Milestone convention
 - 🖥️ **The server's shared layer is in `CaddisMaster/droplet-infra`** (#576): the host role, Terraform,

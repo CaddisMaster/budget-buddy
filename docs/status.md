@@ -5,14 +5,18 @@
 
 ## Current Status
 
-▶️ **NEXT SESSION:** Prod runs **`0.13.1`** (shipped 2026-11-03). **On `main`, NOT deployed, all
-`0.14.0` content so far:** #580 (the release's `up` leaves `db` out), #577, #584, and this session's
-runtime moves: **Python 3.15.2, Redis 8.10.3, `anthropic` 2.3 (API version `2026-10-21`), `python-dateutil`
-4.0.0**. **At the next release, check:** the deploy log has no `budget-buddy-db-1 Recreate` line (#580's
-first real run), and Ask or a month read works in production, since the new SDK has had one direct test
-request and no real feature run. **No issue is ready to pick up:** #499 (scan, SBOM, signing) needs a
-per-platform scan matrix, and its comment's gate on fixable CRITICALs is now also this session's lesson;
-#500 (Postgres) waits for Sean to pick a date, and **#36** stays date-parked. **No Dependabot PRs are open.**
+▶️ **NEXT SESSION:** Prod runs **`0.14.0`** (shipped 2026-11-05: Python 3.15.2, Redis 8.10.3, `anthropic`
+2.3, `python-dateutil` 4.0.0). **On `main`, NOT deployed:** #599 (runbook only) and #601 and #603 (the
+pre-deploy dump). Those two take effect at the next release's run, because the workflow comes from the
+tag, so **check that log still shows `backup ok` at about 50 KB**. Nothing needs a release yet.
+⏳ **Sean to try in production:** Ask or a month read, the first real production run of `anthropic` 2.3,
+which `/healthz` can't show, and whether the push arrived and landed on the strip. **No issue is ready
+to pick up:** #499 (scan, SBOM, signing) needs a per-platform scan matrix, and its comment's gate on
+fixable CRITICALs is the lesson of 2026-11-04; #500 (Postgres) waits for Sean to pick a date, and **#36**
+stays date-parked until about December. **Sean's calls, 2026-11-05: DigitalOcean's backups stay off for
+now, and the rebuild rehearsal is "a later date"**, with no issue and no date. Don't propose either as
+next work, but the off-server copy is still only the VM, and RUNBOOK §8 has still never been run.
+**No Dependabot PRs are open.**
 ⚠️ **pytest is held at 9.1.1 (#588)** until an xdist release after 3.8.0: then remove the pin's comment and
 the ignore in `.github/dependabot.yml`, and let `test_xdist_grouping.py` decide. The 26.04 rebuild has no
 issue and no date, and its base now belongs to `droplet-infra`.
@@ -30,6 +34,43 @@ required status check** (re-checked 2026-10-23). **Before a batch of LXD runs, w
 on his Mac, and each run is about 5 minutes of load. **Cross-project items (Sean's call, 2026-10-30):**
 an action another repo must take is a `cross-repo` issue in **that** repo; a shared VM/droplet change
 is an entry in `personal-vault/infra/CHANGES.md`. No more handoff notes.
+
+### The 2026-11-05 session: 0.14.0 shipped, the rebuild steps corrected, and a dump that could fail silently
+
+| PR | Issue | |
+|---|---|---|
+| #598 | #597 | Cut `0.14.0`: the changelog, and a one-line What's-new strip |
+| #600 | #599 | RUNBOOK §7's restore and §8's rebuild match the scripts and roles |
+| #602 | #601 | A failed `pg_dump` stops the deploy, and the hand-run dumps load `.env` |
+| #604 | #603 | The dump must show `pg_dump`'s completion line |
+| this PR | #605 | this record |
+
+- ✅ **`0.14.0`'s deploy left `db` alone,** #580's first real run: no `budget-buddy-db-1 Recreate` line, and
+  `db` still `Up 2 days`. `running version 0.14.0 (matches 0.14.0)`, announced to 3 devices. Live `/healthz`
+  200 on both apps. `0.14.0` is closed, with 20 issues, and `0.15.0` is open.
+- 🛑 **`release.yml` said a failed dump fails the deploy, and it didn't.** `set -e` with no `pipefail` sees only
+  `gzip`, so a failed `pg_dump` left a valid 20-byte gzip and printed `backup ok`, and a second comment relied
+  on that claim. No deploy is known to have hit it (`0.14.0`'s dump was 50,643 bytes), and older logs weren't
+  checked. Found only by following up one unsourced `$DB_USER`. **Orbit Ops fixed this in its #116**, a month
+  before anyone looked here, and more strongly, which is where #603 came from. Look in the sibling repo first.
+- ⚠️ **Three of my own mistakes, all caught.** The first test extracted the step up to the phrase `backup ok`,
+  which my new comment contained. `ls -l backups/ | tail -1` in #602's runbook block showed the alphabetically
+  last file, not the new dump (#603 replaced it). And Orbit Ops's comment that `dash` refuses `pipefail`
+  made me check my fix: `deploy`'s remote shell isn't `dash`, because `source ./.env` works there and
+  `dash` fails on `source`.
+- **The rebuild findings came from a session the night before** that was never filed, read back from its
+  transcript. Checked rather than trusted: the `worker` drop failure was reproduced in a throwaway Postgres.
+  Certbot was read from 2.9.0's source, taken to be Ubuntu 24.04's version without checking, and **hasn't
+  run**. Checking also added `source ./.env`, the `deploy` user and `backup-export` (via `host.yml`), the ping URL,
+  and `sql/` from the tag.
+- **Left as is:** `/opt/budget-buddy/sql` isn't shipped by deploys, so the configs tarball's copy stops at migration 29.
+  Harmless today, since `schema.sql` runs only on an empty volume and §8 now takes `sql/` from the tag.
+- **Prep notes for next time.** Dependabot PRs add no changelog entry, so Redis 8, `anthropic` 2.3 and dateutil 4
+  were missing at prep. The old `### Security` entry compared 3.15.2 with a 3.15.0 that never shipped, so it
+  was reworded; whether 3.14.10 carried CVE-2026-114583 wasn't checked. `0.14.0` has no feature, so
+  `VERSIONING.md`'s table reads as a patch; Sean kept the MINOR, for the size of the runtime moves.
+- **Filed in Orbit Ops:** orbit-ops #389 (pytest 9.2.0 ignores `--dist loadgroup`, latent since nothing there
+  groups), and a comment on orbit-ops #361 to go to 3.15.2.
 
 ### The 2026-11-04 session: all six Dependabot PRs, and a CVE I nearly walked back in
 
