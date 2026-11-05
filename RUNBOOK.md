@@ -1018,15 +1018,15 @@ boot, and storing the key on the same disk defeats the purpose.
 cd /opt/budget-buddy
 source ./.env
 set -o pipefail
-docker compose exec -T db pg_dump -U "$DB_USER" "$DB_NAME" | gzip \
-  > "backups/pre-change-$(date +%Y%m%d-%H%M).sql.gz"
-ls -l backups/ | tail -1
+DUMP="backups/pre-change-$(date +%Y%m%d-%H%M).sql.gz"
+docker compose exec -T db pg_dump -U "$DB_USER" "$DB_NAME" | gzip > "$DUMP"
+gzip -dc "$DUMP" | tail -n 20 | grep 'dump complete'     # must print the line
 ```
 
 ⚠️ **A failed dump can still look like a backup (#601).** Without `pipefail`, the pipeline
 reports only `gzip`'s status, so a failed `pg_dump` exits 0 and leaves a valid gzip of about 20
-bytes that passes `gzip -t`. Unset `DB_USER` and `DB_NAME` cause exactly that. The two lines
-above prevent it, and a file that small always means the dump failed.
+bytes that passes `gzip -t`. Unset `DB_USER` and `DB_NAME` cause exactly that. `source` and
+`pipefail` above prevent it, and the last line proves the dump finished (#603).
 
 ### Checking that a dump actually restores
 

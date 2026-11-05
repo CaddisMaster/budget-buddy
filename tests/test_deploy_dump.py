@@ -54,9 +54,19 @@ def test_a_failed_dump_stops_the_deploy(tmp_path):
 
 @pytest.mark.criterion(601, "A good dump still passes")
 def test_a_good_dump_still_passes(tmp_path):
-    result = _run(tmp_path, 'echo "-- PostgreSQL database dump"')
+    # How a real pg_dump 16 ends: `\unrestrict` comes AFTER the completion line.
+    result = _run(tmp_path, r"""printf '%s\n' '-- PostgreSQL database dump' 'COPY rows' \
+        '-- PostgreSQL database dump complete' '--' '' '\unrestrict abc123'""")
     assert result.returncode == 0, result.stderr
     assert "backup ok" in result.stdout
     dumps = list((tmp_path / "backups").glob("pre-deploy-*.sql.gz"))
     assert len(dumps) == 1
-    assert b"PostgreSQL database dump" in gzip.decompress(dumps[0].read_bytes())
+    assert b"PostgreSQL database dump complete" in gzip.decompress(dumps[0].read_bytes())
+
+
+@pytest.mark.criterion(603, "A dump that ends early stops the deploy")
+def test_a_dump_that_ends_early_stops_the_deploy(tmp_path):
+    """Exit 0 and a valid gzip, so only the missing completion line can catch it."""
+    result = _run(tmp_path, "printf '%s\\n' '-- PostgreSQL database dump' 'COPY rows'")
+    assert result.returncode != 0, "a dump with no completion line passed the backup step"
+    assert "backup ok" not in result.stdout
