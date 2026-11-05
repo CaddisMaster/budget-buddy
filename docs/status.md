@@ -51,8 +51,8 @@ is an entry in `personal-vault/infra/CHANGES.md`. No more handoff notes.
 - 🛑 **`release.yml` said a failed dump fails the deploy, and it didn't.** `set -e` with no `pipefail` sees only
   `gzip`, so a failed `pg_dump` left a valid 20-byte gzip and printed `backup ok`, and a second comment relied
   on that claim. No deploy is known to have hit it (`0.14.0`'s dump was 50,643 bytes), and older logs weren't
-  checked. Found only by following up one unsourced `$DB_USER`. **Orbit Ops fixed this in its #116**, a month
-  before anyone looked here, and more strongly, which is where #603 came from. Look in the sibling repo first.
+  checked. Found only by following up one unsourced `$DB_USER`. **Orbit Ops had already fixed this in its #116**,
+  and more strongly, which is where #603 came from. Look in the sibling repo first.
 - ⚠️ **Three of my own mistakes, all caught.** The first test extracted the step up to the phrase `backup ok`,
   which my new comment contained. `ls -l backups/ | tail -1` in #602's runbook block showed the alphabetically
   last file, not the new dump (#603 replaced it). And Orbit Ops's comment that `dash` refuses `pipefail`
